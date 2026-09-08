@@ -10,6 +10,7 @@ Before changing code, read the rules relevant to the work:
 - `docs/rules/code-style.md` for Ruby and Rails conventions.
 - `docs/rules/testing.md` for required verification.
 - `docs/specs/` for applicable behavioral specifications. This directory has no domain specifications yet; do not invent requirements when none exist.
+
 - `docs/decisions/` for applicable accepted ADRs.
 
 ## Working Rules
