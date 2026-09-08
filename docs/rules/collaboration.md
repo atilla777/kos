@@ -56,6 +56,7 @@ status: active
 - The summary must cover the goal and user-visible result, current context, requirements, scope, non-goals, accepted decisions, acceptance criteria, implementation plan, verification plan, known risks, and unresolved questions.
 - Do not modify code, documentation, configuration, Git state, project state, or external systems before the user explicitly approves both the final requirements and the implementation plan, then separately authorizes implementation.
 - Approval of requirements or discussion completion alone is not authorization to implement. Treat an ambiguous response as no authorization.
+- Request baseline approval and implementation authorization as separate, concise numbered choices. Accept the corresponding number alone as an explicit response; do not require the user to repeat a prescribed confirmation sentence.
 - After authorization, mark the selected task `in-progress` in the external plan before implementing it.
 
 ## Implementation Control
