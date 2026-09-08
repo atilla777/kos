@@ -10,8 +10,11 @@ status: active
 - Add or update an automated test for every behavior change and bug fix.
 - Unit-test domain rules, workflow transitions, artifact contracts, bundle pinning, and locking decisions when they are added or changed.
 - Integration-test CLI commands, persistence, migrations, idempotency, and error contracts when they are added or changed.
-- End-to-end test task execution across worktree allocation, candidate creation, review, and publication when a change crosses those boundaries.
-- Add contract tests when changing workflow YAML, instructions, templates, CLI JSON schemas, or runtime adapters.
+- End-to-end test task execution across task creation, worktree allocation, candidate creation, review, and publication when a change crosses those boundaries.
+- Add contract tests when changing workflow YAML, instructions, templates, skills, CLI JSON schemas, or runtime adapters.
+- Cover versioned JSON schemas, stable error codes, and atomic `complete-step` behavior when implementing or changing the CLI protocol.
+- Validate public task numbers, required Git trailers, and the syntax and uniqueness of task-local traceability IDs when changing those contracts.
+- Maintain an installation compatibility test for at least one pinned version of every supported runtime target.
 
 ## Reliability Cases
 
@@ -19,6 +22,7 @@ status: active
 - Cover concurrent claims, stale lock versions, expired leases, stale fencing tokens, duplicate idempotency keys, and SQLite contention when changing the relevant persistence or workflow boundary.
 - Use controlled fakes or test repositories for Git and remote interactions. Do not make the normal test suite depend on a network service or a developer's global Git configuration.
 - Add fault-injection coverage when changing a path that crosses a durable intent, a Git side effect, and persistence of its observed result.
+- Cover crash recovery between a Git operation and its state record, orphan worktrees, and ambiguous push results when changing reservation or publication protocols.
 - Reproduce a reported defect with a failing test before fixing it when practical.
 
 ## Running Tests

@@ -1,0 +1,65 @@
+---
+title: KOS Workflow Execution
+status: active
+---
+
+# KOS Workflow Execution
+
+## Workflow Definitions
+
+A project-controlled workflow definition in `.kos/` defines the workflow-status graph for one task type. Each status declares:
+
+- a stable identifier;
+- a Markdown instruction and execution mode of main session or subagent;
+- allowed outgoing transitions;
+- expected artifact types and states;
+- entry and completion requirements; and
+- whether a worktree is required and what changes are allowed.
+
+Workflow status is not free text. The CLI accepts only a transition declared by the task's pinned schema and allowed from its current status. It validates the required artifact contract before performing an atomic transition; it neither executes skill work nor judges its substantive quality.
+
+The workflow language is a small typed schema without arbitrary expressions or Ruby code. An edge is declared once. Conditions are limited to `always`, `artifact-present`, `artifact-state`, `decision`, and `not-applicable`; artifact contracts identify type, cardinality (`one` or `many`), subject, and allowed states. Configuration validation rejects unknown conditions, unreachable statuses, ambiguous decision branches, and references outside the bundle. Detailed YAML shape belongs to BOOT-008.
+
+## Attempts And Ownership
+
+A `WorkflowAttempt` represents one execution of the current workflow status. It records an attempt ID, task and status, owner ID, idempotency key, monotonic fencing token, state (`started`, `succeeded`, `failed`, `interrupted`, or `needs_human`), start, heartbeat, and completion times, input-context digest, and result manifest.
+
+Before mutating repository files or KOS state, an orchestrator atomically claims a lease for the task, workflow status, and expected lock version through the CLI. The lease has a bounded lifetime, can be renewed by its owner, and is released when the attempt completes, enters `needs_human`, or expires. After expiry, a new orchestrator reconciles the unfinished attempt before creating another. Every mutating CLI or `kos-repository` operation carries the current fencing token; an attempt with a stale token cannot complete the step.
+
+Attempt failure does not change workflow status. KOS records durable intent before an external operation and, after interruption, reconciles observed state instead of blindly repeating the operation. [ADR-0002](../decisions/0002-recoverable-workflow-attempts.md) records this recovery decision.
+
+Every mutating CLI command requires an idempotency key. Repeating the same command and key returns the recorded result instead of creating another entity or side effect. Wire representation and command-specific requirements belong to BOOT-007.
+
+## Execution
+
+The main-session `kos-orchestrate` skill obtains task state through the CLI and follows the pinned workflow. It runs statuses that require direct human interaction itself and invokes the common `kos-workflow-step` executor for every subagent status.
+
+The executor receives a versioned context envelope containing task and attempt IDs, workflow status, bundle and instruction digests, expected lock version, fencing token, repository identity, worktree, base ref, candidate SHA, required artifacts, and an allowed capability list. It reads the pinned instruction and invokes only allowed capability skills. A new step kind is introduced by a project instruction, not a new runtime skill.
+
+A main-session status such as `grooming` persists questions, decisions, the selected branch, and open items as a durable artifact. Waiting for a human changes the attempt to `needs_human` and releases its lease.
+
+A subagent:
+
+- works only in the allocated task worktree when the step changes repository files;
+- does not mutate KOS state through SQLite, the CLI, or the API, and does not perform mutating Git operations;
+- returns a versioned result manifest with attempt ID, input-context digest, produced artifacts, and `succeeded`, `failed`, or `needs_human` outcome.
+
+Only the lease-owning orchestrator submits the manifest. The CLI then registers artifacts and changes workflow status with the expected lock version in one transaction, as specified by [Artifact Contracts](artifact-contracts.md).
+
+## Initial And Deferred Workflows
+
+The operational MVP supports `quick-fix`: `implementation-planning`, `development`, `review`, `publication`, and `completed`.
+
+When later introduced, `feature` begins with `grooming`. An explicit decision either continues one task through `domain-specification`, optional `architecture-decision`, `implementation-planning`, `development`, `review`, and `publication`, or follows `decomposition-and-specification`, `specification-review`, `specification-publication`, `coordinating`, and `completed`. `initiative` follows `grooming`, `requirements`, `decomposition-and-specification`, `specification-review`, `specification-publication`, `coordinating`, and `completed`.
+
+`domain-specification` is required for observable domain behavior changes and is explicitly `not-applicable` for a pure refactor or fix without behavior change. `architecture-decision` is required when a decision is long-lived or crosses tasks, domains, architecture, external contracts, data models, or substantial mechanisms; the selected branch requires its registered ADR artifact before `implementation-planning`, while local decisions remain task-local. `development` includes implementation, tests, linters, and local checks. Required specification changes and a candidate commit must exist before review.
+
+`implementation-planning` creates `tasks/<task-number>/implementation-plan.md`, referencing affected domain specifications and any ADR required by the selected workflow branch, and describing current and target state, technical design, affected components and contracts, implementation sequence, test strategy, and risks. It uses task-local traceability IDs for sections that are present. Behavioral contracts stay in `docs/specs/`; the implementation plan contains technical decisions and work steps, not a duplicate low-level specification.
+
+Decomposition creates `tasks/<parent-task-number>/specification.md` with the shared goal, boundaries, key decisions, and child-task map. Child tasks link to it and retain only their narrow requirements and plans.
+
+## Retrospective
+
+Retrospective support is deferred beyond the quick-fix MVP. After that increment is introduced, each subagent runs `kos-retrospective` on its own dialogue before finishing, and the main agent runs it after terminal workflow status only for the main-session dialogue and orchestration quality. The orchestrator does not inspect private subagent dialogues.
+
+A retrospective evaluates dialogue for unclear context, faulty decomposition or delegation, repeated errors, unnecessary work, and missing rules or instructions. It either takes no action or proposes a separate follow-up task, which the owning orchestrator creates through the CLI with an idempotency key. It never changes a completed task or makes hidden post-publication edits. It is best-effort post-processing with its own idempotent attempt, and failure does not reverse terminal workflow status.

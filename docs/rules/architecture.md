@@ -16,6 +16,7 @@ status: active
 ## API Boundary
 
 - Expose the machine API under a versioned namespace such as `/api/v1`. Keep its JSON request, response, and error contracts explicit and covered by contract tests.
+- Keep every CLI command non-interactive with structured JSON output. Reserve stdout for the versioned machine response and stderr for diagnostics.
 - Bind the local service to loopback by default and require a bearer token for every API endpoint except health checks. Never persist or log the token in the repository.
 - Resolve a repository at the API boundary and pass its immutable identifier explicitly into application operations. Never infer repository scope from process-global state or an untrusted path alone.
 - Keep controllers and serializers as transport adapters. Authentication, JSON parsing, and HTTP status mapping belong at this boundary; workflow policy does not.
@@ -42,7 +43,7 @@ status: active
 - Every mutating CLI command and corresponding API operation must be idempotent. Scope an idempotency key to the command and repository, store a request fingerprint with it, reject reuse with a different payload, and retain either its final result or a durable in-progress intent for reconciliation.
 - Use optimistic locking for changed records and a lease with fencing token to own a workflow attempt before an external side effect. Check ownership atomically before recording each effect; use effect-specific preconditions, such as an expected remote OID for push, to make a stale attempt fail safely where the external system cannot enforce the token.
 - Use database-enforced uniqueness for public task numbers, idempotency records, active worktree reservations, and other uniqueness invariants.
-- Keep write transactions short. Handle SQLite contention only as a bounded transient retry; do not retry validation, conflict, or lost-lease failures as if they were transport errors.
+- Enable SQLite foreign keys and WAL, choose an explicit durable synchronous policy and busy timeout, and keep write transactions short. Handle contention only as a bounded transient retry with the original idempotency key; do not retry validation, conflict, or lost-lease failures as if they were transport errors.
 
 ## Git And Filesystem
 
@@ -50,6 +51,7 @@ status: active
 - A task that changes repository files uses its reserved branch and worktree. Validate repository identity, reservation, fencing token, and expected branch or commit before every Git side effect. A commit requires a verified expected diff and index; operations that do not create that diff require a clean worktree.
 - Publish only the reviewed candidate SHA to the configured trusted remote and base ref using a fast-forward push. Immediately before push, atomically verify that the candidate, approved review evidence, required checks, task version, and expected base ref belong to the active attempt. Never force-push.
 - Treat workflow bundles, artifacts, and review evidence as immutable. Reference repository files by repository-relative path plus commit and content digest.
+- Keep runtime installations derived from canonical `skills/` sources. Materialize files through staging and atomic rename; do not treat runtime copies as editable sources.
 
 ## Change Decisions
 

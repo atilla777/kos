@@ -40,4 +40,4 @@ mise run zeitwerk
 mise run check
 ```
 
-See `AGENTS.md`, `docs/rules/`, and `docs/decisions/` before changing application behavior or architecture.
+See `AGENTS.md`, `docs/specs/`, `docs/rules/`, and `docs/decisions/` before changing application behavior or architecture.
