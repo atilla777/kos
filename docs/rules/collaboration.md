@@ -21,6 +21,12 @@ status: active
 - Do not include unrelated refactoring, cleanup, or opportunistic improvements. Record them as proposed follow-up tasks instead.
 - Apply this process proportionally. Discussion for an obvious small change may be brief, but requirements, a plan, and explicit implementation approval remain mandatory.
 
+## Session Boundary
+
+- Work on at most one task in a session. Discussion, approval, implementation, verification, and publication of that task may happen in the same session.
+- After completing or blocking the task, report and record the next task but do not start it in the current session.
+- A task that cannot be finished in one session may continue in a new session. Reconstruct its state from Git, repository documentation, and the external plan rather than relying on conversation history.
+
 ## Discovery And Discussion
 
 - Hear the user's vision, goals, and expected behavior before choosing a solution. Read relevant code and documentation without modifying them so the discussion reflects the current system.
@@ -40,12 +46,21 @@ status: active
 ## Implementation Control
 
 - Implement only the approved scope. Make routine local implementation decisions independently only when they do not change behavior, architecture, risk, dependencies, or task size.
+- Once implementation is authorized, continue without further prompting through implementation, required verification, documentation and plan updates, commit, and publication. Resolve technical issues independently when they stay within the agreed baseline.
+- Do not stop merely to report progress or ask the user to perform work that the agent can safely perform. Stop only when a user decision is required, the agreed baseline must materially change, data or unrelated work may be at risk, required checks cannot be made to pass within scope, concurrent changes directly conflict with the task, or credentials, connectivity, or repository policy prevent publication.
 - Stop implementation if new information requires changing requirements, architecture, an external contract, the data model, dependencies, or the approved scope in a material way.
 - Explain why the baseline must change, provide numbered alternatives when appropriate, and continue only after the user chooses and explicitly authorizes the revised plan.
 - Preserve unrelated worktree changes and never use them as a reason to broaden the task.
 
+## Publication
+
+- Implementation authorization includes permission to commit the completed task and publish it with a normal push to the repository's default branch after all required checks pass, unless the user explicitly restricts publication for that task.
+- Commit only files that belong to the approved task. Never force-push, bypass branch protection or hooks, discard unrelated work, or publish known failing changes.
+- If publication fails, preserve the verified local work, mark the task `blocked`, record the exact blocker and next action in the external plan, and report what the user must do.
+
 ## Completion
 
 - On completion or blockage, update the external plan with the task status, result, risks, blockers, and next action.
-- Report what changed, how it satisfies the approved requirements, which tests and checks ran, what could not be verified, and any remaining risks or proposed follow-up tasks.
+- Give a brief, clear final report stating what was done; what changed for a KOS user, or explicitly that user-visible behavior did not change; which checks ran; the commit, branch, and push result; the next task; and what the user must do, explicitly stating when no action is required.
+- Include any unverified behavior, remaining risk, blocker, or proposed follow-up needed to interpret the result safely.
 - Do not mark a task complete until its approved acceptance criteria and required verification are satisfied.
