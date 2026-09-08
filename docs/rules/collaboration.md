@@ -77,6 +77,6 @@ status: active
 ## Completion
 
 - On completion or blockage, update the external plan with the task status, result, risks, blockers, and next action.
-- Give a brief, clear final report stating what was done; what changed for a KOS user, or explicitly that user-visible behavior did not change; which checks ran; the commit, branch, and push result; the next task; and what the user must do, explicitly stating when no action is required.
+- Give a brief, clear final report that identifies the completed or blocked task by its ID and a concise, context-rich description; states what was done; states what changed for a KOS user, or explicitly that user-visible behavior did not change; lists the checks that ran; gives the commit, branch, and push result; identifies the next task by its ID and a concise, context-rich description; and states what the user must do, explicitly saying when no action is required. Do not report the current or next task as a bare ID.
 - Include any unverified behavior, remaining risk, blocker, or proposed follow-up needed to interpret the result safely.
 - Do not mark a task complete until its approved acceptance criteria and required verification are satisfied.
