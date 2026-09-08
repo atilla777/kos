@@ -8,11 +8,18 @@ status: active
 ## Sources Of Truth
 
 - Keep product requirements, behavioral specifications, engineering rules, and architecture decisions in this Git repository. Use `docs/specs/` for observable contracts, `docs/rules/` for engineering constraints, and `docs/decisions/` for accepted architecture decisions.
-- Keep the development roadmap, task list, task status, blockers, risks, and next action outside the repository in `/home/aleksei/Yandex.Disk/obsidian-vault/B - работа Plums Lab/Klad/KOS/KOS - план реализации.md`.
-- Read the external plan before discussing a new development task. If the path is unavailable, ask the user for its current location and do not start the task until the plan has been read.
+- Keep the development roadmap, task list, task status, blockers, risks, and next action outside the repository. During bootstrap, use `/home/aleksei/Yandex.Disk/obsidian-vault/B - работа Plums Lab/Klad/KOS/KOS.md` as the entry point and follow its links to the roadmap, backlog, inbox, and archive.
+- Read the external dashboard and linked plan before discussing a new development task. If the path is unavailable, ask the user for its current location and do not start the task until the plan has been read.
 - Do not duplicate the roadmap or operational task status in the repository. Do not keep normative product specifications only in Obsidian.
 - Treat `README.md` as user-facing product documentation. Do not use it for the roadmap, MVP boundaries, internal development plans, or agent rules.
 - Do not silently resolve a conflict among the plan, specifications, rules, ADRs, and code. Show the conflict to the user and wait for a decision.
+
+## Bootstrap Planning
+
+- Until KOS owns task state, use monotonic `BOOT-NNN` identifiers and never reuse them. Preserve a bootstrap identifier as a legacy reference when importing the task into KOS; do not treat it as a permanent `TASK-NNNNNN` identifier.
+- Keep at most one bootstrap task `in-progress` and exactly one task in the backlog's `Next` section. Expand only the current and following roadmap phases into backlog tasks; leave later work as roadmap outcomes until it is close enough to refine.
+- Keep unaccepted ideas in the inbox without an identifier. A backlog row records only a cohesive outcome, phase, dependencies, and order; it does not duplicate the task's detailed requirements.
+- After KOS becomes authoritative, generate `KOS.md` as a read-only projection of KOS state with its source and generation time identified. Do not manually maintain a second task state in Obsidian.
 
 ## Task Scope
 
@@ -20,6 +27,14 @@ status: active
 - Propose decomposition before implementation when a request contains independently useful outcomes, crosses unrelated domains, or requires too many decisions for one reviewable change.
 - Do not include unrelated refactoring, cleanup, or opportunistic improvements. Record them as proposed follow-up tasks instead.
 - Apply this process proportionally. Discussion for an obvious small change may be brief, but requirements, a plan, and explicit implementation approval remain mandatory.
+
+## Task Records
+
+- After implementation is authorized, create `tasks/<task-id>/task.md` as the first repository change. During bootstrap, use its `BOOT-NNN` identifier in the path.
+- Record the approved goal, user outcome, context, requirements, scope, non-goals, related specifications and ADRs, task-local decisions, open questions, acceptance criteria, implementation plan, verification, and risks. Omit empty optional sections when that makes a small task clearer.
+- Reference durable behavior in `docs/specs/` and long-lived architecture decisions in `docs/decisions/`; do not repeat their full contracts or rationale in the task record. Keep only decisions local to this delivery as task-local decisions.
+- Do not create a repository `todo.md`. Use the agent's session-local todo list to execute the approved implementation plan.
+- If an unfinished task must continue in another session, update the external dashboard with the current plan step, blocker when present, required user action, next action, and the last verified Git state and checks. Reconstruct progress from that handoff, the task record, and Git rather than from an old session-local todo list.
 
 ## Session Boundary
 
