@@ -30,8 +30,6 @@ By default the development database is `storage/development.sqlite3`. Set `KOS_D
 
 A production process also requires `SECRET_KEY_BASE`; provide both secrets and state paths through the process environment, never committed files. Puma binds to `127.0.0.1` in every environment by default.
 
-The application currently exposes only the Rails health check at `GET /up`. Versioned `/api/v1` endpoints and bearer-token authentication will be added with the first API contract; no state endpoint should be exposed before that contract is implemented.
-
 ## Checks
 
 ```sh

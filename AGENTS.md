@@ -4,18 +4,20 @@ KOS is a local, reliable workflow system for AI-assisted software development. W
 
 ## Required Reading
 
-Before changing code, read the rules relevant to the work:
+Before changing project files, read the rules relevant to the work:
 
+- `docs/rules/collaboration.md` for task scope, user decisions, implementation approval, and the external development plan.
 - `docs/rules/architecture.md` for domain boundaries, persistence, CLI, and Git side effects.
 - `docs/rules/code-style.md` for Ruby and Rails conventions.
 - `docs/rules/testing.md` for required verification.
 - `docs/specs/` for applicable behavioral specifications. This directory has no domain specifications yet; do not invent requirements when none exist.
-
 - `docs/decisions/` for applicable accepted ADRs.
 
 ## Working Rules
 
 - Keep changes small, cohesive, and covered by tests.
+- Hear the user's requirements, resolve material uncertainty, and present a final requirements and implementation plan before making changes.
+- Do not begin implementation without separate explicit user authorization. If implementation requires a material scope or contract change, stop and obtain a new decision and authorization.
 - Treat the Ruby CLI as the sole agent-facing programmatic interface to KOS state. The CLI uses the Rails REST API; do not access SQLite directly outside Rails persistence code.
 - Preserve workflow, locking, idempotency, artifact, and Git-worktree invariants. Do not bypass them for convenience.
 - Keep domain logic independent of controllers, CLI parsing, Active Record callbacks, and Git command execution.
@@ -26,4 +28,4 @@ Before changing code, read the rules relevant to the work:
 
 ## Completion
 
-Report the change, tests and lint run, and any remaining risk or unverified behavior. Ask for clarification when a required product decision is absent from the specifications.
+Update the external development plan, then report the change, tests and lint run, and any remaining risk or unverified behavior. Ask for clarification when a required product decision is absent from the specifications.
