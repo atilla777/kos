@@ -7,10 +7,18 @@ status: active
 
 ## Source Of Truth
 
-- KOS state is owned by the Rails application and persisted in SQLite.
-- The Ruby CLI is the only programmatic interface for agents and skills to read or mutate KOS state.
-- Agents, skills, scripts, and tests must not issue ad hoc SQL or edit the SQLite database directly.
+- KOS state is owned by the central Rails application and persisted in one SQLite database.
+- The Rails application may serve multiple Git repositories. Every repository-owned record and operation must be scoped by an immutable repository identifier.
+- The Ruby CLI is the only agent-facing programmatic interface to KOS state. It reads and mutates state through the versioned Rails REST API and must not load Rails models or persistence code.
+- Only Rails persistence code may access SQLite. Agents, skills, the CLI, scripts, and tests outside the persistence boundary must not issue ad hoc SQL or edit the database directly.
 - Database constraints protect invariants even when application validation is bypassed or concurrent processes race.
+
+## API Boundary
+
+- Expose the machine API under a versioned namespace such as `/api/v1`. Keep its JSON request, response, and error contracts explicit and covered by contract tests.
+- Bind the local service to loopback by default and require a bearer token for every API endpoint except health checks. Never persist or log the token in the repository.
+- Resolve a repository at the API boundary and pass its immutable identifier explicitly into application operations. Never infer repository scope from process-global state or an untrusted path alone.
+- Keep controllers and serializers as transport adapters. Authentication, JSON parsing, and HTTP status mapping belong at this boundary; workflow policy does not.
 
 ## Domain Boundaries
 
@@ -31,7 +39,7 @@ status: active
 
 - A workflow transition, artifact registration, and validation of its contract must be one database transaction.
 - External side effects are not transactional with SQLite. Persist an intent before the effect and reconcile observed state after interruption or an unknown result.
-- Every mutating CLI command must be idempotent. Scope an idempotency key to the command and repository, store a request fingerprint with it, reject reuse with a different payload, and retain either its final result or a durable in-progress intent for reconciliation.
+- Every mutating CLI command and corresponding API operation must be idempotent. Scope an idempotency key to the command and repository, store a request fingerprint with it, reject reuse with a different payload, and retain either its final result or a durable in-progress intent for reconciliation.
 - Use optimistic locking for changed records and a lease with fencing token to own a workflow attempt before an external side effect. Check ownership atomically before recording each effect; use effect-specific preconditions, such as an expected remote OID for push, to make a stale attempt fail safely where the external system cannot enforce the token.
 - Use database-enforced uniqueness for public task numbers, idempotency records, active worktree reservations, and other uniqueness invariants.
 - Keep write transactions short. Handle SQLite contention only as a bounded transient retry; do not retry validation, conflict, or lost-lease failures as if they were transport errors.

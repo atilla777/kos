@@ -15,7 +15,7 @@ Before changing code, read the rules relevant to the work:
 ## Working Rules
 
 - Keep changes small, cohesive, and covered by tests.
-- Treat the Ruby CLI as the sole programmatic interface to KOS state. Do not access SQLite directly outside application persistence code.
+- Treat the Ruby CLI as the sole agent-facing programmatic interface to KOS state. The CLI uses the Rails REST API; do not access SQLite directly outside Rails persistence code.
 - Preserve workflow, locking, idempotency, artifact, and Git-worktree invariants. Do not bypass them for convenience.
 - Keep domain logic independent of controllers, CLI parsing, Active Record callbacks, and Git command execution.
 - Use Rails and Ruby best practices: clear names, small objects with one responsibility, explicit error handling, database constraints, and framework conventions.

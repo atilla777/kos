@@ -1,0 +1,42 @@
+[settings]
+lockfile = true
+
+[tools]
+ruby = "4.0.6"
+lefthook = "2.1.12"
+"gem:rails" = "8.1.3.1"
+
+[tasks.setup]
+description = "Install dependencies and prepare the development environment"
+run = "bin/setup"
+
+[tasks.server]
+description = "Run the local Rails API"
+run = "bin/rails server --binding 127.0.0.1"
+
+[tasks.console]
+description = "Open the Rails console"
+run = "bin/rails console"
+
+[tasks.test]
+description = "Run the RSpec suite"
+run = "bundle exec rspec"
+
+[tasks.lint]
+description = "Run RuboCop"
+run = "bundle exec rubocop"
+
+[tasks.security]
+description = "Run static security checks"
+run = [
+  "bundle exec brakeman --no-pager",
+  "bundle exec bundler-audit check --update",
+]
+
+[tasks.zeitwerk]
+description = "Verify Rails autoloading"
+run = "bin/rails zeitwerk:check"
+
+[tasks.check]
+description = "Run all required project checks"
+depends = ["lint", "test", "security", "zeitwerk"]

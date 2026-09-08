@@ -1,0 +1,18 @@
+inherit_gem:
+  rubocop-rails-omakase: rubocop.yml
+
+plugins:
+  - rubocop-rspec
+  - rubocop-rspec_rails
+
+AllCops:
+  NewCops: enable
+  TargetRubyVersion: 4.0
+  Exclude:
+    - "db/schema.rb"
+    - "tmp/**/*"
+    - "vendor/**/*"
+
+# RSpec path inference is legacy; explicit metadata keeps spec behavior local.
+RSpecRails/InferredSpecType:
+  Enabled: false
