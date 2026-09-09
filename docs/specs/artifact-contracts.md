@@ -13,7 +13,7 @@ Correcting evidence creates a new artifact; an approved artifact is not edited. 
 
 ## Transition Validation
 
-For each workflow status, the pinned schema defines required artifacts and allowed states. Entering review, for example, requires a candidate commit containing all required changes. Moving from review to publication requires an `approved` review result for that exact commit.
+For each workflow status, the pinned schema defines required artifacts by type, cardinality (`one` or `many`), subject (`task` or `candidate`), and allowed states. Entering review, for example, requires one produced task candidate and one or more passed test results for that candidate. Moving from review to publication requires one `approved` review result for the exact candidate.
 
 The CLI validates the universal structural contract:
 

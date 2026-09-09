@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kos.local/schemas/project/v1/bundle-manifest.json",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "common.json#/$defs/schema_version" },
+    "workflow_id": { "$ref": "common.json#/$defs/identifier" },
+    "workflow_version": { "$ref": "common.json#/$defs/semantic_version" },
+    "members": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": { "$ref": "common.json#/$defs/project_path" },
+          "digest": { "$ref": "common.json#/$defs/digest" }
+        },
+        "required": ["path", "digest"],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "x-sorted-by": "path",
+      "x-unique-by": "path"
+    }
+  },
+  "required": ["schema_version", "workflow_id", "workflow_version", "members"],
+  "additionalProperties": false
+}

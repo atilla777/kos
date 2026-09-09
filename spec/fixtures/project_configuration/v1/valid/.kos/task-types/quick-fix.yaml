@@ -1,0 +1,6 @@
+schema_version: "1"
+id: quick-fix
+workflow:
+  id: quick-fix
+  version: 1.0.0
+  path: .kos/workflows/quick-fix/1.0.0/workflow.yaml

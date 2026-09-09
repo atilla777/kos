@@ -138,7 +138,10 @@ module CliV1Contract
       "expected_lock_version" => 3, "fencing_token" => 8,
       "base_ref" => "refs/heads/main", "worktree" => { "reservation_id" => RESERVATION_ID,
         "path" => "/tmp/task-123", "branch" => "kos/task-TASK-000123", "head_sha" => SHA },
-      "required_artifact_types" => %w[candidate test], "allowed_capabilities" => [ "kos-development" ] }
+      "required_artifacts" => [
+        { "type" => "candidate", "cardinality" => "one", "subject" => "task", "allowed_states" => [ "produced" ] },
+        { "type" => "test", "cardinality" => "many", "subject" => "candidate", "allowed_states" => [ "passed" ] }
+      ], "allowed_capabilities" => [ "kos-development" ] }
     digest = Digest::SHA256.hexdigest(canonical_json(value))
     value.merge("input_context_digest" => "sha256:#{digest}")
   end
@@ -280,6 +283,14 @@ module CliV1Contract
     schema.ref("#/$defs/context")
   end
 
+  def self.artifact_requirement_validity
+    valid = context
+    incompatible = Marshal.load(Marshal.dump(valid))
+    incompatible.fetch("required_artifacts").last["subject"] = "task"
+    [ valid, incompatible, valid.merge("required_artifact_types" => %w[candidate test]) ]
+      .map { |value| context_definition.valid?(value) }
+  end
+
   def self.task_definition
     schema = JSONSchemer.schema(SCHEMAS.fetch("resources.json"), ref_resolver: REGISTRY.to_proc)
     schema.ref("#/$defs/task")
@@ -302,6 +313,8 @@ module CliV1Contract
     paths = [ instruction.fetch("path"), *material_paths ]
     errors << "material_order" unless material_paths == material_paths.sort
     errors << "member_paths" unless paths.uniq == paths
+    artifact_types = context.fetch("required_artifacts").map { |requirement| requirement.fetch("type") }
+    errors << "required_artifact_types" unless artifact_types.uniq == artifact_types
     errors
   end
 
@@ -321,6 +334,7 @@ module CliV1Contract
       material: workflow.dig("material", "properties", "content", "x-max-utf8-bytes"),
       total: workflow.dig("context", "x-max-total-member-content-bytes"),
       unique_members: workflow.dig("context", "x-unique-member-paths"),
+      required_artifacts: workflow.dig("context", "properties", "required_artifacts", "x-unique-by"),
       materials: workflow.dig("context", "properties", "materials").slice("x-sorted-by", "x-unique-by") }
   end
 
@@ -332,7 +346,10 @@ module CliV1Contract
       duplicate: valid_context.merge("materials" => [ material.merge("content" => "other"), material ]),
       unsorted: valid_context.merge("materials" => [ material, material.merge("path" => ".kos/templates/a.md") ]),
       collision: valid_context.merge("materials" => [ material.merge("path" => valid_context.dig("instruction", "path")) ]),
-      oversized: valid_context.merge("materials" => [ material.merge("content" => "é" * 600_000) ])
+      oversized: valid_context.merge("materials" => [ material.merge("content" => "é" * 600_000) ]),
+      duplicate_artifact_type: valid_context.merge("required_artifacts" => [
+        *valid_context.fetch("required_artifacts"), valid_context.fetch("required_artifacts").first
+      ])
     }
     contexts.transform_values { |value| context_constraint_errors(value) }
   end
@@ -577,13 +594,15 @@ RSpec.describe CliV1Contract do
 
   it "publishes machine-readable byte and collection constraints" do
     expect(described_class.context_annotations).to eq(instruction: 131_072, material: 1_048_576, total: 4_194_304,
-      unique_members: true, materials: { "x-sorted-by" => "path", "x-unique-by" => "path" })
+      unique_members: true, required_artifacts: "type",
+      materials: { "x-sorted-by" => "path", "x-unique-by" => "path" })
   end
 
   it "checks representative context collection constraints" do
     expect(described_class.context_constraint_examples).to eq(
       valid: [], duplicate: [ "member_paths" ], unsorted: [ "material_order" ],
-      collision: [ "member_paths" ], oversized: [ "material_size" ]
+      collision: [ "member_paths" ], oversized: [ "material_size" ],
+      duplicate_artifact_type: [ "required_artifact_types" ]
     )
   end
 
@@ -624,6 +643,10 @@ RSpec.describe CliV1Contract do
     context.fetch("instruction").delete("digest")
 
     expect(described_class.context_definition).not_to be_valid(context)
+  end
+
+  it "requires complete compatible artifact requirements in workflow context" do
+    expect(described_class.artifact_requirement_validity).to eq([ true, false, false ])
   end
 
   it "rejects agent-visible snapshot storage paths" do

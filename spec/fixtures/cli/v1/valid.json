@@ -93,7 +93,7 @@
           "digest": "sha256:7153a452afb721cd001417bd9afc9b13e5a7eabba731842f384f5b0a63375b05"
         }
       ],
-      "input_context_digest": "sha256:a6d000accc4da9633efdbcac7f70cbeb42f2ef8a082a9c79ea2781fad01c67d6",
+      "input_context_digest": "sha256:3c3f8f75ff7a807fc5658ad4421cae5956a88b982f445d34490c08aec048ed2d",
       "expected_lock_version": 3,
       "fencing_token": 8,
       "base_ref": "refs/heads/main",
@@ -103,7 +103,10 @@
         "branch": "kos/task-TASK-000123",
         "head_sha": "1111111111111111111111111111111111111111"
       },
-      "required_artifact_types": ["candidate", "test"],
+      "required_artifacts": [
+        { "type": "candidate", "cardinality": "one", "subject": "task", "allowed_states": ["produced"] },
+        { "type": "test", "cardinality": "many", "subject": "candidate", "allowed_states": ["passed"] }
+      ],
       "allowed_capabilities": ["kos-development"]
     }
   },

@@ -11,7 +11,7 @@
       "instruction": { "path": ".kos/workflows/quick-fix/1.0.0/steps/development.md", "media_type": "text/markdown; charset=utf-8", "content": "# Development\n", "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" },
       "materials": [], "input_context_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
       "expected_lock_version": 3, "fencing_token": 8, "base_ref": "refs/heads/main", "candidate_sha": null,
-      "required_artifact_types": [], "allowed_capabilities": []
+      "required_artifacts": [], "allowed_capabilities": []
     }
   },
   {
