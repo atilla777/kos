@@ -2,76 +2,20 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://kos.local/schemas/cli/v1/resources.json",
   "$defs": {
-    "repository": {
-      "type": "object",
-      "properties": {
-        "schema_version": { "$ref": "common.json#/$defs/schema_version" },
-        "id": { "$ref": "common.json#/$defs/uuid" },
-        "git_common_dir": { "$ref": "common.json#/$defs/absolute_path" },
-        "task_prefix": { "$ref": "common.json#/$defs/task_prefix" },
-        "trusted_remote": { "$ref": "common.json#/$defs/identifier" },
-        "trusted_remote_url": { "$ref": "common.json#/$defs/remote_url" },
-        "base_ref": { "$ref": "common.json#/$defs/base_ref" },
-        "registered_at": { "$ref": "common.json#/$defs/timestamp" }
-      },
-      "required": ["schema_version", "id", "git_common_dir", "task_prefix", "trusted_remote", "trusted_remote_url", "base_ref", "registered_at"],
-      "additionalProperties": false
-    },
-    "task_type": {
-      "type": "object",
-      "properties": {
-        "schema_version": { "$ref": "common.json#/$defs/schema_version" },
-        "id": { "$ref": "common.json#/$defs/identifier" },
-        "name": { "const": "quick-fix" },
-        "workflow_id": { "$ref": "common.json#/$defs/identifier" }
-      },
-      "required": ["schema_version", "id", "name", "workflow_id"],
-      "additionalProperties": false
-    },
-    "workflow": {
-      "type": "object",
-      "properties": {
-        "schema_version": { "$ref": "common.json#/$defs/schema_version" },
-        "id": { "$ref": "common.json#/$defs/identifier" },
-        "version": { "type": "string", "minLength": 1 },
-        "bundle_digest": { "$ref": "common.json#/$defs/digest" },
-        "statuses": {
-          "type": "array",
-          "prefixItems": [
-            { "const": "implementation-planning" }, { "const": "development" }, { "const": "review" },
-            { "const": "publication" }, { "const": "completed" }
-          ],
-          "items": false
-        }
-      },
-      "required": ["schema_version", "id", "version", "bundle_digest", "statuses"],
-      "additionalProperties": false
-    },
+    "repository": { "type": "object", "properties": { "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "id": { "$ref": "common.json#/$defs/uuid" }, "git_common_dir": { "$ref": "common.json#/$defs/absolute_path" }, "task_prefix": { "$ref": "common.json#/$defs/task_prefix" }, "trusted_remote": { "$ref": "common.json#/$defs/identifier" }, "trusted_remote_url": { "$ref": "common.json#/$defs/remote_url" }, "base_ref": { "$ref": "common.json#/$defs/base_ref" }, "registered_at": { "$ref": "common.json#/$defs/timestamp" } }, "required": ["schema_version", "id", "git_common_dir", "task_prefix", "trusted_remote", "trusted_remote_url", "base_ref", "registered_at"], "additionalProperties": false },
+    "task_type": { "type": "object", "properties": { "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "id": { "$ref": "common.json#/$defs/identifier" }, "name": { "const": "quick-fix" }, "workflow_id": { "$ref": "common.json#/$defs/identifier" }, "current_workflow_version_id": { "$ref": "common.json#/$defs/uuid" }, "lock_version": { "type": "integer", "minimum": 0 } }, "required": ["schema_version", "id", "name", "workflow_id", "current_workflow_version_id", "lock_version"], "additionalProperties": false },
+    "workflow_draft": { "type": "object", "properties": { "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "id": { "$ref": "common.json#/$defs/uuid" }, "workflow_id": { "$ref": "common.json#/$defs/identifier" }, "task_type": { "const": "quick-fix" }, "definition": { "$ref": "workflow_definition.json#/$defs/definition" }, "lock_version": { "type": "integer", "minimum": 0 }, "updated_at": { "$ref": "common.json#/$defs/timestamp" } }, "required": ["schema_version", "id", "workflow_id", "task_type", "definition", "lock_version", "updated_at"], "x-field-equality": [["workflow_id", "definition.workflow_id"], ["task_type", "definition.task_type"]], "additionalProperties": false },
+    "workflow_version_summary": { "type": "object", "properties": { "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "id": { "$ref": "common.json#/$defs/uuid" }, "workflow_id": { "$ref": "common.json#/$defs/identifier" }, "task_type": { "const": "quick-fix" }, "version": { "$ref": "common.json#/$defs/semantic_version" }, "content_digest": { "$ref": "common.json#/$defs/digest" }, "published_at": { "$ref": "common.json#/$defs/timestamp" } }, "required": ["schema_version", "id", "workflow_id", "task_type", "version", "content_digest", "published_at"], "additionalProperties": false },
+    "workflow_version": { "type": "object", "properties": { "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "id": { "$ref": "common.json#/$defs/uuid" }, "workflow_id": { "$ref": "common.json#/$defs/identifier" }, "task_type": { "const": "quick-fix" }, "version": { "$ref": "common.json#/$defs/semantic_version" }, "content_digest": { "$ref": "common.json#/$defs/digest" }, "published_at": { "$ref": "common.json#/$defs/timestamp" }, "definition": { "$ref": "workflow_definition.json#/$defs/definition" } }, "required": ["schema_version", "id", "workflow_id", "task_type", "version", "content_digest", "published_at", "definition"], "x-immutable": true, "x-field-equality": [["workflow_id", "definition.workflow_id"], ["task_type", "definition.task_type"], ["version", "definition.version"]], "x-content-digest-of": "definition", "additionalProperties": false },
+    "runtime_config": { "type": "object", "properties": { "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "retrospective_enabled": { "type": "boolean" }, "lock_version": { "type": "integer", "minimum": 0 }, "updated_at": { "$ref": "common.json#/$defs/timestamp" } }, "required": ["schema_version", "retrospective_enabled", "lock_version", "updated_at"], "additionalProperties": false },
     "task": {
       "type": "object",
       "properties": {
-        "schema_version": { "$ref": "common.json#/$defs/schema_version" },
-        "id": { "$ref": "common.json#/$defs/uuid" },
-        "repository_id": { "$ref": "common.json#/$defs/uuid" },
-        "number": { "$ref": "common.json#/$defs/task_number" },
-        "title": { "type": "string", "minLength": 1 },
-        "task_type": { "const": "quick-fix" },
-        "status": { "enum": ["open", "active", "blocked", "completed", "cancelled"] },
-        "workflow_status": { "enum": ["implementation-planning", "development", "review", "publication", "completed"] },
-        "workflow_id": { "$ref": "common.json#/$defs/identifier" },
-        "workflow_version": { "type": "string", "minLength": 1 },
-        "bundle_digest": { "$ref": "common.json#/$defs/digest" },
-        "lock_version": { "type": "integer", "minimum": 0 },
-        "active_attempt_id": { "$ref": "common.json#/$defs/uuid" },
-        "worktree_reservation_id": { "$ref": "common.json#/$defs/uuid" },
-        "active_publication_id": { "$ref": "common.json#/$defs/uuid" },
-        "branch": { "$ref": "common.json#/$defs/task_branch" },
-        "worktree_path": { "type": "string", "minLength": 1 },
-        "created_at": { "$ref": "common.json#/$defs/timestamp" },
-        "updated_at": { "$ref": "common.json#/$defs/timestamp" }
+        "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "id": { "$ref": "common.json#/$defs/uuid" }, "repository_id": { "$ref": "common.json#/$defs/uuid" }, "number": { "$ref": "common.json#/$defs/task_number" }, "title": { "type": "string", "minLength": 1 }, "task_type": { "const": "quick-fix" }, "status": { "enum": ["open", "active", "blocked", "completed", "cancelled"] }, "workflow_status": { "$ref": "common.json#/$defs/identifier" }, "workflow_version_id": { "$ref": "common.json#/$defs/uuid" }, "lock_version": { "type": "integer", "minimum": 0 }, "active_attempt_id": { "$ref": "common.json#/$defs/uuid" }, "worktree_reservation_id": { "$ref": "common.json#/$defs/uuid" }, "active_publication_id": { "$ref": "common.json#/$defs/uuid" }, "branch": { "$ref": "common.json#/$defs/task_branch" }, "worktree_path": { "type": "string", "minLength": 1 }, "created_at": { "$ref": "common.json#/$defs/timestamp" }, "updated_at": { "$ref": "common.json#/$defs/timestamp" }
       },
-      "required": ["schema_version", "id", "repository_id", "number", "title", "task_type", "status", "workflow_status", "workflow_id", "workflow_version", "bundle_digest", "lock_version", "created_at", "updated_at"],
+      "required": ["schema_version", "id", "repository_id", "number", "title", "task_type", "status", "workflow_status", "workflow_version_id", "lock_version", "created_at", "updated_at"],
       "x-derived-field": { "field": "branch", "template": "kos/task-{number}" },
+      "x-workflow-status-belongs-to": "workflow_version_id",
       "allOf": [
         {
           "if": { "properties": { "workflow_status": { "const": "completed" } }, "required": ["workflow_status"] },
@@ -83,113 +27,21 @@
     },
     "attempt": {
       "type": "object",
-      "properties": {
-        "schema_version": { "$ref": "common.json#/$defs/schema_version" },
-        "id": { "$ref": "common.json#/$defs/uuid" },
-        "task_id": { "$ref": "common.json#/$defs/uuid" },
-        "workflow_status": { "$ref": "common.json#/$defs/identifier" },
-        "owner_id": { "$ref": "common.json#/$defs/identifier" },
-        "state": { "enum": ["started", "succeeded", "failed", "interrupted", "needs_human"] },
-        "fencing_token": { "type": "integer", "minimum": 1 },
-        "lease_expires_at": { "$ref": "common.json#/$defs/timestamp" },
-        "started_at": { "$ref": "common.json#/$defs/timestamp" },
-        "heartbeat_at": { "$ref": "common.json#/$defs/timestamp" },
-        "completed_at": { "$ref": "common.json#/$defs/timestamp" },
-        "input_context_digest": { "$ref": "common.json#/$defs/digest" },
-        "result_manifest": { "$ref": "workflow.json#/$defs/result_manifest" }
-      },
+      "properties": { "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "id": { "$ref": "common.json#/$defs/uuid" }, "task_id": { "$ref": "common.json#/$defs/uuid" }, "workflow_status": { "$ref": "common.json#/$defs/identifier" }, "owner_id": { "$ref": "common.json#/$defs/identifier" }, "state": { "enum": ["started", "succeeded", "failed", "interrupted", "needs_human"] }, "fencing_token": { "type": "integer", "minimum": 1 }, "lease_expires_at": { "$ref": "common.json#/$defs/timestamp" }, "started_at": { "$ref": "common.json#/$defs/timestamp" }, "heartbeat_at": { "$ref": "common.json#/$defs/timestamp" }, "completed_at": { "$ref": "common.json#/$defs/timestamp" }, "input_context_digest": { "$ref": "common.json#/$defs/digest" }, "result_manifest": { "$ref": "workflow.json#/$defs/result_manifest" } },
       "required": ["schema_version", "id", "task_id", "workflow_status", "owner_id", "state", "fencing_token", "started_at"],
       "allOf": [
-        {
-          "if": { "properties": { "state": { "const": "started" } }, "required": ["state"] },
-          "then": { "not": { "anyOf": [{ "required": ["completed_at"] }, { "required": ["result_manifest"] }] } }
-        },
-        {
-          "if": { "properties": { "state": { "const": "interrupted" } }, "required": ["state"] },
-          "then": { "required": ["completed_at"], "not": { "required": ["result_manifest"] } }
-        },
-        {
-          "if": { "properties": { "state": { "enum": ["succeeded", "failed", "needs_human"] } }, "required": ["state"] },
-          "then": { "required": ["completed_at", "input_context_digest", "result_manifest"] }
-        },
-        {
-          "if": { "properties": { "state": { "const": "succeeded" } }, "required": ["state"] },
-          "then": {
-            "properties": {
-              "result_manifest": { "properties": { "outcome": { "const": "succeeded" } } }
-            }
-          }
-        },
-        {
-          "if": { "properties": { "state": { "const": "failed" } }, "required": ["state"] },
-          "then": {
-            "properties": {
-              "result_manifest": { "properties": { "outcome": { "const": "failed" } } }
-            }
-          }
-        },
-        {
-          "if": { "properties": { "state": { "const": "needs_human" } }, "required": ["state"] },
-          "then": {
-            "properties": {
-              "result_manifest": { "properties": { "outcome": { "const": "needs_human" } } }
-            }
-          }
-        }
+        { "if": { "properties": { "state": { "const": "started" } }, "required": ["state"] }, "then": { "not": { "anyOf": [{ "required": ["completed_at"] }, { "required": ["result_manifest"] }] } } },
+        { "if": { "properties": { "state": { "const": "interrupted" } }, "required": ["state"] }, "then": { "required": ["completed_at"], "not": { "required": ["result_manifest"] } } },
+        { "if": { "properties": { "state": { "enum": ["succeeded", "failed", "needs_human"] } }, "required": ["state"] }, "then": { "required": ["completed_at", "input_context_digest", "result_manifest"] } },
+        { "if": { "properties": { "state": { "const": "succeeded" } }, "required": ["state"] }, "then": { "properties": { "result_manifest": { "properties": { "outcome": { "const": "succeeded" } } } } } },
+        { "if": { "properties": { "state": { "const": "failed" } }, "required": ["state"] }, "then": { "properties": { "result_manifest": { "properties": { "outcome": { "const": "failed" } } } } } },
+        { "if": { "properties": { "state": { "const": "needs_human" } }, "required": ["state"] }, "then": { "properties": { "result_manifest": { "properties": { "outcome": { "const": "needs_human" } } } } } }
       ],
-      "x-field-equality": [
-        ["id", "result_manifest.attempt_id"],
-        ["input_context_digest", "result_manifest.input_context_digest"]
-      ],
+      "x-field-equality": [["id", "result_manifest.attempt_id"], ["input_context_digest", "result_manifest.input_context_digest"]],
       "additionalProperties": false
     },
-    "worktree_reservation": {
-      "type": "object",
-      "properties": {
-        "schema_version": { "$ref": "common.json#/$defs/schema_version" },
-        "id": { "$ref": "common.json#/$defs/uuid" },
-        "repository_id": { "$ref": "common.json#/$defs/uuid" },
-        "task_id": { "$ref": "common.json#/$defs/uuid" },
-        "attempt_id": { "$ref": "common.json#/$defs/uuid" },
-        "branch": { "$ref": "common.json#/$defs/task_branch" },
-        "path": { "type": "string", "minLength": 1 },
-        "state": { "enum": ["reserved", "confirmed", "release_pending", "released"] },
-        "fencing_token": { "type": "integer", "minimum": 1 },
-        "created_at": { "$ref": "common.json#/$defs/timestamp" }
-      },
-      "required": ["schema_version", "id", "repository_id", "task_id", "attempt_id", "branch", "path", "state", "fencing_token", "created_at"],
-      "additionalProperties": false
-    },
-    "publication": {
-      "type": "object",
-      "properties": {
-        "schema_version": { "$ref": "common.json#/$defs/schema_version" },
-        "id": { "$ref": "common.json#/$defs/uuid" },
-        "repository_id": { "$ref": "common.json#/$defs/uuid" },
-        "task_id": { "$ref": "common.json#/$defs/uuid" },
-        "prepared_attempt_id": { "$ref": "common.json#/$defs/uuid" },
-        "current_owner_attempt_id": { "$ref": "common.json#/$defs/uuid" },
-        "candidate_sha": { "$ref": "common.json#/$defs/git_oid" },
-        "remote": { "$ref": "common.json#/$defs/identifier" },
-        "base_ref": { "$ref": "common.json#/$defs/base_ref" },
-        "expected_remote_oid": { "$ref": "common.json#/$defs/git_oid" },
-        "state": { "enum": ["prepared", "reconciled", "superseded", "completed"] },
-        "observed_remote_tip": { "$ref": "common.json#/$defs/git_oid" },
-        "candidate_reachable": { "type": "boolean" },
-        "observation_digest": { "$ref": "common.json#/$defs/digest" },
-        "observed_at": { "$ref": "common.json#/$defs/timestamp" },
-        "prepared_at": { "$ref": "common.json#/$defs/timestamp" },
-        "reconciled_at": { "$ref": "common.json#/$defs/timestamp" },
-        "completed_at": { "$ref": "common.json#/$defs/timestamp" },
-        "updated_at": { "$ref": "common.json#/$defs/timestamp" }
-      },
-      "required": ["schema_version", "id", "repository_id", "task_id", "prepared_attempt_id", "candidate_sha", "remote", "base_ref", "expected_remote_oid", "state", "prepared_at", "updated_at"],
-      "allOf": [
-        { "if": { "properties": { "state": { "enum": ["reconciled", "superseded", "completed"] } }, "required": ["state"] }, "then": { "required": ["observed_remote_tip", "candidate_reachable", "observation_digest", "observed_at", "reconciled_at"] } },
-        { "if": { "properties": { "state": { "const": "completed" } }, "required": ["state"] }, "then": { "properties": { "candidate_reachable": { "const": true } }, "required": ["completed_at"] } },
-        { "if": { "properties": { "state": { "const": "superseded" } }, "required": ["state"] }, "then": { "properties": { "candidate_reachable": { "const": false } } } }
-      ],
-      "additionalProperties": false
-    }
+    "worktree_reservation": { "type": "object", "properties": { "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "id": { "$ref": "common.json#/$defs/uuid" }, "repository_id": { "$ref": "common.json#/$defs/uuid" }, "task_id": { "$ref": "common.json#/$defs/uuid" }, "attempt_id": { "$ref": "common.json#/$defs/uuid" }, "branch": { "$ref": "common.json#/$defs/task_branch" }, "path": { "type": "string", "minLength": 1 }, "state": { "enum": ["reserved", "confirmed", "release_pending", "released"] }, "fencing_token": { "type": "integer", "minimum": 1 }, "created_at": { "$ref": "common.json#/$defs/timestamp" } }, "required": ["schema_version", "id", "repository_id", "task_id", "attempt_id", "branch", "path", "state", "fencing_token", "created_at"], "additionalProperties": false },
+    "repository_effect": { "type": "object", "properties": { "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "id": { "$ref": "common.json#/$defs/uuid" }, "repository_id": { "$ref": "common.json#/$defs/uuid" }, "task_id": { "$ref": "common.json#/$defs/uuid" }, "prepared_attempt_id": { "$ref": "common.json#/$defs/uuid" }, "current_owner_attempt_id": { "$ref": "common.json#/$defs/uuid" }, "request_digest": { "$ref": "common.json#/$defs/digest" }, "request": { "$ref": "workflow.json#/$defs/durable_effect_request" }, "state": { "enum": ["prepared", "succeeded", "failed", "unknown"] }, "result": { "$ref": "workflow.json#/$defs/durable_effect_result" }, "prepared_at": { "$ref": "common.json#/$defs/timestamp" }, "reconciled_at": { "$ref": "common.json#/$defs/timestamp" }, "updated_at": { "$ref": "common.json#/$defs/timestamp" } }, "required": ["schema_version", "id", "repository_id", "task_id", "prepared_attempt_id", "current_owner_attempt_id", "request_digest", "request", "state", "prepared_at", "updated_at"], "allOf": [{ "if": { "properties": { "state": { "const": "prepared" } }, "required": ["state"] }, "then": { "not": { "anyOf": [{ "required": ["result"] }, { "required": ["reconciled_at"] }] } } }, { "if": { "properties": { "state": { "const": "succeeded" } }, "required": ["state"] }, "then": { "properties": { "result": { "properties": { "result": { "properties": { "outcome": { "const": "succeeded" } } } } } }, "required": ["result", "reconciled_at"] } }, { "if": { "properties": { "state": { "const": "failed" } }, "required": ["state"] }, "then": { "properties": { "result": { "properties": { "result": { "properties": { "outcome": { "const": "failed" } } } } } }, "required": ["result", "reconciled_at"] } }, { "if": { "properties": { "state": { "const": "unknown" } }, "required": ["state"] }, "then": { "properties": { "result": { "properties": { "result": { "properties": { "outcome": { "const": "unknown" } } } } } }, "required": ["result", "reconciled_at"] } }], "x-field-equality": [["prepared_attempt_id", "request.attempt_id"], ["id", "result.effect_intent_id"], ["prepared_attempt_id", "result.request_attempt_id"], ["current_owner_attempt_id", "result.owner_attempt_id"], ["request.input_context_digest", "result.input_context_digest"], ["request_digest", "result.effect_request_digest"]], "x-content-digest-of": { "field": "request_digest", "content": "request", "canonicalization": "rfc8785" }, "additionalProperties": false },
+    "publication": { "type": "object", "properties": { "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "id": { "$ref": "common.json#/$defs/uuid" }, "repository_id": { "$ref": "common.json#/$defs/uuid" }, "task_id": { "$ref": "common.json#/$defs/uuid" }, "prepared_attempt_id": { "$ref": "common.json#/$defs/uuid" }, "current_owner_attempt_id": { "$ref": "common.json#/$defs/uuid" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "remote": { "$ref": "common.json#/$defs/identifier" }, "base_ref": { "$ref": "common.json#/$defs/base_ref" }, "expected_remote_oid": { "$ref": "common.json#/$defs/git_oid" }, "state": { "enum": ["prepared", "reconciled", "superseded", "completed"] }, "observed_remote_tip": { "$ref": "common.json#/$defs/git_oid" }, "candidate_reachable": { "type": "boolean" }, "observation_digest": { "$ref": "common.json#/$defs/digest" }, "observed_at": { "$ref": "common.json#/$defs/timestamp" }, "prepared_at": { "$ref": "common.json#/$defs/timestamp" }, "reconciled_at": { "$ref": "common.json#/$defs/timestamp" }, "completed_at": { "$ref": "common.json#/$defs/timestamp" }, "updated_at": { "$ref": "common.json#/$defs/timestamp" } }, "required": ["schema_version", "id", "repository_id", "task_id", "prepared_attempt_id", "candidate_sha", "remote", "base_ref", "expected_remote_oid", "state", "prepared_at", "updated_at"], "allOf": [{ "if": { "properties": { "state": { "enum": ["reconciled", "superseded", "completed"] } }, "required": ["state"] }, "then": { "required": ["observed_remote_tip", "candidate_reachable", "observation_digest", "observed_at", "reconciled_at"] } }, { "if": { "properties": { "state": { "const": "completed" } }, "required": ["state"] }, "then": { "properties": { "candidate_reachable": { "const": true } }, "required": ["completed_at"] } }, { "if": { "properties": { "state": { "const": "superseded" } }, "required": ["state"] }, "then": { "properties": { "candidate_reachable": { "const": false } } } }], "additionalProperties": false }
   }
 }

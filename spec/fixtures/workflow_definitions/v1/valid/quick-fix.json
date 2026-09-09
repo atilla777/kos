@@ -1,0 +1,68 @@
+{
+  "schema_version": "1",
+  "workflow_id": "quick-fix",
+  "task_type": "quick-fix",
+  "version": "1.0.0",
+  "initial_status": "implementation-planning",
+  "terminal_status": "completed",
+  "statuses": [
+    {
+      "id": "implementation-planning",
+      "execution_mode": "subagent",
+      "instruction": "# Implementation planning\n\nCreate the approved implementation plan.\n",
+      "artifact_templates": [
+        { "id": "implementation-plan", "media_type": "text/markdown; charset=utf-8", "content": "# Plan\n\n## Design\n\n## Verification\n" }
+      ],
+      "allowed_repository_effects": ["commit"],
+      "worktree": "required",
+      "repository_changes": "allowed",
+      "required_artifacts": [
+        { "type": "document", "cardinality": "one", "subject": "task", "allowed_states": ["produced"] }
+      ]
+    },
+    {
+      "id": "development",
+      "execution_mode": "subagent",
+      "instruction": "# Development\n\nImplement and test the approved change.\n",
+      "artifact_templates": [],
+      "allowed_repository_effects": ["commit"],
+      "worktree": "required",
+      "repository_changes": "allowed",
+      "required_artifacts": [
+        { "type": "candidate", "cardinality": "one", "subject": "task", "allowed_states": ["produced"] },
+        { "type": "test", "cardinality": "many", "subject": "candidate", "allowed_states": ["passed"] }
+      ]
+    },
+    {
+      "id": "review",
+      "execution_mode": "subagent",
+      "instruction": "# Review\n\nReview the exact candidate independently.\n",
+      "artifact_templates": [],
+      "allowed_repository_effects": [],
+      "worktree": "required",
+      "repository_changes": "forbidden",
+      "required_artifacts": [
+        { "type": "review", "cardinality": "one", "subject": "candidate", "allowed_states": ["approved", "changes_requested"] }
+      ]
+    },
+    {
+      "id": "publication",
+      "execution_mode": "subagent",
+      "instruction": "# Publication\n\nPublish only the approved candidate.\n",
+      "artifact_templates": [],
+      "allowed_repository_effects": ["fetch", "push", "worktree_remove"],
+      "worktree": "required",
+      "repository_changes": "forbidden",
+      "required_artifacts": [
+        { "type": "publication", "cardinality": "one", "subject": "candidate", "allowed_states": ["published"] }
+      ]
+    }
+  ],
+  "transitions": [
+    { "from": "implementation-planning", "to": "development", "conditions": [{ "type": "artifact-state", "artifact_type": "document", "state": "produced" }] },
+    { "from": "development", "to": "review", "conditions": [{ "type": "artifact-state", "artifact_type": "candidate", "state": "produced" }, { "type": "artifact-state", "artifact_type": "test", "state": "passed" }] },
+    { "from": "review", "to": "development", "conditions": [{ "type": "artifact-state", "artifact_type": "review", "state": "changes_requested" }] },
+    { "from": "review", "to": "publication", "conditions": [{ "type": "artifact-state", "artifact_type": "review", "state": "approved" }] },
+    { "from": "publication", "to": "completed", "conditions": [{ "type": "artifact-state", "artifact_type": "publication", "state": "published" }] }
+  ]
+}

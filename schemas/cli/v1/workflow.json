@@ -2,89 +2,65 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://kos.local/schemas/cli/v1/workflow.json",
   "$defs": {
-    "worktree_context": {
-      "type": "object",
-      "properties": { "reservation_id": { "$ref": "common.json#/$defs/uuid" }, "path": { "type": "string", "minLength": 1 }, "branch": { "$ref": "common.json#/$defs/task_branch" }, "head_sha": { "$ref": "common.json#/$defs/git_oid" } },
-      "required": ["reservation_id", "path", "branch", "head_sha"], "additionalProperties": false
-    },
-    "instruction": {
-      "type": "object",
-      "properties": {
-        "path": { "$ref": "common.json#/$defs/repository_path" },
-        "media_type": { "const": "text/markdown; charset=utf-8" },
-        "content": { "type": "string", "minLength": 1, "x-max-utf8-bytes": 131072 },
-        "digest": { "$ref": "common.json#/$defs/digest" }
-      },
-      "required": ["path", "media_type", "content", "digest"],
-      "additionalProperties": false
-    },
-    "material": {
-      "type": "object",
-      "properties": {
-        "path": { "$ref": "common.json#/$defs/repository_path" },
-        "media_type": { "enum": ["text/markdown; charset=utf-8", "application/yaml; charset=utf-8"] },
-        "content": { "type": "string", "minLength": 1, "x-max-utf8-bytes": 1048576 },
-        "digest": { "$ref": "common.json#/$defs/digest" }
-      },
-      "required": ["path", "media_type", "content", "digest"],
-      "additionalProperties": false
-    },
-    "required_artifact_base": {
-      "type": "object",
-      "properties": {
-        "type": { "enum": ["document", "candidate", "test", "review", "publication"] },
-        "cardinality": { "enum": ["one", "many"] },
-        "subject": { "enum": ["task", "candidate"] },
-        "allowed_states": { "type": "array", "items": { "enum": ["produced", "passed", "failed", "approved", "changes_requested", "published"] }, "minItems": 1, "uniqueItems": true }
-      },
-      "required": ["type", "cardinality", "subject", "allowed_states"],
-      "additionalProperties": false
-    },
-    "required_artifact": {
-      "oneOf": [
-        { "allOf": [{ "$ref": "#/$defs/required_artifact_base" }, { "properties": { "type": { "const": "document" }, "subject": { "const": "task" }, "allowed_states": { "items": { "const": "produced" } } } }] },
-        { "allOf": [{ "$ref": "#/$defs/required_artifact_base" }, { "properties": { "type": { "const": "candidate" }, "subject": { "const": "task" }, "allowed_states": { "items": { "const": "produced" } } } }] },
-        { "allOf": [{ "$ref": "#/$defs/required_artifact_base" }, { "properties": { "type": { "const": "test" }, "subject": { "const": "candidate" }, "allowed_states": { "items": { "enum": ["passed", "failed"] } } } }] },
-        { "allOf": [{ "$ref": "#/$defs/required_artifact_base" }, { "properties": { "type": { "const": "review" }, "subject": { "const": "candidate" }, "allowed_states": { "items": { "enum": ["approved", "changes_requested"] } } } }] },
-        { "allOf": [{ "$ref": "#/$defs/required_artifact_base" }, { "properties": { "type": { "const": "publication" }, "subject": { "const": "candidate" }, "allowed_states": { "items": { "const": "published" } } } }] }
-      ]
-    },
-    "worktree_create_effect": { "type": "object", "properties": { "operation": { "const": "worktree_create" }, "reservation_id": { "$ref": "common.json#/$defs/uuid" }, "expected_head_sha": { "$ref": "common.json#/$defs/git_oid" } }, "required": ["operation", "reservation_id", "expected_head_sha"], "additionalProperties": false },
+    "worktree_context": { "type": "object", "properties": { "reservation_id": { "$ref": "common.json#/$defs/uuid" }, "path": { "type": "string", "minLength": 1 }, "branch": { "$ref": "common.json#/$defs/task_branch" }, "head_sha": { "$ref": "common.json#/$defs/git_oid" } }, "required": ["reservation_id", "path", "branch", "head_sha"], "additionalProperties": false },
+    "artifact_template": { "$ref": "workflow_definition.json#/$defs/artifact_template" },
+    "required_artifact": { "$ref": "workflow_definition.json#/$defs/artifact_requirement" },
     "worktree_remove_effect": { "type": "object", "properties": { "operation": { "const": "worktree_remove" }, "reservation_id": { "$ref": "common.json#/$defs/uuid" }, "expected_head_sha": { "$ref": "common.json#/$defs/git_oid" } }, "required": ["operation", "reservation_id", "expected_head_sha"], "additionalProperties": false },
     "commit_effect": { "type": "object", "properties": { "operation": { "const": "commit" }, "reservation_id": { "$ref": "common.json#/$defs/uuid" }, "expected_head_sha": { "$ref": "common.json#/$defs/git_oid" }, "expected_diff_digest": { "$ref": "common.json#/$defs/digest" }, "expected_index_digest": { "$ref": "common.json#/$defs/digest" }, "paths": { "type": "array", "items": { "$ref": "common.json#/$defs/repository_path" }, "minItems": 1, "uniqueItems": true }, "message": { "type": "string", "minLength": 1 }, "task_number": { "$ref": "common.json#/$defs/task_number" } }, "required": ["operation", "reservation_id", "expected_head_sha", "expected_diff_digest", "expected_index_digest", "paths", "message", "task_number"], "x-task-number-matches-context": true, "additionalProperties": false },
     "fetch_effect": { "type": "object", "properties": { "operation": { "const": "fetch" }, "remote": { "$ref": "common.json#/$defs/identifier" }, "ref": { "type": "string", "pattern": "^refs/[^ ]+$" } }, "required": ["operation", "remote", "ref"], "additionalProperties": false },
     "rebase_effect": { "type": "object", "properties": { "operation": { "const": "rebase" }, "reservation_id": { "$ref": "common.json#/$defs/uuid" }, "expected_head_sha": { "$ref": "common.json#/$defs/git_oid" }, "onto_sha": { "$ref": "common.json#/$defs/git_oid" } }, "required": ["operation", "reservation_id", "expected_head_sha", "onto_sha"], "additionalProperties": false },
-    "push_effect": { "type": "object", "properties": { "operation": { "const": "push" }, "publication_id": { "$ref": "common.json#/$defs/uuid" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "remote": { "$ref": "common.json#/$defs/identifier" }, "base_ref": { "type": "string", "pattern": "^refs/heads/[^ ]+$" }, "expected_remote_oid": { "$ref": "common.json#/$defs/git_oid" } }, "required": ["operation", "publication_id", "candidate_sha", "remote", "base_ref", "expected_remote_oid"], "additionalProperties": false },
-    "requested_effect": { "oneOf": [{ "$ref": "#/$defs/worktree_create_effect" }, { "$ref": "#/$defs/worktree_remove_effect" }, { "$ref": "#/$defs/commit_effect" }, { "$ref": "#/$defs/fetch_effect" }, { "$ref": "#/$defs/rebase_effect" }, { "$ref": "#/$defs/push_effect" }] },
+    "push_effect": { "type": "object", "properties": { "operation": { "const": "push" }, "publication_id": { "$ref": "common.json#/$defs/uuid" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "remote": { "$ref": "common.json#/$defs/identifier" }, "base_ref": { "$ref": "common.json#/$defs/base_ref" }, "expected_remote_oid": { "$ref": "common.json#/$defs/git_oid" } }, "required": ["operation", "publication_id", "candidate_sha", "remote", "base_ref", "expected_remote_oid"], "additionalProperties": false },
+    "durable_requested_effect": { "oneOf": [{ "$ref": "#/$defs/commit_effect" }, { "$ref": "#/$defs/fetch_effect" }, { "$ref": "#/$defs/rebase_effect" }] },
+    "requested_effect": { "oneOf": [{ "$ref": "#/$defs/worktree_remove_effect" }, { "$ref": "#/$defs/commit_effect" }, { "$ref": "#/$defs/fetch_effect" }, { "$ref": "#/$defs/rebase_effect" }, { "$ref": "#/$defs/push_effect" }] },
+    "effect_request": { "type": "object", "properties": { "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "attempt_id": { "$ref": "common.json#/$defs/uuid" }, "input_context_digest": { "$ref": "common.json#/$defs/digest" }, "effect": { "$ref": "#/$defs/requested_effect" } }, "required": ["schema_version", "attempt_id", "input_context_digest", "effect"], "x-effect-operation-in-context": "allowed_repository_effects", "additionalProperties": false },
+    "durable_effect_request": { "type": "object", "properties": { "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "attempt_id": { "$ref": "common.json#/$defs/uuid" }, "input_context_digest": { "$ref": "common.json#/$defs/digest" }, "effect": { "$ref": "#/$defs/durable_requested_effect" } }, "required": ["schema_version", "attempt_id", "input_context_digest", "effect"], "x-effect-operation-in-context": "allowed_repository_effects", "additionalProperties": false },
+    "worktree_effect_result": { "type": "object", "properties": { "outcome": { "const": "succeeded" }, "operation": { "const": "worktree_remove" }, "reservation_id": { "$ref": "common.json#/$defs/uuid" }, "observed_state": { "enum": ["absent", "clean", "dirty", "mismatched"] }, "head_sha": { "$ref": "common.json#/$defs/git_oid" }, "evidence_digest": { "$ref": "common.json#/$defs/digest" } }, "required": ["outcome", "operation", "reservation_id", "observed_state", "evidence_digest"], "additionalProperties": false },
+    "commit_effect_result": { "type": "object", "properties": { "outcome": { "const": "succeeded" }, "operation": { "const": "commit" }, "commit_sha": { "$ref": "common.json#/$defs/git_oid" }, "evidence_digest": { "$ref": "common.json#/$defs/digest" } }, "required": ["outcome", "operation", "commit_sha", "evidence_digest"], "additionalProperties": false },
+    "fetch_effect_result": { "type": "object", "properties": { "outcome": { "const": "succeeded" }, "operation": { "const": "fetch" }, "remote": { "$ref": "common.json#/$defs/identifier" }, "ref": { "type": "string", "pattern": "^refs/[^ ]+$" }, "observed_oid": { "$ref": "common.json#/$defs/git_oid" }, "evidence_digest": { "$ref": "common.json#/$defs/digest" } }, "required": ["outcome", "operation", "remote", "ref", "observed_oid", "evidence_digest"], "additionalProperties": false },
+    "rebase_effect_result": { "type": "object", "properties": { "outcome": { "const": "succeeded" }, "operation": { "const": "rebase" }, "head_sha": { "$ref": "common.json#/$defs/git_oid" }, "evidence_digest": { "$ref": "common.json#/$defs/digest" } }, "required": ["outcome", "operation", "head_sha", "evidence_digest"], "additionalProperties": false },
+    "push_effect_result": { "type": "object", "properties": { "outcome": { "const": "succeeded" }, "operation": { "const": "push" }, "publication_id": { "$ref": "common.json#/$defs/uuid" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "observed_remote_tip": { "$ref": "common.json#/$defs/git_oid" }, "candidate_reachable": { "type": "boolean" }, "observed_at": { "$ref": "common.json#/$defs/timestamp" }, "evidence_digest": { "$ref": "common.json#/$defs/digest" } }, "required": ["outcome", "operation", "publication_id", "candidate_sha", "observed_remote_tip", "candidate_reachable", "observed_at", "evidence_digest"], "additionalProperties": false },
+    "effect_failure_result": { "type": "object", "properties": { "outcome": { "enum": ["failed", "unknown"] }, "operation": { "enum": ["worktree_remove", "commit", "fetch", "rebase", "push"] }, "error": { "type": "object", "properties": { "category": { "enum": ["validation", "conflict", "lease_lost", "transient", "internal"] }, "code": { "$ref": "common.json#/$defs/identifier" }, "message": { "type": "string", "minLength": 1 }, "retryable": { "type": "boolean" } }, "required": ["category", "code", "message", "retryable"], "additionalProperties": false } }, "required": ["outcome", "operation", "error"], "additionalProperties": false },
+    "durable_effect_failure_result": { "allOf": [{ "$ref": "#/$defs/effect_failure_result" }, { "properties": { "operation": { "enum": ["commit", "fetch", "rebase"] } } }] },
+    "effect_result": { "type": "object", "properties": { "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "effect_intent_id": { "$ref": "common.json#/$defs/uuid" }, "request_attempt_id": { "$ref": "common.json#/$defs/uuid" }, "owner_attempt_id": { "$ref": "common.json#/$defs/uuid" }, "input_context_digest": { "$ref": "common.json#/$defs/digest" }, "effect_request_digest": { "$ref": "common.json#/$defs/digest" }, "result": { "oneOf": [{ "$ref": "#/$defs/worktree_effect_result" }, { "$ref": "#/$defs/commit_effect_result" }, { "$ref": "#/$defs/fetch_effect_result" }, { "$ref": "#/$defs/rebase_effect_result" }, { "$ref": "#/$defs/push_effect_result" }, { "$ref": "#/$defs/effect_failure_result" }] } }, "required": ["schema_version", "effect_intent_id", "request_attempt_id", "owner_attempt_id", "input_context_digest", "effect_request_digest", "result"], "x-effect-request-digest": "sha256-rfc8785-canonical-effect-request", "x-result-operation-matches-request": true, "additionalProperties": false },
+    "durable_effect_result": { "allOf": [{ "$ref": "#/$defs/effect_result" }, { "properties": { "result": { "oneOf": [{ "$ref": "#/$defs/commit_effect_result" }, { "$ref": "#/$defs/fetch_effect_result" }, { "$ref": "#/$defs/rebase_effect_result" }, { "$ref": "#/$defs/durable_effect_failure_result" }] } } }] },
+    "publication_context": { "type": "object", "properties": { "publication_id": { "$ref": "common.json#/$defs/uuid" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "remote": { "$ref": "common.json#/$defs/identifier" }, "base_ref": { "$ref": "common.json#/$defs/base_ref" }, "expected_remote_oid": { "$ref": "common.json#/$defs/git_oid" } }, "required": ["publication_id", "candidate_sha", "remote", "base_ref", "expected_remote_oid"], "additionalProperties": false },
     "context": {
       "type": "object",
       "properties": {
-        "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "task_id": { "$ref": "common.json#/$defs/uuid" },
+        "schema_version": { "$ref": "common.json#/$defs/schema_version" },
+        "task_id": { "$ref": "common.json#/$defs/uuid" },
         "task_number": { "$ref": "common.json#/$defs/task_number" },
-        "attempt_id": { "$ref": "common.json#/$defs/uuid" }, "repository_id": { "$ref": "common.json#/$defs/uuid" },
-        "workflow_id": { "$ref": "common.json#/$defs/identifier" }, "workflow_version": { "type": "string", "minLength": 1 },
-        "workflow_status": { "$ref": "common.json#/$defs/identifier" }, "bundle_digest": { "$ref": "common.json#/$defs/digest" },
-        "instruction": { "$ref": "#/$defs/instruction" },
-        "materials": { "type": "array", "items": { "$ref": "#/$defs/material" }, "uniqueItems": true, "x-sorted-by": "path", "x-unique-by": "path" },
-        "input_context_digest": { "$ref": "common.json#/$defs/digest" }, "expected_lock_version": { "type": "integer", "minimum": 0 },
-        "fencing_token": { "type": "integer", "minimum": 1 }, "base_ref": { "type": "string", "pattern": "^refs/heads/[^ ]+$" },
-        "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "worktree": { "$ref": "#/$defs/worktree_context" },
+        "attempt_id": { "$ref": "common.json#/$defs/uuid" },
+        "repository_id": { "$ref": "common.json#/$defs/uuid" },
+        "workflow_version_id": { "$ref": "common.json#/$defs/uuid" },
+        "workflow_status": { "$ref": "common.json#/$defs/identifier" },
+        "instruction": { "type": "string", "minLength": 1, "x-media-type": "text/markdown; charset=utf-8", "x-max-utf8-bytes": 131072 },
+        "artifact_templates": { "type": "array", "items": { "$ref": "#/$defs/artifact_template" }, "x-unique-by": "id" },
+        "input_context_digest": { "$ref": "common.json#/$defs/digest" },
+        "expected_lock_version": { "type": "integer", "minimum": 0 },
+        "fencing_token": { "type": "integer", "minimum": 1 },
+        "base_ref": { "$ref": "common.json#/$defs/base_ref" },
+        "candidate_sha": { "$ref": "common.json#/$defs/git_oid" },
+        "publication": { "$ref": "#/$defs/publication_context" },
+        "worktree": { "$ref": "#/$defs/worktree_context" },
         "required_artifacts": { "type": "array", "items": { "$ref": "#/$defs/required_artifact" }, "x-unique-by": "type" },
-        "allowed_capabilities": { "type": "array", "items": { "$ref": "common.json#/$defs/identifier" }, "uniqueItems": true }
+        "allowed_repository_effects": { "type": "array", "items": { "enum": ["worktree_remove", "commit", "fetch", "rebase", "push"] }, "uniqueItems": true },
+        "retrospective_enabled": { "type": "boolean" }
       },
-      "required": ["schema_version", "task_id", "task_number", "attempt_id", "repository_id", "workflow_id", "workflow_version", "workflow_status", "bundle_digest", "instruction", "materials", "input_context_digest", "expected_lock_version", "fencing_token", "base_ref", "required_artifacts", "allowed_capabilities"],
-      "x-max-total-member-content-bytes": 4194304,
-      "x-unique-member-paths": true,
+      "required": ["schema_version", "task_id", "task_number", "attempt_id", "repository_id", "workflow_version_id", "workflow_status", "instruction", "artifact_templates", "input_context_digest", "expected_lock_version", "fencing_token", "base_ref", "required_artifacts", "allowed_repository_effects", "retrospective_enabled"],
+      "x-max-total-content-bytes": 4194304,
       "x-derived-field": { "field": "worktree.branch", "template": "kos/task-{task_number}" },
+      "allOf": [{ "if": { "properties": { "workflow_status": { "const": "publication" } }, "required": ["workflow_status"] }, "then": { "required": ["candidate_sha", "publication"] } }],
       "additionalProperties": false
     },
     "result_manifest": {
       "type": "object",
       "properties": {
-        "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "attempt_id": { "$ref": "common.json#/$defs/uuid" },
-        "input_context_digest": { "$ref": "common.json#/$defs/digest" }, "outcome": { "enum": ["succeeded", "failed", "needs_human"] },
+        "schema_version": { "$ref": "common.json#/$defs/schema_version" },
+        "attempt_id": { "$ref": "common.json#/$defs/uuid" },
+        "input_context_digest": { "$ref": "common.json#/$defs/digest" },
+        "outcome": { "enum": ["succeeded", "failed", "needs_human"] },
         "artifacts": { "type": "array", "items": { "$ref": "artifacts.json#/$defs/artifact_input" } },
-        "requested_effects": { "type": "array", "items": { "$ref": "#/$defs/requested_effect" }, "uniqueItems": true },
         "summary": { "type": "string", "minLength": 1 }
       },
       "required": ["schema_version", "attempt_id", "input_context_digest", "outcome", "artifacts"],

@@ -7,7 +7,7 @@ status: active
 
 ## Task Types
 
-A `TaskType` defines a task's purpose and has exactly one associated workflow schema. A schema may contain an explicit branch, such as a post-grooming decomposition decision. Lifecycles with different purposes use different task types rather than implicit alternatives in one schema.
+A shared `TaskType` defines a task's purpose and has exactly one workflow family. It identifies one current published workflow version for new tasks. Activating another version never changes existing tasks. A workflow may contain an explicit branch, such as a post-grooming decomposition decision. Lifecycles with different purposes use different task types rather than implicit alternatives in one workflow.
 
 The initial types are:
 
@@ -25,10 +25,12 @@ A `Task` is one unit of managed work. It records at least:
 - status and workflow status;
 - an optional parent and task relations or dependencies;
 - a lock version for optimistic locking;
-- workflow identity, version, and pinned bundle digest; and
+- one immutable published workflow-version identifier and current workflow state; and
 - allocated worktree and branch details when its workflow changes repository files.
 
 In the MVP, `status` is not independently mutable. It is derived from terminal workflow status and active-attempt state as `open`, `active`, `blocked`, `completed`, or `cancelled`; workflow status remains the sole lifecycle source.
+
+Task creation resolves the task type's current workflow version inside the creation transaction. The task stores that immutable foreign-key reference and does not copy the workflow graph, store a bundle digest, or follow later task-type activation changes. Its current state must belong to the selected version. Version migration for an existing task is not supported in version 1.
 
 ## Public Numbers And Traceability
 

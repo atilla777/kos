@@ -20,8 +20,9 @@ The normative machine schemas are:
 | `schemas/cli/v1/common.json` | Identifiers, digests, paths, and mutation preconditions |
 | `schemas/cli/v1/envelopes.json` | Success and failure envelopes and stable errors |
 | `schemas/cli/v1/resources.json` | Repository, task type, workflow, task, attempt, and worktree reservation resources |
+| `schemas/cli/v1/workflow_definition.json` | Central workflow draft and publication document |
 | `schemas/cli/v1/artifacts.json` | Immutable artifact inputs and registered artifacts |
-| `schemas/cli/v1/workflow.json` | Workflow-step context and result manifests |
+| `schemas/cli/v1/workflow.json` | Workflow-step context, typed effect round trips, and result manifests |
 | `schemas/cli/v1/commands.json` | Command requests, results, and command-specific payloads |
 | `schemas/cli/v1/catalog.json` | Exact CLI/API bindings, preconditions, statuses, and error transport mappings |
 
@@ -33,30 +34,44 @@ The stable repository-scoped machine invocation is:
 kos <resource> <operation> --repository <repository-id> --json [command options]
 ```
 
-The sole unscoped command is `kos repository register --input <path|-> --idempotency-key <key> --json`. It creates repository scope and therefore neither accepts `--repository` nor carries `repository_id` in its request. It remains authenticated and uses the same JSON-only mutation transport.
+Shared workflow-catalog and runtime-configuration commands are authenticated global commands and omit `--repository`. Repository registration is a separate global-creation scope because it establishes a repository identity. Representative forms are:
+
+```text
+kos workflow list --limit N --json
+kos workflow-draft import --input <path|-> --idempotency-key <key> --json
+kos repository register --input <path|-> --idempotency-key <key> --json
+```
 
 Read options form the logical command `body` defined in `commands.json`. A mutation takes `--input <path|->`, where the file or stdin contains only its command-specific `body`, and requires `--idempotency-key <key>`. The CLI validates input, then forms the complete versioned command request before sending it. A key is 8 to 255 ASCII letters, digits, `.`, `_`, `:`, or `-`. Secrets are never accepted in an input document.
 
 The API base URL comes from `KOS_API_URL` and defaults to `http://127.0.0.1:3000`. The bearer token comes only from `KOS_API_TOKEN`. Every API request except `GET /up` sends `Authorization: Bearer <token>` and `Accept: application/json`; requests with a JSON body also send `Content-Type: application/json`. Mutation requests send the CLI key as `Idempotency-Key`. The key is not duplicated in the JSON payload.
 
-Every scoped endpoint begins `/api/v1/repositories/{repository_id}`. The CLI includes the same immutable `repository_id` in its logical command request; for a mutation, the API body carries that full request and the API rejects a path/body mismatch as `malformed_input`. A filesystem path is never accepted as repository identity. The authenticated registration endpoint is the explicit exception at `POST /api/v1/repositories`; the server verifies its canonical Git common directory and trust settings rather than treating the submitted path as identity proof.
+Every repository-scoped endpoint begins `/api/v1/repositories/{repository_id}`. The CLI includes the same immutable `repository_id` in its logical command request; for a mutation, the API body carries that full request and the API rejects a path/body mismatch as `malformed_input`. A filesystem path is never accepted as repository identity. Authenticated global catalog endpoints begin directly under `/api/v1`; their requests must omit `repository_id`. Registration remains `POST /api/v1/repositories`, and the server verifies its canonical Git common directory and trust settings rather than treating the submitted path as identity proof.
 
 Read commands map their logical body fields to the listed path and query parameters and do not send a GET body. List cursors are opaque, scoped to the repository and command filters, and limited to 255 characters. `limit` is required and ranges from 1 through 100. A response omits `next_cursor` when no next page exists.
 
-`step.context` is an idempotent mutation that requires lock, attempt, and fencing preconditions. The server validates repository scope, current task status, active lease ownership, and fencing token before atomically storing and returning executable project instructions.
+`step.context` is an idempotent mutation that requires lock, attempt, and fencing preconditions. The server validates repository scope, current task status, active lease ownership, and fencing token before atomically storing and returning executable instructions from the task's immutable workflow version.
 
 The default request timeout is 30 seconds and may be changed with `KOS_API_TIMEOUT_SECONDS` to a positive integer. The CLI makes at most three total attempts for a read or an idempotent mutation, reusing the same idempotency key. It retries only a `transient` failure or a connection failure that it represents as `transport_unavailable`. Before attempts two and three it uses full jitter in `[0, 250ms]` and `[0, 500ms]`; a larger server `retry_after_seconds` replaces that range, subject to the request timeout. It never retries `internal` or any non-transient category automatically.
 
 ## Command Catalog
 
-All commands except `repository.register` require `--repository <repository-id> --json`. Read arguments shown below are additional CLI options. Every mutation requires `--input <path|-> --idempotency-key <key>` and obtains path identifiers from the validated input body. Every successful command exits `0`; the command catalog records this common success status as `x-success-cli-exit`.
+Repository task and execution commands require `--repository <repository-id> --json`. Shared catalog, runtime configuration, and repository-registration commands omit it. Read arguments shown below are additional CLI options. Every mutation requires `--input <path|-> --idempotency-key <key>` and obtains path identifiers from the validated input body. Every successful command exits `0`; the command catalog records this common success status as `x-success-cli-exit`.
 
 | Identifier | CLI syntax | HTTP binding | Success |
 | --- | --- | --- | --- |
 | `repository.register` | `kos repository register` | `POST /api/v1/repositories` | `200` repository |
-| `task_type.list` | `kos task-type list --limit N [--cursor C]` | `GET /task-types?limit=N&cursor=C` | `200` task-type page |
-| `workflow.list` | `kos workflow list --limit N [--cursor C]` | `GET /workflows?limit=N&cursor=C` | `200` workflow page |
-| `workflow.get` | `kos workflow get --workflow ID --version VERSION` | `GET /workflows/{workflow_id}/versions/{version}` | `200` workflow |
+| `runtime_config.get` | `kos runtime-config get` | `GET /api/v1/runtime-config` | `200` runtime config |
+| `runtime_config.update` | `kos runtime-config update` | `POST /api/v1/runtime-config` | `200` runtime config |
+| `task_type.list` | `kos task-type list --limit N [--cursor C]` | `GET /api/v1/task-types?limit=N&cursor=C` | `200` task-type page |
+| `workflow.list` | `kos workflow list --limit N [--cursor C]` | `GET /api/v1/workflow-versions?limit=N&cursor=C` | `200` workflow-version page |
+| `workflow.get` | `kos workflow get --workflow-version UUID` | `GET /api/v1/workflow-versions/{workflow_version_id}` | `200` workflow version |
+| `workflow.export` | `kos workflow export --workflow-version UUID` | `GET /api/v1/workflow-versions/{workflow_version_id}/export` | `200` workflow definition |
+| `workflow_draft.get` | `kos workflow-draft get --workflow ID` | `GET /api/v1/workflow-drafts/{workflow_id}` | `200` workflow draft |
+| `workflow_draft.import` | `kos workflow-draft import` | `POST /api/v1/workflow-drafts/{workflow_id}` | `200` workflow draft |
+| `workflow_draft.validate` | `kos workflow-draft validate --workflow ID` | `GET /api/v1/workflow-drafts/{workflow_id}/validation` | `200` validation result |
+| `workflow.publish` | `kos workflow publish` | `POST /api/v1/workflow-drafts/{workflow_id}/publication` | `201` workflow version |
+| `workflow.activate` | `kos workflow activate` | `POST /api/v1/task-types/{task_type}/current-workflow` | `200` task type |
 | `task.get` | `kos task get --task <task-number>` | `GET /tasks/{task_number}` | `200` task |
 | `attempt.get` | `kos attempt get --attempt UUID` | `GET /attempts/{attempt_id}` | `200` attempt |
 | `step.context` | `kos step context` | `POST /attempts/{attempt_id}/step-context` | `200` workflow context |
@@ -73,6 +88,9 @@ All commands except `repository.register` require `--repository <repository-id> 
 | `worktree.confirm` | `kos worktree confirm` | `POST /worktree-reservations/{reservation_id}/confirm` | `200` reservation |
 | `worktree.reconcile` | `kos worktree reconcile` | `POST /worktree-reservations/{reservation_id}/reconcile` | `200` reservation |
 | `worktree.release` | `kos worktree release` | `POST /worktree-reservations/{reservation_id}/release` | `200` reservation |
+| `effect.get` | `kos effect get --effect UUID` | `GET /repository-effects/{effect_id}` | `200` repository effect |
+| `effect.prepare` | `kos effect prepare` | `POST /tasks/{task_number}/repository-effects` | `201` prepared repository effect |
+| `effect.reconcile` | `kos effect reconcile` | `POST /repository-effects/{effect_id}/reconcile` | `200` reconciled repository effect |
 | `artifact.register` | `kos artifact register` | `POST /tasks/{task_number}/artifacts` | `201` artifact |
 | `step.complete` | `kos step complete` | `POST /tasks/{task_number}/steps/complete` | `200` task and artifacts |
 | `publication.prepare` | `kos publication prepare` | `POST /tasks/{task_number}/publications` | `201` prepared publication |
@@ -83,23 +101,25 @@ The path values are taken from their same-named body fields or leased preconditi
 
 ## Mutation Preconditions
 
-`I` means an `Idempotency-Key` header is required. `L` means `expected_lock_version` is required. `A` means an `attempt_id` is required, and `F` means it must be accompanied by that active attempt's current `fencing_token`. The JSON location is `body.preconditions` except for the explicitly unleased reconciliation payload.
+`I` means an `Idempotency-Key` header is required. `L` means `expected_lock_version` is required. `A` means an `attempt_id` is required, and `F` means it must be accompanied by that active attempt's current `fencing_token`. The JSON location is `body.preconditions` for task execution, while global catalog mutations carry their resource lock directly in `body`.
 
 | Commands | I | L | A | F |
 | --- | --- | --- | --- | --- |
 | `repository.register` | yes | no | no | no |
+| `runtime_config.update`, `workflow_draft.import`, `workflow.publish`, `workflow.activate` | yes | yes | no | no |
 | `task.create` | yes | no | no | no |
 | `attempt.claim` | yes | yes | no | no |
 | `step.context` | yes | yes | yes | yes |
 | `attempt.reconcile` | yes | yes | yes | no |
 | `attempt.renew`, `attempt.fail`, `attempt.needs_human` | yes | yes | yes | yes |
 | `worktree.reserve`, `worktree.confirm`, `worktree.reconcile`, `worktree.release` | yes | yes | yes | yes |
+| `effect.prepare`, `effect.reconcile` | yes | yes | yes | yes |
 | `artifact.register`, `step.complete` | yes | yes | yes | yes |
 | `publication.prepare`, `publication.reconcile`, `publication.complete` | yes | yes | yes | yes |
 
 Claim checks the task's expected lock version before creating an attempt and fencing token. Attempt reconciliation is available only after ownership has expired or the attempt is already interrupted; it identifies that attempt but has no live fencing token and cannot itself assert that an external effect succeeded. All mutations owned by a live attempt reject a missing, expired, or stale lease before changing state.
 
-The server scopes an idempotency record by repository and command identifier. `repository.register` instead uses a global scope because no repository exists yet. Its request fingerprint is SHA-256 over the UTF-8 sequence `command`, newline, scope, newline, and the command body serialized with RFC 8785 JSON Canonicalization Scheme, where scope is the repository UUID for scoped commands and the literal `global` for registration. Authorization data, request IDs, and the idempotency key are not fingerprint inputs. Version 1 retains scoped records for the lifetime of the repository registration and retains registration records for the lifetime of the central state.
+The server scopes an idempotency record by command and either repository UUID or the literal `global`. Catalog, runtime-configuration, and repository-registration mutations use the global scope; repository task and execution mutations use their repository UUID. The request fingerprint is SHA-256 over the UTF-8 sequence `command`, newline, scope, newline, and the command body serialized with RFC 8785 JSON Canonicalization Scheme. Authorization data, request IDs, and the idempotency key are not fingerprint inputs. Version 1 retains these records for the lifetime of the central state or owning repository registration.
 
 A repeat with the same key and fingerprint returns the same semantic data and original HTTP status without repeating work; it may have a new `request_id`. After authentication, repository authorization, command recognition, and request-shape validation, lookup of a completed idempotency record precedes mutable resource preconditions such as lock version, lease, and fencing checks. A completed replay therefore remains available after its original lease expires. Reuse with another fingerprint returns `idempotency_conflict`. An unfinished durable intent returns `idempotency_in_progress`; the caller reads or reconciles the named resource instead of blindly resubmitting the effect.
 
@@ -109,23 +129,31 @@ A repeat with the same key and fingerprint returns the same semantic data and or
 
 Public task numbers combine the owning repository's prefix with a six-digit repository-local sequence, such as `KOS-000123`. A command scoped to a repository rejects a well-formed task number whose prefix differs from that repository's persisted prefix as `task_not_found`; it does not reveal task existence in another repository. Branch values derived from a task number use the exact form `kos/task-<task-number>`. JSON Schema validates each value's shape and marks derivation, commit-context, and candidate-trailer constraints with `x-*` annotations; the API and orchestrator validate equality against the owning task, repository, and frozen context because JSON Schema cannot compare those persisted or transformed values.
 
-Task creation accepts only the title and `quick-fix` task type. The server resolves the current workflow from the repository's authoritative configuration, creates its content-addressed snapshot, and returns the pinned workflow identity, version, and bundle digest on the task. A client cannot select or assert those values.
+Workflow draft import accepts a top-level workflow identity, the matching complete closed workflow definition, and expected draft lock version. A path, top-level identity, and embedded definition identity mismatch is `malformed_input`. Validation reports whole-graph errors without publishing. Publication validates the same complete draft and atomically creates an immutable workflow version; reusing a workflow semantic version with different content is `workflow_version_conflict`. Activation requires the task type lock version and a published version belonging to that type. Export returns the complete canonical definition used to compute the version's content digest.
 
-After claim and confirmation of any required worktree, `step.context` constructs the complete executable context from the task, active attempt, current status, and pinned snapshot. In one transaction it stores the immutable context and its digest on the attempt and returns the exact UTF-8 Markdown instruction, all directly referenced UTF-8 materials, their repository-relative `.kos/...` paths, media types, and content digests together with the server-derived capability allowlist and artifact requirements. Each required artifact contains its type, cardinality (`one` or `many`), subject (`task` or `candidate`), and nonempty allowed-state set; requirements are unique by type and use the same type/state/subject compatibility rules as project schema version 1. It never returns a snapshot root, storage path, or caller-selected bundle member. Members are sorted by path and paths are unique. Limits are measured over UTF-8 bytes, not Unicode characters: an instruction is at most 128 KiB, each material is at most 1 MiB, and all instruction and material content together is at most 4 MiB. The workflow schema exposes these application-level constraints as `x-*` contract annotations because JSON Schema `maxLength` counts characters rather than bytes and cannot express ordering or uniqueness by one object property.
+Task creation accepts only the title and `quick-fix` task type. In its transaction, the server resolves the task type's current published version and stores its immutable `workflow_version_id` and initial state on the task. A client cannot select or assert a workflow version. Later activation changes do not affect that task.
 
-An instruction or material digest is SHA-256 over the exact stored file bytes, without newline, Unicode, or whitespace normalization, represented as `sha256:<lowercase-hex>`. Every returned member must be valid UTF-8, and its JSON `content` re-encoded as UTF-8 must reproduce those bytes. `input_context_digest` is SHA-256 over the RFC 8785 canonical JSON serialization of the complete `workflow.json#/$defs/context` object with only `input_context_digest` omitted. This binds instruction content, materials, capabilities, artifact requirements, worktree, and all other context fields to the result manifest without a circular digest input.
+After claim and confirmation of any required worktree, `step.context` constructs the complete executable context from the task, active attempt, current status, and pinned workflow version. A publication attempt first prepares or adopts its durable publication resource. In one transaction `step.context` stores the immutable context and its digest on the attempt and returns the exact UTF-8 Markdown instruction, optional inline artifact templates, artifact requirements, allowed typed repository effects, installation retrospective setting, and prepared publication parameters when applicable. Each required artifact contains its type, cardinality (`one` or `many`), subject (`task` or `candidate`), and nonempty allowed-state set. Requirements are unique by type. An instruction is at most 128 KiB, each template is at most 1 MiB, and one state's instruction and templates total at most 4 MiB, measured over UTF-8 bytes.
+
+`input_context_digest` is SHA-256 over the RFC 8785 canonical JSON serialization of the complete `workflow.json#/$defs/context` object with only `input_context_digest` omitted. This binds instruction and template content, allowed effects, retrospective setting, artifact requirements, worktree, and all other context fields to the result manifest without separate member digests or a circular digest input.
 
 A newly claimed attempt omits `input_context_digest` until `step.context` freezes its input. Repeating `step.context` with the same idempotency key returns the original response; a later call for the same active attempt returns the same frozen context rather than rebuilding it from changed repository or task state. `attempt.fail`, `attempt.needs_human`, `step.complete`, and `publication.complete` compare the manifest digest with the stored digest. A status requiring a worktree cannot freeze executable context until its reservation is confirmed.
 
-`step.context` returns `context_unavailable` when the attempt is not active for the task's current status or a required worktree is not confirmed. Normal lease and fencing failures retain `lease_expired` and `fencing_token_stale`. Missing resources retain their resource-specific `not_found` codes. A missing member, digest mismatch, invalid UTF-8 member, path escape, duplicate material path, unsorted material list, or content-size violation in the pinned snapshot returns `bundle_inconsistent`; KOS does not return partially verified instructions.
+`step.context` returns `context_unavailable` when the attempt is not active for the task's current status, the task's state does not belong to its pinned version, or a required worktree is not confirmed. Normal lease and fencing failures retain `lease_expired` and `fencing_token_stale`. Missing resources retain their resource-specific `not_found` codes. Invalid stored content is an internal invariant failure; KOS never returns a partial executable context.
 
 `attempt.fail` accepts only a `failed` result manifest. `attempt.needs_human` accepts only a `needs_human` manifest and releases the lease. Neither command advances workflow status. No result can be submitted before context is frozen. `step.complete` accepts a `succeeded` manifest and atomically verifies the stored context digest, lease, lock version, transition, dependencies, artifact contracts, candidate generation, and distinct review attempt before registering the supplied artifacts, marking the attempt succeeded, and advancing workflow status.
 
 Artifact type and state pairs are closed in version 1: `document` and `candidate` use `produced`; `test` uses `passed` or `failed`; `review` uses `approved` or `changes_requested`; and `publication` uses `published`. Candidate-specific evidence must name the exact candidate SHA. A standalone `artifact.register` records only a workflow-declared durable non-transition artifact; it never satisfies a transition retroactively. Artifacts required by a successful transition must be supplied to `step.complete` or `publication.complete`.
 
-The versioned workflow context and result manifest are the complete data exchange with a subagent. A result may request only the closed set of typed `kos-repository` effects in `workflow.json`: worktree creation or removal, commit, fetch, rebase, or push. Each request carries operation-specific reservation, expected Git state, or prepared-publication preconditions. A commit request identifies repository-relative paths, message, task number, expected HEAD, and SHA-256 digests of the expected worktree diff and staged index; `kos-repository` verifies those values and appends `KOS-Task: <task-number>` before committing. `expected_diff_digest` hashes the exact bytes from `git diff --binary --full-index --no-ext-diff <expected-head> -- <byte-sorted-paths>`. `expected_index_digest` hashes the NUL-delimited, byte-sorted `<mode> <blob-oid>\t<path>` entries expected from `git ls-files --stage -z -- <paths>` after staging those paths. Git runs without external diff or color configuration. A subagent cannot add capabilities, execute an effect, mutate KOS state, or claim a different attempt. The orchestrator verifies the returned attempt ID, input-context digest, allowed operation, lease, and fencing token before invoking `kos-repository`; it may then add the adapter's validated artifact evidence to the manifest it submits, but cannot change the subagent's outcome or substantive result.
+The versioned workflow context, typed effect request/results, and final result manifest are the complete primary workflow data exchange with a subagent. Before returning its final manifest, the executor may send a typed effect request bound to the attempt and input-context digest. `effect_request_digest` is SHA-256 over the RFC 8785 canonical JSON serialization of the complete `workflow.json#/$defs/effect_request` object. Every typed result carries that digest, the request attempt, current owning attempt, durable intent identifier, and explicit `succeeded`, `failed`, or `unknown` outcome. A success contains operation-specific observed evidence; failure and unknown outcomes contain a closed safe error with category, code, message, and retryability. The result operation must equal the requested operation. For generic commit/fetch/rebase effects the intent identifier names the repository-effect resource; worktree removal and push use the reservation and publication identifiers respectively.
+
+The orchestrator verifies the active lease, fencing token, operation membership in the frozen allowlist, and operation-specific preconditions. A commit or rebase request's reservation and expected HEAD must equal the frozen worktree context; a commit's task number must equal the owning task. For commit, fetch, or rebase it calls `effect.prepare` before invoking `kos-repository` and `effect.reconcile` with every success, failure, or unknown response. Worktree removal uses `worktree.release`; push uses the publication resource prepared before context finalization. The orchestrator returns the resulting typed observation to that same executor session. A commit success includes the created commit SHA; publication effects return observed remote evidence. The executor then constructs final artifact metadata against those actual values. The final manifest contains artifacts and outcome, not pending effect requests.
+
+A commit request identifies repository-relative paths, message, task number, expected HEAD, and SHA-256 digests of the expected worktree diff and staged index; `kos-repository` verifies those values and appends `KOS-Task: <task-number>` before committing. `expected_diff_digest` hashes the exact bytes from `git diff --binary --full-index --no-ext-diff <expected-head> -- <byte-sorted-paths>`. `expected_index_digest` hashes the NUL-delimited, byte-sorted `<mode> <blob-oid>\t<path>` entries expected from `git ls-files --stage -z -- <paths>` after staging those paths. Git runs without external diff or color configuration. A subagent cannot add an allowed effect, invoke `kos-repository` directly, mutate KOS state, or claim a different attempt. The final manifest remains the executor's substantive result; the orchestrator cannot rewrite its outcome or evidence.
 
 ## External-Effect Recovery
+
+`effect.prepare` stores the exact request and canonical digest before commit, fetch, or rebase. Only then may the orchestrator invoke `kos-repository`. `effect.reconcile` records a typed success or failure; an unavailable or lost adapter response records an `unknown` state and requires observation of the expected HEAD, refs, index, and worktree before retry or terminal reconciliation. The resource retains its preparing attempt and current owning attempt. After lease expiry, attempt reconciliation reports `repository_effect_pending`; a new claim adopts unresolved generic effects without changing their requests, reads them with `effect.get`, and reconciles observed state. It never blindly resubmits an unknown effect.
 
 Worktree allocation follows reserve, external materialization by `kos-repository`, and confirm. Reconciliation accepts only the schema's observed states and evidence digest. A dirty or mismatched worktree cannot be adopted or automatically removed. For the MVP, terminal cleanup runs as a separate idempotent `worktree.release` operation while the publication attempt still owns its lease and before `publication.complete`; completion requires any allocated reservation to be `released`. If cleanup is interrupted, the attempt and reservation are reconciled before completion. A dirty or unknown worktree blocks automatic completion and requires human resolution rather than deletion.
 
@@ -161,12 +189,12 @@ The stable leaf-code mapping is:
 
 | Category | Codes |
 | --- | --- |
-| `validation` | `malformed_input` (`400`), `unsupported_schema_version` (`400`), `unknown_command` (`400`), `invalid_artifact` (`422`), `repository_registration_invalid` (`422`) |
+| `validation` | `malformed_input` (`400`), `unsupported_schema_version` (`400`), `unknown_command` (`400`), `invalid_artifact` (`422`), `repository_registration_invalid` (`422`), `workflow_definition_invalid` (`422`) |
 | `authentication` | `authentication_required`, `invalid_token` |
 | `authorization` | `forbidden`, `repository_access_denied` |
-| `conflict` | `stale_lock_version`, `invalid_transition`, `idempotency_conflict`, `idempotency_in_progress`, `dependency_unsatisfied`, `base_moved`, `context_unavailable`, `bundle_inconsistent`, `repository_registration_conflict` |
+| `conflict` | `stale_lock_version`, `invalid_transition`, `idempotency_conflict`, `idempotency_in_progress`, `dependency_unsatisfied`, `base_moved`, `context_unavailable`, `workflow_version_conflict`, `repository_registration_conflict` |
 | `lease_lost` | `lease_expired`, `fencing_token_stale` |
-| `not_found` | `task_not_found`, `workflow_not_found`, `attempt_not_found`, `reservation_not_found`, `artifact_not_found`, `publication_not_found` |
+| `not_found` | `task_not_found`, `workflow_not_found`, `workflow_draft_not_found`, `workflow_version_not_found`, `attempt_not_found`, `reservation_not_found`, `effect_not_found`, `artifact_not_found`, `publication_not_found` |
 | `transient` | `transport_unavailable` (`503`), `request_timeout` (`504`) |
 | `internal` | `internal_error` |
 

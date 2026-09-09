@@ -2,9 +2,12 @@
 title: Central Persistence And Repository Registration
 status: accepted
 date: 2026-09-09
+amended_by: 0007-central-workflow-catalog
 ---
 
 # ADR-0005: Central Persistence And Repository Registration
+
+The workflow snapshot-store portion of this decision is superseded by [ADR-0007](0007-central-workflow-catalog.md). The state-root, migration, backup, and repository-registration decisions remain accepted.
 
 ## Context
 

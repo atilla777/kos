@@ -1,3 +1,0 @@
-schema_version: "1"
-id: &workflow_id quick-fix
-workflow_id: *workflow_id

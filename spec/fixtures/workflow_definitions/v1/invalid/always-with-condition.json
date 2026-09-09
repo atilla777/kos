@@ -1,0 +1,4 @@
+{
+  "mutation": "always_with_condition",
+  "expected_error": "always_not_sole"
+}

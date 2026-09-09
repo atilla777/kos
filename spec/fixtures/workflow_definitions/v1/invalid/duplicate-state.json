@@ -1,0 +1,4 @@
+{
+  "mutation": "duplicate_state",
+  "expected_error": "duplicate_status"
+}

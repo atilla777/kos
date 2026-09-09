@@ -7,9 +7,9 @@ status: active
 
 ## Artifact Model
 
-A `TaskArtifact` is an immutable, registered workflow result, such as a document, ADR, candidate commit, test result, review result, or publication. It records an identifier, type, attempt ID, producer, subject SHA or content digest, repository-relative path or external reference, state, evidence digest, and type-specific metadata such as a test command or review verdict.
+A `TaskArtifact` is an immutable, registered workflow result, such as a document, ADR, candidate commit, test result, review result, or publication. It records an identifier, type, attempt ID, producer, state, and the type-specific repository path, commit, subject, content digest, external reference, or evidence metadata required to validate that artifact. A generic evidence digest is not required when the typed fields already identify the evidence completely.
 
-Correcting evidence creates a new artifact; an approved artifact is not edited. A permanent task artifact is created only when its workflow requires one. Task documents, when required, live under `tasks/<task-number>/`; Git evidence may refer directly to a commit without a Markdown file.
+Correcting evidence creates a new artifact; an approved artifact is not edited. A permanent task artifact is created only when its workflow requires one. Artifact payloads are not workflow-catalog content: task documents, when required, live under `tasks/<task-number>/`, and Git evidence may refer directly to a commit without a Markdown file. KOS stores their immutable registration metadata so transition validation remains transactional.
 
 ## Transition Validation
 
@@ -24,7 +24,7 @@ The CLI validates the universal structural contract:
 
 For document evidence it validates repository-relative path, commit SHA, and blob or content digest. For a candidate it validates commit existence, repository identity, and the task trailer. For a test result it validates candidate SHA, command, exit code, and log digest. For review it validates candidate SHA, verdict, and a distinct review attempt. For publication it validates trusted remote and ref evidence obtained by fetch. The CLI does not assess whether requirements, implementation, or review are substantively good.
 
-The producing capability skill verifies its work and returns a result manifest. For example, `kos-development` chooses and runs project-required tests, while `kos-review` applies review criteria. The lease-owning orchestrator submits that manifest to one CLI command, which validates the lease, expected lock version, dependencies, artifact contract, and transition, then registers artifacts and changes workflow status in one SQLite transaction.
+The generic `kos-workflow-step` executor follows the pinned state instruction, verifies its work, and returns a result manifest. The lease-owning orchestrator submits that manifest to one CLI command, which validates the lease, expected lock version, dependencies, artifact contract, and transition, then registers artifacts and changes workflow status in one SQLite transaction.
 
 A review attempt cannot be the development attempt. Evidence produced by the same attempt is a `self-check`, not an approved independent review.
 

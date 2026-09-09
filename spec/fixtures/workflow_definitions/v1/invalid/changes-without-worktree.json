@@ -1,0 +1,4 @@
+{
+  "mutation": "changes_without_worktree",
+  "expected_error": "worktree_required"
+}

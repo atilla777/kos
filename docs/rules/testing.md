@@ -8,13 +8,14 @@ status: active
 ## Required Coverage
 
 - Add or update an automated test for every behavior change and bug fix.
-- Unit-test domain rules, workflow transitions, artifact contracts, bundle pinning, and locking decisions when they are added or changed.
+- Unit-test domain rules, workflow transitions, artifact contracts, workflow-version pinning, and locking decisions when they are added or changed.
 - Integration-test CLI commands, persistence, migrations, idempotency, and error contracts when they are added or changed.
 - End-to-end test task execution across task creation, worktree allocation, candidate creation, review, and publication when a change crosses those boundaries.
-- Add contract tests when changing workflow YAML, instructions, templates, skills, CLI JSON schemas, or runtime adapters.
+- Add contract tests when changing workflow publication documents, instructions, templates, skills, CLI JSON schemas, or runtime adapters.
 - Cover versioned JSON schemas, stable error codes, and atomic `complete-step` behavior when implementing or changing the CLI protocol.
 - Validate public task numbers, required Git trailers, and the syntax and uniqueness of task-local traceability IDs when changing those contracts.
 - Maintain an installation compatibility test for at least one pinned version of every supported runtime target.
+- Test published workflow immutability, atomic publication, activation affecting only new tasks, and retrospective primary-result preservation when those boundaries are implemented or changed.
 
 ## Reliability Cases
 

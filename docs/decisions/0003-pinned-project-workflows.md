@@ -1,10 +1,13 @@
 ---
 title: Pinned Project Workflows
-status: accepted
+status: superseded
 date: 2026-09-08
+superseded_by: 0007-central-workflow-catalog
 ---
 
 # ADR-0003: Pinned Project Workflows
+
+This decision is superseded by [ADR-0007](0007-central-workflow-catalog.md). It is retained as historical context for the completed bootstrap tasks that established the former project-owned snapshot contract.
 
 ## Context
 

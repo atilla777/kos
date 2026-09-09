@@ -1,0 +1,4 @@
+{
+  "mutation": "unreachable_status",
+  "expected_error": "unreachable_status"
+}

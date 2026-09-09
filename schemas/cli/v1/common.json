@@ -4,6 +4,7 @@
   "$defs": {
     "schema_version": { "const": "1" },
     "identifier": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,127}$" },
+    "semantic_version": { "type": "string", "pattern": "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)(?:-(?:(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$" },
     "uuid": { "type": "string", "format": "uuid" },
     "task_prefix": { "type": "string", "pattern": "^[A-Z][A-Z0-9]{1,9}(?![\\s\\S])" },
     "task_number": { "type": "string", "pattern": "^[A-Z][A-Z0-9]{1,9}-[0-9]{6}(?![\\s\\S])" },

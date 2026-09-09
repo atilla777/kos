@@ -11,10 +11,10 @@ KOS is a local workflow system for software development with AI agents. It gives
 
 KOS consists of:
 
-- a Ruby on Rails application with SQLite state for tasks, workflow attempts, workflow statuses, and artifacts;
+- a Ruby on Rails application with SQLite state for shared workflow definitions, tasks, workflow attempts, workflow statuses, and artifact metadata;
 - a Ruby CLI as the only agent-facing programmatic interface to KOS state;
 - a canonical set of Agent Skills shipped with KOS; and
-- version-controlled workflow configuration and templates in each target project.
+- centrally managed, versioned workflow instructions and artifact templates shared by target projects.
 
 The agent is the primary system operator. A human defines goals, makes decisions that require judgment, and controls the result.
 
@@ -24,6 +24,7 @@ KOS must:
 
 - manage task types, tasks, task hierarchy, and dependencies;
 - associate each task type with one workflow schema;
+- author, validate, publish, activate, and export shared workflow versions through KOS;
 - coordinate multiple agents without conflicting execution;
 - recover from interrupted agents, lost CLI responses, and ambiguous Git outcomes without duplicate publication;
 - isolate repository-changing workflows in dedicated Git worktrees;
@@ -40,13 +41,13 @@ The detailed contracts are defined by the other [domain specifications](index.md
 
 The first version includes tasks, workflow statuses, artifact validation, worktree isolation, skills, documentation, and direct publication of verified changes to the configured base branch.
 
-The first operational MVP is deliberately narrower: one repository, the `quick-fix` task type, one supported runtime target, and the workflow `implementation-planning -> development -> review -> publication -> completed`. Lease and fencing, idempotency, pinned snapshot bundles, worktree reservation, and recoverable publication are required in this vertical slice before adding broader task types or runtime support.
+The first operational MVP is deliberately narrower: one repository, the shared `quick-fix` task type, one supported runtime target, and the workflow `implementation-planning -> development -> review -> publication -> completed`. Lease and fencing, idempotency, immutable workflow-version pinning, worktree reservation, recoverable publication, and opt-in retrospective post-processing are required before adding broader task types or runtime support.
 
 The operational MVP is ready when an agent using KOS skills can:
 
 1. Initialize one Git repository, pin its trusted remote and base ref, and install skills for one supported runtime target.
-2. Read task types and workflow versions from `.kos/`.
-3. Create a publicly numbered task with a pinned workflow version and digest.
+2. Read shared task types and published workflow versions from KOS.
+3. Create a publicly numbered task pinned to an immutable workflow version.
 4. Allocate its dedicated worktree through `kos-repository`.
 5. Execute the complete `quick-fix` workflow through the orchestrator and shared subagent executor.
 6. Record and validate a candidate SHA, test result, and independent review result as one artifact generation.
@@ -56,11 +57,12 @@ The operational MVP is ready when an agent using KOS skills can:
 10. Prevent concurrent execution of one workflow step and reject completion with a stale fencing token.
 11. Recover from a crash or lost response during any worktree-reservation or publication phase without duplicate publication or loss of observed remote state.
 12. Return the same result when any mutation is repeated with the same idempotency key.
-13. Continue a task in a new session using only its pinned bundle, durable context, and registered artifacts.
+13. Continue a task in a new session using only its pinned workflow version, durable context, and registered artifacts.
+14. When enabled for the installation, run a private best-effort retrospective after each graceful KOS agent session and report sanitized improvement proposals without changing the source task.
 
 ## Deferred Capabilities
 
-The following capabilities are not commitments for the quick-fix MVP. `feature`, `initiative`, hierarchy, a second runtime target, and retrospective support are subsequent increments and must preserve all MVP guarantees when added.
+The following capabilities are not commitments for the quick-fix MVP. `feature`, `initiative`, hierarchy, and a second runtime target are subsequent increments and must preserve all MVP guarantees when added.
 
 The following remain outside the first version until a demonstrated need and separate decision exist:
 
@@ -68,7 +70,7 @@ The following remain outside the first version until a demonstrated need and sep
 - users, roles, audit, a knowledge base, taxonomy, or full-text search;
 - replaceable storage backends;
 - arbitrary Ruby code in workflow schemas;
-- a universal workflow set, artifact registry, overlays, or Owl-level update mechanism;
+- repository-specific workflow overrides, a universal artifact registry, overlays, or an Owl-level update mechanism;
 - a separate runtime skill for every possible workflow step;
 - force-push or automatic rewriting of base-branch history.
 

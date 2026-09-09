@@ -14,41 +14,27 @@ The production root has this logical layout:
 ```text
 <state-root>/
   kos.sqlite3
-  workflow-snapshots/
-    sha256/<first-two-hex>/<remaining-hex>/
-      manifest.json
-      members/.kos/...
-    .staging/<uuid>/
   backups/
   locks/service.lock
 ```
 
-`KOS_DATABASE_PATH` overrides the database path and `KOS_SNAPSHOT_ROOT` overrides `workflow-snapshots`; each override must be absolute. Snapshot staging must remain on the snapshot root's filesystem so final placement can use atomic rename. KOS creates private state directories with mode `0700` and files with mode `0600`, subject to a more restrictive process umask, and refuses state paths that resolve through symlinks or to non-private existing objects.
+`KOS_DATABASE_PATH` overrides the database path and must be absolute. KOS creates private state directories with mode `0700` and files with mode `0600`, subject to a more restrictive process umask, and refuses state paths that resolve through symlinks or to non-private existing objects.
 
 The state root contains no bearer token, Git credential, repository checkout, task worktree, or runtime installation. Secrets remain process environment inputs. Repository checkouts and task worktrees remain at separately validated paths.
 
-## Workflow Snapshot Store
+## Workflow Content
 
-The Rails workflow snapshot adapter is the sole owner of snapshot paths. A bundle directory is addressed by the 64 lowercase hexadecimal characters from its canonical `sha256:` bundle digest. It contains the RFC 8785 canonical manifest as `manifest.json` and each exact member byte sequence under `members/<repository-relative-member-path>`. Paths and bytes must satisfy the [Project Configuration](project-configuration.md) contract.
+SQLite stores shared task types, workflow drafts, published workflow versions, instructions, templates, transitions, artifact contracts, installation-wide runtime settings, and durable repository-effect intents with the task and attempt state that consumes them. There is no separate workflow snapshot path or filesystem adapter.
 
-Snapshot materialization is idempotent:
+Publishing a workflow validates and inserts its complete immutable version in one database transaction. Database constraints and triggers prevent update or deletion of a published version and its children. Activating that version changes only the task type's current-version reference. Task creation reads that reference and creates the task with its immutable `workflow_version_id` and initial state in one short transaction.
 
-1. Read and validate the authoritative project configuration through the repository read adapter.
-2. Write the complete candidate snapshot to a unique staging directory on the snapshot filesystem.
-3. Re-read and verify every staged member, manifest, member digest, and aggregate bundle digest; durably flush files and directories.
-4. Atomically rename the staged directory to its digest-addressed final path and durably flush the parent directory.
-5. If the final path already exists, verify it byte-for-byte against the digest and use it instead of replacing it.
-6. Only after a complete final snapshot exists, create the task and its snapshot reference in one short database transaction.
-
-A failed or interrupted materialization never creates a database reference to an incomplete bundle. Stale staging directories and complete but unreferenced bundles may be reconciled later, but KOS does not remove a referenced bundle or infer safety from age alone. A mismatch at an existing digest path is `bundle_inconsistent`, not an overwrite opportunity.
-
-The API, CLI, orchestrators, and runtime skills never receive the state root or snapshot paths. They receive only schema-defined verified content, identifiers, and digests.
+Workflow drafts are mutable and use optimistic locking. A draft is never executable and a task never references it. The canonical published content, including Markdown instructions and templates, is included in normal SQLite-consistent backup and recovery.
 
 ## Database Ownership
 
-Only Rails persistence code opens SQLite. Active Record models and focused persistence repositories own rows, associations, constraints, and query behavior. Domain and application objects receive explicit values and persistence interfaces; they do not issue SQL, depend on Active Record callbacks for workflow policy, or know database and snapshot paths. Controllers and serializers translate the versioned API contract and do not coordinate persistence policy.
+Only Rails persistence code opens SQLite. Active Record models and focused persistence repositories own rows, associations, constraints, and query behavior. Domain and application objects receive explicit values and persistence interfaces; they do not issue SQL, depend on Active Record callbacks for workflow policy, or know database paths. Controllers and serializers translate the versioned API contract and do not coordinate persistence policy.
 
-An application operation coordinates database state with a repository or snapshot adapter when required. The snapshot adapter is a narrow filesystem boundary, not a replaceable general storage backend. Git discovery and reads remain behind the repository adapter; mutating Git remains exclusively owned by `kos-repository` as defined by [Repository Isolation](repository-isolation.md).
+Git discovery and reads remain behind the repository adapter; mutating Git remains exclusively owned by `kos-repository` as defined by [Repository Isolation](repository-isolation.md). Workflow catalog operations do not read target-repository files.
 
 Every repository-owned row carries immutable `repository_id`, and repository-local uniqueness constraints include that scope. Repository task prefixes are globally unique, while numeric task sequences are repository-local. Global records, including repository registrations and the registration idempotency scope, are explicitly global rather than represented by a fabricated repository identifier. Database constraints, transactions, locking, and entity-specific columns are introduced by their assigned persistence tasks.
 
@@ -76,6 +62,6 @@ The API validates the task-prefix syntax and global availability. It resolves th
 
 The canonical Git common directory is globally unique among active registrations, and a task prefix is never reused within the lifetime of the central state. Remote URL is not unique: separate clones may be registered separately. A first valid registration creates and returns a repository resource with an immutable UUID and task prefix. A later call with another idempotency key and the same canonical common directory returns that existing resource when task prefix, trusted remote name, normalized URL, and base ref all agree. If the prefix or any trust setting differs, it returns `repository_registration_conflict` and changes nothing. A different repository requesting an occupied or previously used prefix receives the same conflict. Moving a checkout or changing its prefix or trust settings requires a future explicit rebind or update contract; registration never performs that update implicitly.
 
-`repository.register` always returns HTTP `200`, including creation, matching repeat, and completed idempotency replay, so callers do not infer durable identity from transport status. Its idempotency records use a global `repository.register` scope and the normal canonical request fingerprint with the repository component represented by the literal `global`. All other commands retain repository-scoped idempotency. A matching key and fingerprint replays the original resource; reuse with different input returns `idempotency_conflict`.
+`repository.register` always returns HTTP `200`, including creation, matching repeat, and completed idempotency replay, so callers do not infer durable identity from transport status. Its idempotency records use the global scope and the normal canonical request fingerprint with the scope component represented by the literal `global`. Workflow-catalog and runtime-configuration mutations use that same explicit global scope; task execution remains repository-scoped. A matching key and fingerprint replays the original resource; reuse with different input returns `idempotency_conflict`.
 
-[ADR-0005](../decisions/0005-central-persistence-and-registration.md) records the architecture decision behind central registration. [ADR-0006](../decisions/0006-repository-task-prefixes.md) records the public-number namespace decision.
+[ADR-0005](../decisions/0005-central-persistence-and-registration.md) records the architecture decision behind central state and registration. [ADR-0006](../decisions/0006-repository-task-prefixes.md) records the public-number namespace decision. [ADR-0007](../decisions/0007-central-workflow-catalog.md) records central workflow-content ownership.

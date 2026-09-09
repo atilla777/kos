@@ -2,39 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://kos.local/schemas/cli/v1/artifacts.json",
   "$defs": {
-    "document_metadata": {
-      "type": "object",
-      "properties": { "kind": { "const": "document" }, "path": { "$ref": "common.json#/$defs/repository_path" }, "commit_sha": { "$ref": "common.json#/$defs/git_oid" }, "content_digest": { "$ref": "common.json#/$defs/digest" } },
-      "required": ["kind", "path", "commit_sha", "content_digest"], "additionalProperties": false
-    },
-    "candidate_metadata": {
-      "type": "object",
-      "properties": { "kind": { "const": "candidate" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "task_trailer": { "$ref": "common.json#/$defs/task_number" } },
-      "required": ["kind", "candidate_sha", "task_trailer"],
-      "x-task-trailer-matches-owning-task": true,
-      "additionalProperties": false
-    },
-    "test_metadata": {
-      "type": "object",
-      "properties": { "kind": { "const": "test" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "command": { "type": "string", "minLength": 1 }, "exit_code": { "type": "integer", "minimum": 0 }, "log_digest": { "$ref": "common.json#/$defs/digest" } },
-      "required": ["kind", "candidate_sha", "command", "exit_code", "log_digest"], "additionalProperties": false
-    },
-    "review_metadata": {
-      "type": "object",
-      "properties": { "kind": { "const": "review" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "verdict": { "enum": ["approved", "changes_requested"] }, "review_attempt_id": { "$ref": "common.json#/$defs/uuid" } },
-      "required": ["kind", "candidate_sha", "verdict", "review_attempt_id"], "additionalProperties": false
-    },
-    "publication_metadata": {
-      "type": "object",
-      "properties": { "kind": { "const": "publication" }, "publication_id": { "$ref": "common.json#/$defs/uuid" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "remote": { "$ref": "common.json#/$defs/identifier" }, "base_ref": { "type": "string", "pattern": "^refs/heads/[^ ]+$" }, "observed_remote_tip": { "$ref": "common.json#/$defs/git_oid" }, "reachable": { "const": true }, "observed_at": { "$ref": "common.json#/$defs/timestamp" } },
-      "required": ["kind", "publication_id", "candidate_sha", "remote", "base_ref", "observed_remote_tip", "reachable", "observed_at"], "additionalProperties": false
-    },
-    "metadata": {
-      "oneOf": [
-        { "$ref": "#/$defs/document_metadata" }, { "$ref": "#/$defs/candidate_metadata" }, { "$ref": "#/$defs/test_metadata" },
-        { "$ref": "#/$defs/review_metadata" }, { "$ref": "#/$defs/publication_metadata" }
-      ]
-    },
+    "document_metadata": { "type": "object", "properties": { "kind": { "const": "document" }, "path": { "$ref": "common.json#/$defs/repository_path" }, "commit_sha": { "$ref": "common.json#/$defs/git_oid" }, "content_digest": { "$ref": "common.json#/$defs/digest" } }, "required": ["kind", "path", "commit_sha", "content_digest"], "additionalProperties": false },
+    "candidate_metadata": { "type": "object", "properties": { "kind": { "const": "candidate" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "task_trailer": { "$ref": "common.json#/$defs/task_number" } }, "required": ["kind", "candidate_sha", "task_trailer"], "x-task-trailer-matches-owning-task": true, "additionalProperties": false },
+    "test_metadata": { "type": "object", "properties": { "kind": { "const": "test" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "command": { "type": "string", "minLength": 1 }, "exit_code": { "type": "integer", "minimum": 0 }, "log_digest": { "$ref": "common.json#/$defs/digest" } }, "required": ["kind", "candidate_sha", "command", "exit_code", "log_digest"], "additionalProperties": false },
+    "review_metadata": { "type": "object", "properties": { "kind": { "const": "review" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "verdict": { "enum": ["approved", "changes_requested"] }, "review_attempt_id": { "$ref": "common.json#/$defs/uuid" } }, "required": ["kind", "candidate_sha", "verdict", "review_attempt_id"], "additionalProperties": false },
+    "publication_metadata": { "type": "object", "properties": { "kind": { "const": "publication" }, "publication_id": { "$ref": "common.json#/$defs/uuid" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "remote": { "$ref": "common.json#/$defs/identifier" }, "base_ref": { "$ref": "common.json#/$defs/base_ref" }, "observed_remote_tip": { "$ref": "common.json#/$defs/git_oid" }, "reachable": { "const": true }, "observed_at": { "$ref": "common.json#/$defs/timestamp" } }, "required": ["kind", "publication_id", "candidate_sha", "remote", "base_ref", "observed_remote_tip", "reachable", "observed_at"], "additionalProperties": false },
+    "metadata": { "oneOf": [{ "$ref": "#/$defs/document_metadata" }, { "$ref": "#/$defs/candidate_metadata" }, { "$ref": "#/$defs/test_metadata" }, { "$ref": "#/$defs/review_metadata" }, { "$ref": "#/$defs/publication_metadata" }] },
     "artifact_input": {
       "type": "object",
       "properties": {
@@ -42,10 +15,9 @@
         "type": { "enum": ["document", "candidate", "test", "review", "publication"] },
         "state": { "enum": ["produced", "passed", "failed", "approved", "changes_requested", "published"] },
         "producer": { "$ref": "common.json#/$defs/identifier" },
-        "evidence_digest": { "$ref": "common.json#/$defs/digest" },
         "metadata": { "$ref": "#/$defs/metadata" }
       },
-      "required": ["schema_version", "type", "state", "producer", "evidence_digest", "metadata"],
+      "required": ["schema_version", "type", "state", "producer", "metadata"],
       "allOf": [{ "$ref": "#/$defs/type_state_constraints" }],
       "additionalProperties": false
     },
@@ -53,14 +25,16 @@
       "type": "object",
       "properties": {
         "schema_version": { "$ref": "common.json#/$defs/schema_version" },
-        "id": { "$ref": "common.json#/$defs/uuid" }, "task_id": { "$ref": "common.json#/$defs/uuid" },
-        "attempt_id": { "$ref": "common.json#/$defs/uuid" }, "created_at": { "$ref": "common.json#/$defs/timestamp" },
+        "id": { "$ref": "common.json#/$defs/uuid" },
+        "task_id": { "$ref": "common.json#/$defs/uuid" },
+        "attempt_id": { "$ref": "common.json#/$defs/uuid" },
+        "created_at": { "$ref": "common.json#/$defs/timestamp" },
         "type": { "enum": ["document", "candidate", "test", "review", "publication"] },
         "state": { "enum": ["produced", "passed", "failed", "approved", "changes_requested", "published"] },
-        "producer": { "$ref": "common.json#/$defs/identifier" }, "evidence_digest": { "$ref": "common.json#/$defs/digest" },
+        "producer": { "$ref": "common.json#/$defs/identifier" },
         "metadata": { "$ref": "#/$defs/metadata" }
       },
-      "required": ["schema_version", "id", "task_id", "attempt_id", "created_at", "type", "state", "producer", "evidence_digest", "metadata"],
+      "required": ["schema_version", "id", "task_id", "attempt_id", "created_at", "type", "state", "producer", "metadata"],
       "allOf": [{ "$ref": "#/$defs/type_state_constraints" }],
       "additionalProperties": false
     },
@@ -68,14 +42,8 @@
       "allOf": [
         { "if": { "properties": { "type": { "const": "document" } } }, "then": { "properties": { "state": { "const": "produced" }, "metadata": { "$ref": "#/$defs/document_metadata" } } } },
         { "if": { "properties": { "type": { "const": "candidate" } } }, "then": { "properties": { "state": { "const": "produced" }, "metadata": { "$ref": "#/$defs/candidate_metadata" } } } },
-        { "if": { "properties": { "type": { "const": "test" } } }, "then": { "properties": { "state": { "enum": ["passed", "failed"] }, "metadata": { "$ref": "#/$defs/test_metadata" } }, "allOf": [
-          { "if": { "properties": { "state": { "const": "passed" } } }, "then": { "properties": { "metadata": { "properties": { "exit_code": { "const": 0 } } } } } },
-          { "if": { "properties": { "state": { "const": "failed" } } }, "then": { "properties": { "metadata": { "properties": { "exit_code": { "minimum": 1 } } } } } }
-        ] } },
-        { "if": { "properties": { "type": { "const": "review" } } }, "then": { "properties": { "state": { "enum": ["approved", "changes_requested"] }, "metadata": { "$ref": "#/$defs/review_metadata" } }, "allOf": [
-          { "if": { "properties": { "state": { "const": "approved" } } }, "then": { "properties": { "metadata": { "properties": { "verdict": { "const": "approved" } } } } } },
-          { "if": { "properties": { "state": { "const": "changes_requested" } } }, "then": { "properties": { "metadata": { "properties": { "verdict": { "const": "changes_requested" } } } } } }
-        ] } },
+        { "if": { "properties": { "type": { "const": "test" } } }, "then": { "properties": { "state": { "enum": ["passed", "failed"] }, "metadata": { "$ref": "#/$defs/test_metadata" } }, "allOf": [{ "if": { "properties": { "state": { "const": "passed" } } }, "then": { "properties": { "metadata": { "properties": { "exit_code": { "const": 0 } } } } } }, { "if": { "properties": { "state": { "const": "failed" } } }, "then": { "properties": { "metadata": { "properties": { "exit_code": { "minimum": 1 } } } } } }] } },
+        { "if": { "properties": { "type": { "const": "review" } } }, "then": { "properties": { "state": { "enum": ["approved", "changes_requested"] }, "metadata": { "$ref": "#/$defs/review_metadata" } }, "allOf": [{ "if": { "properties": { "state": { "const": "approved" } } }, "then": { "properties": { "metadata": { "properties": { "verdict": { "const": "approved" } } } } } }, { "if": { "properties": { "state": { "const": "changes_requested" } } }, "then": { "properties": { "metadata": { "properties": { "verdict": { "const": "changes_requested" } } } } } }] } },
         { "if": { "properties": { "type": { "const": "publication" } } }, "then": { "properties": { "state": { "const": "published" }, "metadata": { "$ref": "#/$defs/publication_metadata" } } } }
       ]
     }

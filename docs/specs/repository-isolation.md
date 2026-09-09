@@ -23,7 +23,7 @@ An incomplete reservation is reconciled after lease expiry. An existing worktree
 
 ## Git Ownership
 
-`kos-repository` is the only skill allowed to perform mutating Git operations, including worktree creation or removal, commit, fetch, rebase, and push. The CLI stores and protects reservations but does not execute Git commands. Capability skills prepare file changes or workflow decisions and return requested Git effects in their result manifests; only the lease-owning orchestrator invokes `kos-repository`.
+`kos-repository` is the only skill allowed to perform mutating Git operations, including worktree creation or removal, commit, fetch, rebase, and push. The CLI persists and protects worktree reservations, publication intents, and generic commit/fetch/rebase intents but does not execute Git commands. During a workflow-step session, the generic executor may send an attempt-bound typed effect request to the lease-owning orchestrator. The orchestrator validates and durably prepares it, invokes `kos-repository`, reconciles its typed success, failure, or unknown observation, and returns that result before the executor finalizes its result manifest.
 
 Before every operation, `kos-repository` validates repository identity, reservation, fencing token, expected branch and HEAD, and worktree cleanliness against the operation's preconditions. Detailed adapter requirements are defined by the [architecture rules](../rules/architecture.md).
 

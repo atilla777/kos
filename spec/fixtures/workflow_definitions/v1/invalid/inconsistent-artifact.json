@@ -1,0 +1,4 @@
+{
+  "mutation": "inconsistent_artifact",
+  "expected_error": "artifact_condition"
+}

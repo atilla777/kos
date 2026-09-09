@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kos.local/schemas/runtime/v1/retrospective.json",
+  "$defs": {
+    "identifier": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,127}$" },
+    "uuid": { "type": "string", "format": "uuid" },
+    "proposal": {
+      "type": "object",
+      "properties": {
+        "category": { "enum": ["kos_product", "kos_installation", "workflow", "project"] },
+        "problem": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "observed_impact": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "sanitized_evidence": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "proposed_outcome": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "workflow_version_id": { "$ref": "#/$defs/uuid" },
+        "repository_id": { "$ref": "#/$defs/uuid" },
+        "suggested_task_type": { "$ref": "#/$defs/identifier" },
+        "uncertainties": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 1024 }, "maxItems": 10 }
+      },
+      "required": ["category", "problem", "observed_impact", "sanitized_evidence", "proposed_outcome", "suggested_task_type", "uncertainties"],
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "1" },
+        "session_id": { "$ref": "#/$defs/uuid" },
+        "source": { "enum": ["orchestrator", "workflow_step"] },
+        "primary_result_acknowledged": { "const": true },
+        "outcome": { "enum": ["no_action", "proposals"] },
+        "proposals": { "type": "array", "items": { "$ref": "#/$defs/proposal" }, "maxItems": 5 }
+      },
+      "required": ["schema_version", "session_id", "source", "primary_result_acknowledged", "outcome", "proposals"],
+      "x-private-input": "invoking-agent-dialogue-only",
+      "x-persistence": "none",
+      "x-primary-result-independent": true,
+      "x-recursion-suppressed": true,
+      "allOf": [
+        { "if": { "properties": { "outcome": { "const": "no_action" } }, "required": ["outcome"] }, "then": { "properties": { "proposals": { "maxItems": 0 } } } },
+        { "if": { "properties": { "outcome": { "const": "proposals" } }, "required": ["outcome"] }, "then": { "properties": { "proposals": { "minItems": 1 } } } }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

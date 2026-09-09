@@ -10,7 +10,7 @@ Before changing project files, read the rules relevant to the work:
 - `docs/rules/architecture.md` for domain boundaries, persistence, CLI, and Git side effects.
 - `docs/rules/code-style.md` for Ruby and Rails conventions.
 - `docs/rules/testing.md` for required verification.
-- `docs/specs/` for applicable behavioral specifications. This directory has no domain specifications yet; do not invent requirements when none exist.
+- `docs/specs/` for applicable behavioral specifications; do not invent requirements when none exist.
 - `docs/decisions/` for applicable accepted ADRs.
 
 ## Working Rules

@@ -1,303 +1,39 @@
 [
   {
-    "name": "minimum repository task prefix",
-    "schema": "common.json",
-    "definition": "task_prefix",
-    "instance": "AB"
-  },
-  {
-    "name": "maximum repository task prefix",
-    "schema": "common.json",
-    "definition": "task_prefix",
-    "instance": "A123456789"
-  },
-  {
-    "name": "repository-specific public task number",
-    "schema": "common.json",
-    "definition": "task_number",
-    "instance": "KOS-000123"
-  },
-  {
-    "name": "unscoped repository registration request",
+    "name": "global workflow publication request",
     "schema": "commands.json",
     "definition": "request",
     "instance": {
       "schema_version": "1",
-      "command": "repository.register",
-      "body": {
-        "git_common_dir": "/home/user/project/.git",
-        "task_prefix": "KOS",
-        "trusted_remote": "origin",
-        "trusted_remote_url": "ssh://git@example.com/team/project.git",
-        "base_ref": "refs/heads/main"
-      }
+      "command": "workflow.publish",
+      "body": { "workflow_id": "quick-fix", "expected_lock_version": 3 }
     }
   },
   {
-    "name": "verified repository resource",
+    "name": "installation retrospective setting",
     "schema": "resources.json",
-    "definition": "repository",
+    "definition": "runtime_config",
     "instance": {
       "schema_version": "1",
-      "id": "33333333-3333-4333-8333-333333333333",
-      "git_common_dir": "/home/user/project/.git",
-      "task_prefix": "KOS",
-      "trusted_remote": "origin",
-      "trusted_remote_url": "ssh://git@example.com/team/project.git",
-      "base_ref": "refs/heads/main",
-      "registered_at": "2026-09-09T12:00:00Z"
+      "retrospective_enabled": false,
+      "lock_version": 0,
+      "updated_at": "2026-09-09T12:00:00Z"
     }
   },
   {
-    "name": "transient error envelope",
-    "schema": "envelopes.json",
-    "definition": "failure",
-    "instance": {
-      "schema_version": "1",
-      "request_id": "99999999-9999-4999-8999-999999999999",
-      "command": "task.get",
-      "error": { "category": "transient", "code": "request_timeout", "message": "request timed out", "retryable": true }
-    }
-  },
-  {
-    "name": "task type list result",
-    "schema": "commands.json",
-    "definition": "result",
-    "instance": {
-      "schema_version": "1",
-      "request_id": "99999999-9999-4999-8999-999999999999",
-      "command": "task_type.list",
-      "data": {
-        "task_types": [
-          { "schema_version": "1", "id": "quick-fix", "name": "quick-fix", "workflow_id": "quick-fix" }
-        ]
-      }
-    }
-  },
-  {
-    "name": "document artifact",
+    "name": "artifact without generic evidence digest",
     "schema": "artifacts.json",
     "definition": "artifact_input",
     "instance": {
       "schema_version": "1",
-      "type": "document",
+      "type": "candidate",
       "state": "produced",
-      "producer": "kos-development",
-      "evidence_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "producer": "kos-workflow-step",
       "metadata": {
-        "kind": "document",
-        "path": "tasks/KOS-000123/implementation-plan.md",
-        "commit_sha": "1111111111111111111111111111111111111111",
-        "content_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        "kind": "candidate",
+        "candidate_sha": "1111111111111111111111111111111111111111",
+        "task_trailer": "KOS-000123"
       }
-    }
-  },
-  {
-    "name": "publication artifact recovery evidence",
-    "schema": "artifacts.json",
-    "definition": "artifact_input",
-    "instance": {
-      "schema_version": "1",
-      "type": "publication",
-      "state": "published",
-      "producer": "kos-publish",
-      "evidence_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-      "metadata": {
-        "kind": "publication",
-        "publication_id": "44444444-4444-4444-8444-444444444444",
-        "candidate_sha": "2222222222222222222222222222222222222222",
-        "remote": "origin",
-        "base_ref": "refs/heads/main",
-        "observed_remote_tip": "2222222222222222222222222222222222222222",
-        "reachable": true,
-        "observed_at": "2026-09-09T12:00:00Z"
-      }
-    }
-  },
-  {
-    "name": "workflow context",
-    "schema": "workflow.json",
-    "definition": "context",
-    "instance": {
-      "schema_version": "1",
-      "task_id": "11111111-1111-4111-8111-111111111111",
-      "task_number": "KOS-000123",
-      "attempt_id": "22222222-2222-4222-8222-222222222222",
-      "repository_id": "33333333-3333-4333-8333-333333333333",
-      "workflow_id": "quick-fix",
-      "workflow_version": "1.0.0",
-      "workflow_status": "development",
-      "bundle_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-      "instruction": {
-        "path": ".kos/workflows/quick-fix/1.0.0/steps/development.md",
-        "media_type": "text/markdown; charset=utf-8",
-        "content": "# Development\n\nImplement and test the approved change.\n",
-        "digest": "sha256:4182f53f18cf73c2e3b629de6d668fb3ea2b1afb4a92dfa5bbfe50bf639d5e81"
-      },
-      "materials": [
-        {
-          "path": ".kos/templates/implementation-plan/1.0.0/template.md",
-          "media_type": "text/markdown; charset=utf-8",
-          "content": "# Plan\n\nFollow the approved implementation plan.\n",
-          "digest": "sha256:7153a452afb721cd001417bd9afc9b13e5a7eabba731842f384f5b0a63375b05"
-        }
-      ],
-      "input_context_digest": "sha256:db98a44f5cafb97bb484239e7d886a343e83790a446e88fc69ab8f9ae2e009b7",
-      "expected_lock_version": 3,
-      "fencing_token": 8,
-      "base_ref": "refs/heads/main",
-      "worktree": {
-        "reservation_id": "55555555-5555-4555-8555-555555555555",
-        "path": "/tmp/task-123",
-        "branch": "kos/task-KOS-000123",
-        "head_sha": "1111111111111111111111111111111111111111"
-      },
-      "required_artifacts": [
-        { "type": "candidate", "cardinality": "one", "subject": "task", "allowed_states": ["produced"] },
-        { "type": "test", "cardinality": "many", "subject": "candidate", "allowed_states": ["passed"] }
-      ],
-      "allowed_capabilities": ["kos-development"]
-    }
-  },
-  {
-    "name": "task create request without fencing",
-    "schema": "commands.json",
-    "definition": "request",
-    "instance": {
-      "schema_version": "1",
-      "command": "task.create",
-      "repository_id": "33333333-3333-4333-8333-333333333333",
-      "body": {
-        "title": "Repair timeout handling",
-        "task_type": "quick-fix"
-      }
-    }
-  },
-  {
-    "name": "atomic step completion request",
-    "schema": "commands.json",
-    "definition": "request",
-    "instance": {
-      "schema_version": "1",
-      "command": "step.complete",
-      "repository_id": "33333333-3333-4333-8333-333333333333",
-      "body": {
-        "task_number": "KOS-000123",
-        "to_status": "review",
-        "result_manifest": {
-          "schema_version": "1",
-          "attempt_id": "22222222-2222-4222-8222-222222222222",
-          "input_context_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-          "outcome": "succeeded",
-          "artifacts": []
-        },
-        "preconditions": { "expected_lock_version": 3, "attempt_id": "22222222-2222-4222-8222-222222222222", "fencing_token": 8 }
-      }
-    }
-  },
-  {
-    "name": "failed attempt manifest",
-    "schema": "commands.json",
-    "definition": "request",
-    "instance": {
-      "schema_version": "1",
-      "command": "attempt.fail",
-      "repository_id": "33333333-3333-4333-8333-333333333333",
-      "body": {
-        "result_manifest": {
-          "schema_version": "1",
-          "attempt_id": "22222222-2222-4222-8222-222222222222",
-          "input_context_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-          "outcome": "failed",
-          "artifacts": [],
-          "summary": "Tests failed"
-        },
-        "preconditions": { "expected_lock_version": 3, "attempt_id": "22222222-2222-4222-8222-222222222222", "fencing_token": 8 }
-      }
-    }
-  },
-  {
-    "name": "atomic publication completion request",
-    "schema": "commands.json",
-    "definition": "request",
-    "instance": {
-      "schema_version": "1",
-      "command": "publication.complete",
-      "repository_id": "33333333-3333-4333-8333-333333333333",
-      "body": {
-        "publication_id": "44444444-4444-4444-8444-444444444444",
-        "task_number": "KOS-000123",
-        "to_status": "completed",
-        "result_manifest": {
-          "schema_version": "1",
-          "attempt_id": "22222222-2222-4222-8222-222222222222",
-          "input_context_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-          "outcome": "succeeded",
-          "artifacts": [
-            {
-              "schema_version": "1", "type": "publication", "state": "published", "producer": "kos-publish",
-              "evidence_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-              "metadata": {
-                "kind": "publication", "publication_id": "44444444-4444-4444-8444-444444444444",
-                "candidate_sha": "2222222222222222222222222222222222222222", "remote": "origin",
-                "base_ref": "refs/heads/main", "observed_remote_tip": "2222222222222222222222222222222222222222",
-                "reachable": true, "observed_at": "2026-09-09T12:00:00Z"
-              }
-            }
-          ]
-        },
-        "preconditions": { "expected_lock_version": 4, "attempt_id": "22222222-2222-4222-8222-222222222222", "fencing_token": 8 }
-      }
-    }
-  },
-  {
-    "name": "publication reconciliation request",
-    "schema": "commands.json",
-    "definition": "request",
-    "instance": {
-      "schema_version": "1",
-      "command": "publication.reconcile",
-      "repository_id": "33333333-3333-4333-8333-333333333333",
-      "body": {
-        "publication_id": "44444444-4444-4444-8444-444444444444",
-        "candidate_sha": "2222222222222222222222222222222222222222",
-        "observed_remote_tip": "2222222222222222222222222222222222222222",
-        "candidate_reachable": true,
-        "observed_at": "2026-09-09T12:00:00Z",
-        "evidence_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-        "preconditions": { "expected_lock_version": 4, "attempt_id": "22222222-2222-4222-8222-222222222222", "fencing_token": 8 }
-      }
-    }
-  },
-  {
-    "name": "unknown command failure fallback",
-    "schema": "envelopes.json",
-    "definition": "failure",
-    "instance": {
-      "schema_version": "1",
-      "request_id": "99999999-9999-4999-8999-999999999999",
-      "command": "unknown",
-      "error": { "category": "validation", "code": "unknown_command", "message": "unknown command", "retryable": false }
-    }
-  },
-  {
-    "name": "result manifest with repository effects",
-    "schema": "workflow.json",
-    "definition": "result_manifest",
-    "instance": {
-      "schema_version": "1",
-      "attempt_id": "22222222-2222-4222-8222-222222222222",
-      "input_context_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "outcome": "succeeded",
-      "artifacts": [],
-      "requested_effects": [
-        { "operation": "worktree_create", "reservation_id": "55555555-5555-4555-8555-555555555555", "expected_head_sha": "1111111111111111111111111111111111111111" },
-        { "operation": "worktree_remove", "reservation_id": "55555555-5555-4555-8555-555555555555", "expected_head_sha": "1111111111111111111111111111111111111111" },
-        { "operation": "commit", "reservation_id": "55555555-5555-4555-8555-555555555555", "expected_head_sha": "1111111111111111111111111111111111111111", "expected_diff_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "expected_index_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "paths": ["app/models/task.rb"], "message": "Implement task", "task_number": "KOS-000123" },
-        { "operation": "fetch", "remote": "origin", "ref": "refs/heads/main" },
-        { "operation": "rebase", "reservation_id": "55555555-5555-4555-8555-555555555555", "expected_head_sha": "1111111111111111111111111111111111111111", "onto_sha": "2222222222222222222222222222222222222222" },
-        { "operation": "push", "publication_id": "44444444-4444-4444-8444-444444444444", "candidate_sha": "1111111111111111111111111111111111111111", "remote": "origin", "base_ref": "refs/heads/main", "expected_remote_oid": "2222222222222222222222222222222222222222" }
-      ]
     }
   }
 ]

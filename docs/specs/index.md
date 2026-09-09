@@ -15,10 +15,11 @@ These documents are normative specifications of observable KOS behavior and mate
 | [Artifact Contracts](artifact-contracts.md) | Immutable evidence, transition validation, and candidate generations |
 | [Repository Isolation](repository-isolation.md) | Repository scope, task worktrees, reservations, and Git ownership |
 | [Publication](publication.md) | Reviewed candidates, fast-forward publication, and recovery |
-| [Project Configuration](project-configuration.md) | Project-owned `.kos` configuration, versioning, and pinned bundles |
+| [Workflow Catalog](workflow-catalog.md) | Shared workflow drafts, immutable versions, publication, and activation |
 | [Runtime Integration](runtime-integration.md) | Canonical skills, runtime targets, and CLI protocol |
+| [Retrospective](retrospective.md) | Optional session analysis, privacy, and improvement proposals |
 | [CLI Protocol Version 1](cli-protocol.md) | Versioned commands, JSON schemas, transport, preconditions, and stable errors |
 | [Initialization](initialization.md) | Safe target-project and runtime installation |
-| [Central Persistence](central-persistence.md) | Production state layout, migrations, snapshot storage, and repository registration |
+| [Central Persistence](central-persistence.md) | Production state layout, migrations, workflow content, and repository registration |
 
 Create or update a focused specification with any durable behavior change. Do not place implementation plans, private class design, detailed schemas assigned to later technical-contract tasks, or transient agent notes here.
