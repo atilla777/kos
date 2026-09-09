@@ -12,5 +12,6 @@ This directory contains accepted Architecture Decision Records.
 - [ADR-0003: Pinned Project Workflows](0003-pinned-project-workflows.md)
 - [ADR-0004: Task Git Protocol](0004-task-git-protocol.md)
 - [ADR-0005: Central Persistence And Repository Registration](0005-central-persistence-and-registration.md)
+- [ADR-0006: Repository-Specific Task Prefixes](0006-repository-task-prefixes.md)
 
 Create an ADR for a long-lived decision that crosses tasks or domains, changes an architectural principle, data model, external contract, or substantial mechanism. Each ADR must state its context, decision, consequences, and rejected alternatives.

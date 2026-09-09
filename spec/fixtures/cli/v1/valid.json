@@ -1,5 +1,23 @@
 [
   {
+    "name": "minimum repository task prefix",
+    "schema": "common.json",
+    "definition": "task_prefix",
+    "instance": "AB"
+  },
+  {
+    "name": "maximum repository task prefix",
+    "schema": "common.json",
+    "definition": "task_prefix",
+    "instance": "A123456789"
+  },
+  {
+    "name": "repository-specific public task number",
+    "schema": "common.json",
+    "definition": "task_number",
+    "instance": "KOS-000123"
+  },
+  {
     "name": "unscoped repository registration request",
     "schema": "commands.json",
     "definition": "request",
@@ -8,6 +26,7 @@
       "command": "repository.register",
       "body": {
         "git_common_dir": "/home/user/project/.git",
+        "task_prefix": "KOS",
         "trusted_remote": "origin",
         "trusted_remote_url": "ssh://git@example.com/team/project.git",
         "base_ref": "refs/heads/main"
@@ -22,6 +41,7 @@
       "schema_version": "1",
       "id": "33333333-3333-4333-8333-333333333333",
       "git_common_dir": "/home/user/project/.git",
+      "task_prefix": "KOS",
       "trusted_remote": "origin",
       "trusted_remote_url": "ssh://git@example.com/team/project.git",
       "base_ref": "refs/heads/main",
@@ -66,7 +86,7 @@
       "evidence_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "metadata": {
         "kind": "document",
-        "path": "tasks/TASK-000123/implementation-plan.md",
+        "path": "tasks/KOS-000123/implementation-plan.md",
         "commit_sha": "1111111111111111111111111111111111111111",
         "content_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
       }
@@ -101,7 +121,7 @@
     "instance": {
       "schema_version": "1",
       "task_id": "11111111-1111-4111-8111-111111111111",
-      "task_number": "TASK-000123",
+      "task_number": "KOS-000123",
       "attempt_id": "22222222-2222-4222-8222-222222222222",
       "repository_id": "33333333-3333-4333-8333-333333333333",
       "workflow_id": "quick-fix",
@@ -122,14 +142,14 @@
           "digest": "sha256:7153a452afb721cd001417bd9afc9b13e5a7eabba731842f384f5b0a63375b05"
         }
       ],
-      "input_context_digest": "sha256:3c3f8f75ff7a807fc5658ad4421cae5956a88b982f445d34490c08aec048ed2d",
+      "input_context_digest": "sha256:db98a44f5cafb97bb484239e7d886a343e83790a446e88fc69ab8f9ae2e009b7",
       "expected_lock_version": 3,
       "fencing_token": 8,
       "base_ref": "refs/heads/main",
       "worktree": {
         "reservation_id": "55555555-5555-4555-8555-555555555555",
         "path": "/tmp/task-123",
-        "branch": "kos/task-TASK-000123",
+        "branch": "kos/task-KOS-000123",
         "head_sha": "1111111111111111111111111111111111111111"
       },
       "required_artifacts": [
@@ -162,7 +182,7 @@
       "command": "step.complete",
       "repository_id": "33333333-3333-4333-8333-333333333333",
       "body": {
-        "task_number": "TASK-000123",
+        "task_number": "KOS-000123",
         "to_status": "review",
         "result_manifest": {
           "schema_version": "1",
@@ -206,7 +226,7 @@
       "repository_id": "33333333-3333-4333-8333-333333333333",
       "body": {
         "publication_id": "44444444-4444-4444-8444-444444444444",
-        "task_number": "TASK-000123",
+        "task_number": "KOS-000123",
         "to_status": "completed",
         "result_manifest": {
           "schema_version": "1",
@@ -273,7 +293,7 @@
       "requested_effects": [
         { "operation": "worktree_create", "reservation_id": "55555555-5555-4555-8555-555555555555", "expected_head_sha": "1111111111111111111111111111111111111111" },
         { "operation": "worktree_remove", "reservation_id": "55555555-5555-4555-8555-555555555555", "expected_head_sha": "1111111111111111111111111111111111111111" },
-        { "operation": "commit", "reservation_id": "55555555-5555-4555-8555-555555555555", "expected_head_sha": "1111111111111111111111111111111111111111", "expected_diff_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "expected_index_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "paths": ["app/models/task.rb"], "message": "Implement task", "task_number": "TASK-000123" },
+        { "operation": "commit", "reservation_id": "55555555-5555-4555-8555-555555555555", "expected_head_sha": "1111111111111111111111111111111111111111", "expected_diff_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "expected_index_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "paths": ["app/models/task.rb"], "message": "Implement task", "task_number": "KOS-000123" },
         { "operation": "fetch", "remote": "origin", "ref": "refs/heads/main" },
         { "operation": "rebase", "reservation_id": "55555555-5555-4555-8555-555555555555", "expected_head_sha": "1111111111111111111111111111111111111111", "onto_sha": "2222222222222222222222222222222222222222" },
         { "operation": "push", "publication_id": "44444444-4444-4444-8444-444444444444", "candidate_sha": "1111111111111111111111111111111111111111", "remote": "origin", "base_ref": "refs/heads/main", "expected_remote_oid": "2222222222222222222222222222222222222222" }

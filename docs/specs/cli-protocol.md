@@ -57,11 +57,11 @@ All commands except `repository.register` require `--repository <repository-id> 
 | `task_type.list` | `kos task-type list --limit N [--cursor C]` | `GET /task-types?limit=N&cursor=C` | `200` task-type page |
 | `workflow.list` | `kos workflow list --limit N [--cursor C]` | `GET /workflows?limit=N&cursor=C` | `200` workflow page |
 | `workflow.get` | `kos workflow get --workflow ID --version VERSION` | `GET /workflows/{workflow_id}/versions/{version}` | `200` workflow |
-| `task.get` | `kos task get --task TASK-NUMBER` | `GET /tasks/{task_number}` | `200` task |
+| `task.get` | `kos task get --task <task-number>` | `GET /tasks/{task_number}` | `200` task |
 | `attempt.get` | `kos attempt get --attempt UUID` | `GET /attempts/{attempt_id}` | `200` attempt |
 | `step.context` | `kos step context` | `POST /attempts/{attempt_id}/step-context` | `200` workflow context |
 | `worktree.get` | `kos worktree get --reservation UUID` | `GET /worktree-reservations/{reservation_id}` | `200` reservation |
-| `artifact.list` | `kos artifact list --task TASK-NUMBER --limit N [--cursor C]` | `GET /tasks/{task_number}/artifacts?limit=N&cursor=C` | `200` artifact page |
+| `artifact.list` | `kos artifact list --task <task-number> --limit N [--cursor C]` | `GET /tasks/{task_number}/artifacts?limit=N&cursor=C` | `200` artifact page |
 | `publication.get` | `kos publication get --publication UUID` | `GET /publications/{publication_id}` | `200` publication |
 | `task.create` | `kos task create` | `POST /tasks` | `201` task |
 | `attempt.claim` | `kos attempt claim` | `POST /tasks/{task_number}/attempts/claim` | `201` attempt |
@@ -105,7 +105,9 @@ A repeat with the same key and fingerprint returns the same semantic data and or
 
 ## Attempts, Artifacts, And Completion
 
-`repository.register` accepts the canonical absolute Git common directory, trusted remote name, normalized credential-free URL, and full base ref after the human confirmation required by initialization. The API independently verifies the Git directory and observed trust settings. A first registration and a matching repeat both return the same closed repository resource and HTTP `200`; a repeat never updates trust settings. Invalid or mismatched observed Git data returns `repository_registration_invalid`, while a previously registered common directory with different trust settings returns `repository_registration_conflict`. The complete behavior and state ownership are defined by [Central Persistence](central-persistence.md).
+`repository.register` accepts the human-selected task prefix, canonical absolute Git common directory, trusted remote name, normalized credential-free URL, and full base ref after the human confirmation required by initialization. The API validates prefix syntax and global availability and independently verifies the Git directory and observed trust settings. A first registration and a matching repeat both return the same closed repository resource and HTTP `200`; a repeat never updates its prefix or trust settings. Invalid prefix syntax or mismatched observed Git data returns `repository_registration_invalid`. An occupied prefix, or a previously registered common directory submitted with a different prefix or trust settings, returns `repository_registration_conflict`. The complete behavior and state ownership are defined by [Central Persistence](central-persistence.md).
+
+Public task numbers combine the owning repository's prefix with a six-digit repository-local sequence, such as `KOS-000123`. A command scoped to a repository rejects a well-formed task number whose prefix differs from that repository's persisted prefix as `task_not_found`; it does not reveal task existence in another repository. Branch values derived from a task number use the exact form `kos/task-<task-number>`. JSON Schema validates each value's shape and marks derivation, commit-context, and candidate-trailer constraints with `x-*` annotations; the API and orchestrator validate equality against the owning task, repository, and frozen context because JSON Schema cannot compare those persisted or transformed values.
 
 Task creation accepts only the title and `quick-fix` task type. The server resolves the current workflow from the repository's authoritative configuration, creates its content-addressed snapshot, and returns the pinned workflow identity, version, and bundle digest on the task. A client cannot select or assert those values.
 

@@ -15,7 +15,7 @@ status: active
 4. Does not overwrite an existing user file without explicit `--force` authorization.
 5. Verifies CLI availability, workflow configuration validity, and skill discovery by the selected runtime.
 
-Initialization identifies the canonical Git common directory, trusted remote name and normalized URL, and full base ref, displays those exact values, and requires human confirmation before invoking the idempotent `repository.register` CLI command. Automatic detection of `main` or `master` does not remove that confirmation requirement. The server independently verifies the submitted values as defined by [Central Persistence](central-persistence.md). The central state directory belongs to the Rails API, not the target repository.
+Initialization asks the user for a repository task prefix, identifies the canonical Git common directory, trusted remote name and normalized URL, and full base ref, displays those exact values, and requires human confirmation before invoking the idempotent `repository.register` CLI command. The prefix must already satisfy the uppercase format; initialization does not silently normalize it. Automatic detection of `main` or `master` does not remove the confirmation requirement. The server validates prefix availability and independently verifies the submitted Git values as defined by [Central Persistence](central-persistence.md). The central state directory belongs to the Rails API, not the target repository.
 
 ## Safe Application
 

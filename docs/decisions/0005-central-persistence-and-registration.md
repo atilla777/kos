@@ -16,7 +16,7 @@ Production state uses an XDG state root with explicit environment overrides. Rai
 
 Production migrations run only through an explicit, service-exclusive Rails operation that creates a SQLite-consistent backup before changing an existing database. The API never migrates on normal startup and refuses a pending or newer schema.
 
-Repository registration is an authenticated, unscoped, idempotent CLI/API operation. The server independently verifies the canonical Git common directory and trust settings through the repository adapter. Canonical common directory is unique; remote URL is not. A matching repeated registration returns the existing immutable repository ID, while differing trust settings require an explicit future update operation.
+Repository registration is an authenticated, unscoped, idempotent CLI/API operation. The server independently verifies the canonical Git common directory and trust settings through the repository adapter. Canonical common directory and the human-selected task prefix are each globally unique; remote URL is not. A matching repeated registration returns the existing immutable repository ID, while differing trust settings or prefix require an explicit future update operation.
 
 The observable contract is defined by [Central Persistence](../specs/central-persistence.md).
 
@@ -26,6 +26,7 @@ The observable contract is defined by [Central Persistence](../specs/central-per
 - Database references cannot expose partially materialized snapshots, although interrupted staging and unreferenced complete bundles require later reconciliation.
 - Deployments must stop the API, prepare state, and then start the API; schema changes cannot be hidden in ordinary startup.
 - Registration needs a global idempotency scope because repository scope does not exist before the operation succeeds.
+- A repository-specific public task number is globally unambiguous because its immutable prefix is globally unique, as refined by [ADR-0006](0006-repository-task-prefixes.md).
 - Separate clones of one remote remain separate repository registrations, and moving a checkout requires an explicit future rebind.
 - Backup retention, snapshot garbage collection, rebind, registration update, and alternate backends remain separate work.
 

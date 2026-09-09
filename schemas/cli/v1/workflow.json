@@ -4,7 +4,7 @@
   "$defs": {
     "worktree_context": {
       "type": "object",
-      "properties": { "reservation_id": { "$ref": "common.json#/$defs/uuid" }, "path": { "type": "string", "minLength": 1 }, "branch": { "type": "string", "minLength": 1 }, "head_sha": { "$ref": "common.json#/$defs/git_oid" } },
+      "properties": { "reservation_id": { "$ref": "common.json#/$defs/uuid" }, "path": { "type": "string", "minLength": 1 }, "branch": { "$ref": "common.json#/$defs/task_branch" }, "head_sha": { "$ref": "common.json#/$defs/git_oid" } },
       "required": ["reservation_id", "path", "branch", "head_sha"], "additionalProperties": false
     },
     "instruction": {
@@ -51,7 +51,7 @@
     },
     "worktree_create_effect": { "type": "object", "properties": { "operation": { "const": "worktree_create" }, "reservation_id": { "$ref": "common.json#/$defs/uuid" }, "expected_head_sha": { "$ref": "common.json#/$defs/git_oid" } }, "required": ["operation", "reservation_id", "expected_head_sha"], "additionalProperties": false },
     "worktree_remove_effect": { "type": "object", "properties": { "operation": { "const": "worktree_remove" }, "reservation_id": { "$ref": "common.json#/$defs/uuid" }, "expected_head_sha": { "$ref": "common.json#/$defs/git_oid" } }, "required": ["operation", "reservation_id", "expected_head_sha"], "additionalProperties": false },
-    "commit_effect": { "type": "object", "properties": { "operation": { "const": "commit" }, "reservation_id": { "$ref": "common.json#/$defs/uuid" }, "expected_head_sha": { "$ref": "common.json#/$defs/git_oid" }, "expected_diff_digest": { "$ref": "common.json#/$defs/digest" }, "expected_index_digest": { "$ref": "common.json#/$defs/digest" }, "paths": { "type": "array", "items": { "$ref": "common.json#/$defs/repository_path" }, "minItems": 1, "uniqueItems": true }, "message": { "type": "string", "minLength": 1 }, "task_number": { "$ref": "common.json#/$defs/task_number" } }, "required": ["operation", "reservation_id", "expected_head_sha", "expected_diff_digest", "expected_index_digest", "paths", "message", "task_number"], "additionalProperties": false },
+    "commit_effect": { "type": "object", "properties": { "operation": { "const": "commit" }, "reservation_id": { "$ref": "common.json#/$defs/uuid" }, "expected_head_sha": { "$ref": "common.json#/$defs/git_oid" }, "expected_diff_digest": { "$ref": "common.json#/$defs/digest" }, "expected_index_digest": { "$ref": "common.json#/$defs/digest" }, "paths": { "type": "array", "items": { "$ref": "common.json#/$defs/repository_path" }, "minItems": 1, "uniqueItems": true }, "message": { "type": "string", "minLength": 1 }, "task_number": { "$ref": "common.json#/$defs/task_number" } }, "required": ["operation", "reservation_id", "expected_head_sha", "expected_diff_digest", "expected_index_digest", "paths", "message", "task_number"], "x-task-number-matches-context": true, "additionalProperties": false },
     "fetch_effect": { "type": "object", "properties": { "operation": { "const": "fetch" }, "remote": { "$ref": "common.json#/$defs/identifier" }, "ref": { "type": "string", "pattern": "^refs/[^ ]+$" } }, "required": ["operation", "remote", "ref"], "additionalProperties": false },
     "rebase_effect": { "type": "object", "properties": { "operation": { "const": "rebase" }, "reservation_id": { "$ref": "common.json#/$defs/uuid" }, "expected_head_sha": { "$ref": "common.json#/$defs/git_oid" }, "onto_sha": { "$ref": "common.json#/$defs/git_oid" } }, "required": ["operation", "reservation_id", "expected_head_sha", "onto_sha"], "additionalProperties": false },
     "push_effect": { "type": "object", "properties": { "operation": { "const": "push" }, "publication_id": { "$ref": "common.json#/$defs/uuid" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "remote": { "$ref": "common.json#/$defs/identifier" }, "base_ref": { "type": "string", "pattern": "^refs/heads/[^ ]+$" }, "expected_remote_oid": { "$ref": "common.json#/$defs/git_oid" } }, "required": ["operation", "publication_id", "candidate_sha", "remote", "base_ref", "expected_remote_oid"], "additionalProperties": false },
@@ -75,6 +75,7 @@
       "required": ["schema_version", "task_id", "task_number", "attempt_id", "repository_id", "workflow_id", "workflow_version", "workflow_status", "bundle_digest", "instruction", "materials", "input_context_digest", "expected_lock_version", "fencing_token", "base_ref", "required_artifacts", "allowed_capabilities"],
       "x-max-total-member-content-bytes": 4194304,
       "x-unique-member-paths": true,
+      "x-derived-field": { "field": "worktree.branch", "template": "kos/task-{task_number}" },
       "additionalProperties": false
     },
     "result_manifest": {

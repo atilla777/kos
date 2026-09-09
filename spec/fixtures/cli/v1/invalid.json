@@ -1,5 +1,81 @@
 [
   {
+    "name": "repository task prefix is too short",
+    "schema": "common.json",
+    "definition": "task_prefix",
+    "instance": "K"
+  },
+  {
+    "name": "repository task prefix uses lowercase",
+    "schema": "common.json",
+    "definition": "task_prefix",
+    "instance": "Kos"
+  },
+  {
+    "name": "repository task prefix starts with a digit",
+    "schema": "common.json",
+    "definition": "task_prefix",
+    "instance": "2KOS"
+  },
+  {
+    "name": "repository task prefix is too long",
+    "schema": "common.json",
+    "definition": "task_prefix",
+    "instance": "ABCDEFGHIJK"
+  },
+  {
+    "name": "public task number uses lowercase prefix",
+    "schema": "common.json",
+    "definition": "task_number",
+    "instance": "kos-000123"
+  },
+  {
+    "name": "public task number has fewer than six digits",
+    "schema": "common.json",
+    "definition": "task_number",
+    "instance": "KOS-123"
+  },
+  {
+    "name": "repository task prefix has trailing newline",
+    "schema": "common.json",
+    "definition": "task_prefix",
+    "instance": "KOS\n"
+  },
+  {
+    "name": "public task number has trailing newline",
+    "schema": "common.json",
+    "definition": "task_number",
+    "instance": "KOS-000123\n"
+  },
+  {
+    "name": "task branch has trailing newline",
+    "schema": "common.json",
+    "definition": "task_branch",
+    "instance": "kos/task-KOS-000123\n"
+  },
+  {
+    "name": "workflow context uses non-task branch",
+    "schema": "workflow.json",
+    "definition": "worktree_context",
+    "instance": {
+      "reservation_id": "55555555-5555-4555-8555-555555555555",
+      "path": "/tmp/task-123",
+      "branch": "anything",
+      "head_sha": "1111111111111111111111111111111111111111"
+    }
+  },
+  {
+    "name": "repository registration lacks task prefix",
+    "schema": "commands.json",
+    "definition": "repository_register_body",
+    "instance": {
+      "git_common_dir": "/home/user/project/.git",
+      "trusted_remote": "origin",
+      "trusted_remote_url": "ssh://git@example.com/team/project.git",
+      "base_ref": "refs/heads/main"
+    }
+  },
+  {
     "name": "repository registration claims existing scope",
     "schema": "commands.json",
     "definition": "request",
@@ -9,6 +85,7 @@
       "repository_id": "33333333-3333-4333-8333-333333333333",
       "body": {
         "git_common_dir": "/home/user/project/.git",
+        "task_prefix": "KOS",
         "trusted_remote": "origin",
         "trusted_remote_url": "ssh://git@example.com/team/project.git",
         "base_ref": "refs/heads/main"
@@ -21,6 +98,7 @@
     "definition": "repository_register_body",
     "instance": {
       "git_common_dir": "/home/user/project/.git",
+      "task_prefix": "KOS",
       "trusted_remote": "origin",
       "trusted_remote_url": "https://user:secret@example.com/team/project.git",
       "base_ref": "refs/heads/main"
@@ -34,6 +112,7 @@
       "schema_version": "1",
       "id": "33333333-3333-4333-8333-333333333333",
       "git_common_dir": "/home/user/project/.git",
+      "task_prefix": "KOS",
       "trusted_remote": "origin",
       "trusted_remote_url": "ssh://git@example.com/team/project.git",
       "base_ref": "refs/heads/main",
@@ -46,7 +125,7 @@
     "schema": "workflow.json",
     "definition": "context",
     "instance": {
-      "schema_version": "1", "task_id": "11111111-1111-4111-8111-111111111111", "task_number": "TASK-000123",
+      "schema_version": "1", "task_id": "11111111-1111-4111-8111-111111111111", "task_number": "KOS-000123",
       "attempt_id": "22222222-2222-4222-8222-222222222222", "repository_id": "33333333-3333-4333-8333-333333333333",
       "workflow_id": "quick-fix", "workflow_version": "1.0.0", "workflow_status": "development",
       "bundle_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
@@ -114,7 +193,7 @@
     "instance": {
       "schema_version": "1", "type": "candidate", "state": "passed", "producer": "kos-development",
       "evidence_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "metadata": { "kind": "candidate", "candidate_sha": "1111111111111111111111111111111111111111", "task_trailer": "TASK-000123" }
+      "metadata": { "kind": "candidate", "candidate_sha": "1111111111111111111111111111111111111111", "task_trailer": "KOS-000123" }
     }
   },
   {
@@ -136,7 +215,7 @@
     "instance": {
       "schema_version": "1", "command": "publication.complete", "repository_id": "33333333-3333-4333-8333-333333333333",
       "body": {
-        "publication_id": "44444444-4444-4444-8444-444444444444", "task_number": "TASK-000123", "to_status": "completed",
+        "publication_id": "44444444-4444-4444-8444-444444444444", "task_number": "KOS-000123", "to_status": "completed",
         "result_manifest": { "schema_version": "1", "attempt_id": "22222222-2222-4222-8222-222222222222", "input_context_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "outcome": "succeeded", "artifacts": [] },
         "preconditions": { "expected_lock_version": 4, "attempt_id": "22222222-2222-4222-8222-222222222222", "fencing_token": 8 }
       }
@@ -148,7 +227,7 @@
     "definition": "request",
     "instance": {
       "schema_version": "1", "command": "worktree.reserve", "repository_id": "33333333-3333-4333-8333-333333333333",
-      "body": { "task_number": "TASK-000123", "branch": "kos/task-TASK-000123", "path": "/tmp/task-123", "preconditions": { "expected_lock_version": 2, "attempt_id": "22222222-2222-4222-8222-222222222222" } }
+      "body": { "task_number": "KOS-000123", "branch": "kos/task-KOS-000123", "path": "/tmp/task-123", "preconditions": { "expected_lock_version": 2, "attempt_id": "22222222-2222-4222-8222-222222222222" } }
     }
   },
   {
@@ -227,7 +306,7 @@
     "definition": "task",
     "instance": {
       "schema_version": "1", "id": "11111111-1111-4111-8111-111111111111", "repository_id": "33333333-3333-4333-8333-333333333333",
-      "number": "TASK-000123", "title": "Repair timeout", "task_type": "quick-fix", "status": "active", "workflow_status": "completed",
+      "number": "KOS-000123", "title": "Repair timeout", "task_type": "quick-fix", "status": "active", "workflow_status": "completed",
       "workflow_id": "quick-fix", "workflow_version": "1.0.0", "bundle_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "lock_version": 3, "created_at": "2026-09-09T12:00:00Z", "updated_at": "2026-09-09T12:01:00Z"
     }
@@ -238,7 +317,7 @@
     "definition": "task",
     "instance": {
       "schema_version": "1", "id": "11111111-1111-4111-8111-111111111111", "repository_id": "33333333-3333-4333-8333-333333333333",
-      "number": "TASK-000123", "title": "Repair timeout", "task_type": "quick-fix", "status": "completed", "workflow_status": "review",
+      "number": "KOS-000123", "title": "Repair timeout", "task_type": "quick-fix", "status": "completed", "workflow_status": "review",
       "workflow_id": "quick-fix", "workflow_version": "1.0.0", "bundle_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "lock_version": 3, "created_at": "2026-09-09T12:00:00Z", "updated_at": "2026-09-09T12:01:00Z"
     }

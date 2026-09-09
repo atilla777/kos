@@ -10,7 +10,9 @@
     "candidate_metadata": {
       "type": "object",
       "properties": { "kind": { "const": "candidate" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "task_trailer": { "$ref": "common.json#/$defs/task_number" } },
-      "required": ["kind", "candidate_sha", "task_trailer"], "additionalProperties": false
+      "required": ["kind", "candidate_sha", "task_trailer"],
+      "x-task-trailer-matches-owning-task": true,
+      "additionalProperties": false
     },
     "test_metadata": {
       "type": "object",

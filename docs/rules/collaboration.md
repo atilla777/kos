@@ -16,7 +16,7 @@ status: active
 
 ## Bootstrap Planning
 
-- Until KOS owns task state, use monotonic `BOOT-NNN` identifiers and never reuse them. Preserve a bootstrap identifier as a legacy reference when importing the task into KOS; do not treat it as a permanent `TASK-NNNNNN` identifier.
+- Until KOS owns task state, use monotonic `BOOT-NNN` identifiers and never reuse them. Preserve a bootstrap identifier as a legacy reference when importing the task into KOS; do not treat it as a permanent repository-specific identifier such as `KOS-NNNNNN`.
 - Keep at most one bootstrap task `in-progress` and exactly one task in the backlog's `Next` section. Expand only the current and following roadmap phases into backlog tasks; leave later work as roadmap outcomes until it is close enough to refine.
 - Keep unaccepted ideas in the inbox without an identifier. A backlog row records only a cohesive outcome, phase, dependencies, and order; it does not duplicate the task's detailed requirements.
 - After KOS becomes authoritative, generate `KOS.md` as a read-only projection of KOS state with its source and generation time identified. Do not manually maintain a second task state in Obsidian.

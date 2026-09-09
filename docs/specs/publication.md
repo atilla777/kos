@@ -7,7 +7,7 @@ status: active
 
 ## Candidate Contract
 
-Before review, a workflow fixes a candidate commit SHA containing all required code, test, and documentation changes. That immutable commit is the object reviewed. Every task commit carries the trailer `KOS-Task: TASK-000123`; a task-number prefix in the subject is allowed but not required.
+Before review, a workflow fixes a candidate commit SHA containing all required code, test, and documentation changes. That immutable commit is the object reviewed. Every task commit carries its repository-specific public number in a trailer such as `KOS-Task: KOS-000123`; a task-number prefix in the subject is allowed but not required.
 
 ## Publication Protocol
 

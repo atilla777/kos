@@ -74,7 +74,7 @@ module CliV1Contract
 
     { "schema_version" => "1", "type" => "candidate", "state" => "produced", "producer" => "kos-development",
       "evidence_digest" => DIGEST,
-      "metadata" => { "kind" => "candidate", "candidate_sha" => SHA, "task_trailer" => "TASK-000123" } }
+      "metadata" => { "kind" => "candidate", "candidate_sha" => SHA, "task_trailer" => "KOS-000123" } }
   end
 
   def self.publication_artifact_input
@@ -87,7 +87,7 @@ module CliV1Contract
 
   def self.artifact_examples
     {
-      "document" => [ "produced", "passed", { "kind" => "document", "path" => "tasks/TASK-000123/task.md",
+      "document" => [ "produced", "passed", { "kind" => "document", "path" => "tasks/KOS-000123/task.md",
         "commit_sha" => SHA, "content_digest" => DIGEST } ],
       "candidate" => [ "produced", "approved", artifact_input.fetch("metadata") ],
       "test" => [ "passed", "produced", { "kind" => "test", "candidate_sha" => SHA,
@@ -104,7 +104,7 @@ module CliV1Contract
   end
 
   def self.task
-    { "schema_version" => "1", "id" => TASK_ID, "repository_id" => REPOSITORY_ID, "number" => "TASK-000123",
+    { "schema_version" => "1", "id" => TASK_ID, "repository_id" => REPOSITORY_ID, "number" => "KOS-000123",
       "title" => "Repair timeout handling", "task_type" => "quick-fix", "status" => "active",
       "workflow_status" => "development", "workflow_id" => "quick-fix", "workflow_version" => "1.0.0",
       "bundle_digest" => DIGEST, "lock_version" => 3, "active_publication_id" => PUBLICATION_ID,
@@ -113,7 +113,7 @@ module CliV1Contract
   end
 
   def self.repository
-    { "schema_version" => "1", "id" => REPOSITORY_ID, "git_common_dir" => "/home/user/project/.git",
+    { "schema_version" => "1", "id" => REPOSITORY_ID, "git_common_dir" => "/home/user/project/.git", "task_prefix" => "KOS",
       "trusted_remote" => "origin", "trusted_remote_url" => "ssh://git@example.com/team/project.git",
       "base_ref" => "refs/heads/main", "registered_at" => "2026-09-09T12:00:00Z" }
   end
@@ -138,7 +138,7 @@ module CliV1Contract
   def self.context
     instruction_content = "# Development\n\nImplement and test the approved change.\n"
     material_content = "# Plan\n\nFollow the approved implementation plan.\n"
-    value = { "schema_version" => "1", "task_id" => TASK_ID, "task_number" => "TASK-000123",
+    value = { "schema_version" => "1", "task_id" => TASK_ID, "task_number" => "KOS-000123",
       "attempt_id" => ATTEMPT_ID, "repository_id" => REPOSITORY_ID, "workflow_id" => "quick-fix",
       "workflow_version" => "1.0.0", "workflow_status" => "development", "bundle_digest" => DIGEST,
       "instruction" => { "path" => ".kos/workflows/quick-fix/1.0.0/steps/development.md",
@@ -149,7 +149,7 @@ module CliV1Contract
         "digest" => "sha256:#{Digest::SHA256.hexdigest(material_content)}" } ],
       "expected_lock_version" => 3, "fencing_token" => 8,
       "base_ref" => "refs/heads/main", "worktree" => { "reservation_id" => RESERVATION_ID,
-        "path" => "/tmp/task-123", "branch" => "kos/task-TASK-000123", "head_sha" => SHA },
+        "path" => "/tmp/task-123", "branch" => "kos/task-KOS-000123", "head_sha" => SHA },
       "required_artifacts" => [
         { "type" => "candidate", "cardinality" => "one", "subject" => "task", "allowed_states" => [ "produced" ] },
         { "type" => "test", "cardinality" => "many", "subject" => "candidate", "allowed_states" => [ "passed" ] }
@@ -160,7 +160,7 @@ module CliV1Contract
 
   def self.worktree
     { "schema_version" => "1", "id" => RESERVATION_ID, "repository_id" => REPOSITORY_ID, "task_id" => TASK_ID,
-      "attempt_id" => ATTEMPT_ID, "branch" => "kos/task-TASK-000123", "path" => "/tmp/task-123",
+      "attempt_id" => ATTEMPT_ID, "branch" => "kos/task-KOS-000123", "path" => "/tmp/task-123",
       "state" => "confirmed", "fencing_token" => 8, "created_at" => "2026-09-09T12:00:00Z" }
   end
 
@@ -190,36 +190,36 @@ module CliV1Contract
 
   def self.request_bodies
     {
-      "repository.register" => { "git_common_dir" => "/home/user/project/.git", "trusted_remote" => "origin",
+      "repository.register" => { "git_common_dir" => "/home/user/project/.git", "task_prefix" => "KOS", "trusted_remote" => "origin",
         "trusted_remote_url" => "ssh://git@example.com/team/project.git", "base_ref" => "refs/heads/main" },
       "task_type.list" => { "limit" => 20 }, "workflow.list" => { "limit" => 20 },
       "workflow.get" => { "workflow_id" => "quick-fix", "version" => "1.0.0" },
-      "task.get" => { "task_number" => "TASK-000123" }, "attempt.get" => { "attempt_id" => ATTEMPT_ID },
+      "task.get" => { "task_number" => "KOS-000123" }, "attempt.get" => { "attempt_id" => ATTEMPT_ID },
       "step.context" => { "preconditions" => preconditions },
       "worktree.get" => { "reservation_id" => RESERVATION_ID },
-      "artifact.list" => { "task_number" => "TASK-000123", "limit" => 20 },
+      "artifact.list" => { "task_number" => "KOS-000123", "limit" => 20 },
       "publication.get" => { "publication_id" => PUBLICATION_ID },
       "task.create" => { "title" => "Repair timeout handling", "task_type" => "quick-fix" },
-      "attempt.claim" => { "task_number" => "TASK-000123", "owner_id" => "orchestrator-1",
+      "attempt.claim" => { "task_number" => "KOS-000123", "owner_id" => "orchestrator-1",
         "lease_seconds" => 300, "preconditions" => { "expected_lock_version" => 3 } },
       "attempt.renew" => { "lease_seconds" => 300, "preconditions" => preconditions },
       "attempt.fail" => { "result_manifest" => manifest("failed"), "preconditions" => preconditions },
       "attempt.needs_human" => { "result_manifest" => manifest("needs_human"), "preconditions" => preconditions },
       "attempt.reconcile" => { "attempt_id" => ATTEMPT_ID, "observed_state" => "no_effect",
         "evidence_digest" => DIGEST, "expected_lock_version" => 3 },
-      "worktree.reserve" => { "task_number" => "TASK-000123", "branch" => "kos/task-TASK-000123",
+      "worktree.reserve" => { "task_number" => "KOS-000123", "branch" => "kos/task-KOS-000123",
         "path" => "/tmp/task-123", "preconditions" => preconditions },
       "worktree.confirm" => { "reservation_id" => RESERVATION_ID, "git_common_dir_digest" => DIGEST,
         "head_sha" => SHA, "preconditions" => preconditions },
       "worktree.reconcile" => worktree_observation, "worktree.release" => worktree_observation,
-      "artifact.register" => { "task_number" => "TASK-000123", "artifact" => artifact_input,
+      "artifact.register" => { "task_number" => "KOS-000123", "artifact" => artifact_input,
         "preconditions" => preconditions },
-      "step.complete" => { "task_number" => "TASK-000123", "to_status" => "review",
+      "step.complete" => { "task_number" => "KOS-000123", "to_status" => "review",
         "result_manifest" => manifest("succeeded"), "preconditions" => preconditions },
-      "publication.prepare" => { "task_number" => "TASK-000123", "candidate_sha" => SHA, "remote" => "origin",
+      "publication.prepare" => { "task_number" => "KOS-000123", "candidate_sha" => SHA, "remote" => "origin",
         "base_ref" => "refs/heads/main", "expected_remote_oid" => SHA, "preconditions" => preconditions },
       "publication.reconcile" => publication_reconciliation,
-      "publication.complete" => { "publication_id" => PUBLICATION_ID, "task_number" => "TASK-000123",
+      "publication.complete" => { "publication_id" => PUBLICATION_ID, "task_number" => "KOS-000123",
         "to_status" => "completed", "result_manifest" => manifest("succeeded", [ publication_artifact_input ]),
         "preconditions" => preconditions }
     }
@@ -353,6 +353,15 @@ module CliV1Contract
       materials: workflow.dig("context", "properties", "materials").slice("x-sorted-by", "x-unique-by") }
   end
 
+  def self.task_number_annotations
+    { reservation: SCHEMAS.fetch("commands.json").dig("$defs", "worktree_reserve_body", "x-derived-field"),
+      task: SCHEMAS.fetch("resources.json").dig("$defs", "task", "x-derived-field"),
+      context: SCHEMAS.fetch("workflow.json").dig("$defs", "context", "x-derived-field"),
+      commit: SCHEMAS.fetch("workflow.json").dig("$defs", "commit_effect", "x-task-number-matches-context"),
+      trailer: SCHEMAS.fetch("artifacts.json")
+        .dig("$defs", "candidate_metadata", "x-task-trailer-matches-owning-task") }
+  end
+
   def self.context_constraint_examples
     valid_context = context
     material = valid_context.fetch("materials").first
@@ -384,7 +393,7 @@ module CliV1Contract
   def self.commit_effect
     { "operation" => "commit", "reservation_id" => RESERVATION_ID, "expected_head_sha" => SHA,
       "expected_diff_digest" => DIGEST, "expected_index_digest" => DIGEST,
-      "paths" => [ "app/models/task.rb" ], "message" => "Implement task", "task_number" => "TASK-000123" }
+      "paths" => [ "app/models/task.rb" ], "message" => "Implement task", "task_number" => "KOS-000123" }
   end
 
   def self.contains_key?(value, key)
@@ -487,6 +496,14 @@ RSpec.describe CliV1Contract do
     references = described_class::SCHEMAS.values.flat_map { |schema| described_class.references(schema) }
 
     expect(references).to all(satisfy { |ref| ref.start_with?("#") || ref.match?(/\A[a-z_]+\.json#/) })
+  end
+
+  it "declares task-number derivation constraints that JSON Schema cannot express" do
+    expect(described_class.task_number_annotations).to eq(
+      reservation: { "field" => "branch", "template" => "kos/task-{task_number}" },
+      task: { "field" => "branch", "template" => "kos/task-{number}" },
+      context: { "field" => "worktree.branch", "template" => "kos/task-{task_number}" }, commit: true, trailer: true
+    )
   end
 
   it "resolves every reference document and fragment locally" do

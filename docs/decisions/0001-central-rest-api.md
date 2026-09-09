@@ -22,7 +22,7 @@ The first deployment is local. Rails binds to loopback by default and requires a
 
 - Rails persistence code is the only code allowed to access SQLite.
 - API requests must resolve and authorize repository scope before invoking application operations.
-- Idempotency, public numbers, leases, reservations, and other repository-local invariants must include `repository_id` in their database constraints.
+- Idempotency, numeric task sequences, leases, reservations, and other repository-local invariants must include `repository_id` in their database constraints. A public task number is globally unambiguous because its repository prefix is globally unique.
 - CLI and API schemas become durable external contracts and require versioned contract tests.
 - One service lifecycle and migration process replaces per-repository database lifecycle management.
 - SQLite remains a single-writer bottleneck, so write transactions must stay short and contention handling must remain bounded.

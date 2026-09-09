@@ -11,7 +11,7 @@ One central KOS installation may serve multiple Git repositories. Every reposito
 
 ## Task Isolation
 
-Every task whose workflow changes repository files uses a dedicated branch, such as `kos/task-TASK-000123`, a dedicated Git worktree, and a worktree allocation recorded in task state.
+Every task whose workflow changes repository files uses a dedicated branch derived from its repository-specific public number, such as `kos/task-KOS-000123`, a dedicated Git worktree, and a worktree allocation recorded in task state.
 
 Allocation is a recoverable protocol:
 
