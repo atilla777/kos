@@ -7,3 +7,7 @@
 #   ["Action", "Comedy", "Drama", "Horror"].each do |genre_name|
 #     MovieGenre.find_or_create_by!(name: genre_name)
 #   end
+TaskType.find_or_create_by!(id: "quick-fix") do |task_type|
+  task_type.name = "quick-fix"
+  task_type.workflow_id = "quick-fix"
+end

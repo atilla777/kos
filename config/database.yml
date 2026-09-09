@@ -6,6 +6,7 @@ default: &default
     foreign_keys: true
     journal_mode: wal
     synchronous: full
+    busy_timeout: 5000
 
 development:
   <<: *default
