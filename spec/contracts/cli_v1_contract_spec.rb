@@ -10,10 +10,10 @@ module CliV1Contract
     [ File.basename(path), JSON.parse(File.read(path)) ]
   end
   REGISTRY = SCHEMAS.values.to_h { |schema| [ URI(schema.fetch("$id")), schema ] }
-  EXPECTED_COMMANDS = %w[task_type.list workflow.list workflow.get task.get attempt.get step.context worktree.get artifact.list
-    publication.get task.create attempt.claim attempt.renew attempt.fail attempt.needs_human attempt.reconcile worktree.reserve
-    worktree.confirm worktree.reconcile worktree.release artifact.register step.complete publication.prepare
-    publication.reconcile publication.complete]
+  EXPECTED_COMMANDS = %w[repository.register task_type.list workflow.list workflow.get task.get attempt.get step.context
+    worktree.get artifact.list publication.get task.create attempt.claim attempt.renew attempt.fail attempt.needs_human
+    attempt.reconcile worktree.reserve worktree.confirm worktree.reconcile worktree.release artifact.register step.complete
+    publication.prepare publication.reconcile publication.complete]
   REQUEST_ID = "99999999-9999-4999-8999-999999999999"
   REPOSITORY_ID = "33333333-3333-4333-8333-333333333333"
   TASK_ID = "11111111-1111-4111-8111-111111111111"
@@ -41,6 +41,12 @@ module CliV1Contract
     command = value.dig("properties", "command")
     own_commands = command ? Array(command["const"] || command["enum"]) : []
     own_commands + value.values.flat_map { |child| dispatched_commands(child) }
+  end
+
+  def self.request_and_result_commands
+    definitions = SCHEMAS.fetch("commands.json").fetch("$defs")
+    requests = definitions.values_at("repository_registration_request", "read_request", "mutation_request")
+    [ dispatched_commands(requests).uniq, dispatched_commands(definitions.fetch("result")).uniq ]
   end
 
   def self.preconditions
@@ -104,6 +110,12 @@ module CliV1Contract
       "bundle_digest" => DIGEST, "lock_version" => 3, "active_publication_id" => PUBLICATION_ID,
       "created_at" => "2026-09-09T12:00:00Z",
       "updated_at" => "2026-09-09T12:01:00Z" }
+  end
+
+  def self.repository
+    { "schema_version" => "1", "id" => REPOSITORY_ID, "git_common_dir" => "/home/user/project/.git",
+      "trusted_remote" => "origin", "trusted_remote_url" => "ssh://git@example.com/team/project.git",
+      "base_ref" => "refs/heads/main", "registered_at" => "2026-09-09T12:00:00Z" }
   end
 
   def self.workflow
@@ -178,6 +190,8 @@ module CliV1Contract
 
   def self.request_bodies
     {
+      "repository.register" => { "git_common_dir" => "/home/user/project/.git", "trusted_remote" => "origin",
+        "trusted_remote_url" => "ssh://git@example.com/team/project.git", "base_ref" => "refs/heads/main" },
       "task_type.list" => { "limit" => 20 }, "workflow.list" => { "limit" => 20 },
       "workflow.get" => { "workflow_id" => "quick-fix", "version" => "1.0.0" },
       "task.get" => { "task_number" => "TASK-000123" }, "attempt.get" => { "attempt_id" => ATTEMPT_ID },
@@ -225,7 +239,8 @@ module CliV1Contract
   def self.result_data
     attempt_commands = %w[attempt.get attempt.claim attempt.renew attempt.reconcile]
     worktree_commands = %w[worktree.get worktree.reserve worktree.confirm worktree.reconcile worktree.release]
-    data = { "task_type.list" => { "task_types" => [ task_type ] }, "workflow.list" => { "workflows" => [ workflow ] },
+    data = { "repository.register" => repository, "task_type.list" => { "task_types" => [ task_type ] },
+      "workflow.list" => { "workflows" => [ workflow ] },
       "workflow.get" => workflow, "task.get" => task, "task.create" => task, "step.context" => context,
       "artifact.list" => { "artifacts" => [ artifact ] },
       "artifact.register" => artifact, "step.complete" => completion_data, "publication.get" => publication,
@@ -253,8 +268,8 @@ module CliV1Contract
   end
 
   def self.request(command)
-    request = { "schema_version" => "1", "command" => command, "repository_id" => REPOSITORY_ID,
-      "body" => request_bodies.fetch(command) }
+    request = { "schema_version" => "1", "command" => command, "body" => request_bodies.fetch(command) }
+    request["repository_id"] = REPOSITORY_ID unless command == "repository.register"
     request
   end
 
@@ -426,7 +441,7 @@ module CliV1Contract
       "conflict" => 6, "lease_lost" => 7, "transient" => 8, "internal" => 1 }
     statuses = { "validation" => 400, "authentication" => 401, "authorization" => 403, "not_found" => 404,
       "conflict" => 409, "lease_lost" => 409, "internal" => 500 }
-    status = if entry["code"] == "invalid_artifact"
+    status = if %w[invalid_artifact repository_registration_invalid].include?(entry["code"])
       422
     elsif entry["category"] == "transient"
       entry["code"] == "request_timeout" ? 504 : 503
@@ -662,12 +677,8 @@ RSpec.describe CliV1Contract do
   end
 
   it "defines request and result dispatch for every command" do
-    definitions = described_class::SCHEMAS.fetch("commands.json").fetch("$defs")
-    request_commands = described_class.dispatched_commands(definitions.values_at("read_request", "mutation_request"))
-    result_commands = described_class.dispatched_commands(definitions.fetch("result"))
-
-    expect(request_commands.uniq).to match_array(described_class::EXPECTED_COMMANDS)
-      .and match_array(result_commands.uniq)
+    expect(described_class.request_and_result_commands)
+      .to all(match_array(described_class::EXPECTED_COMMANDS))
   end
 
   it "publishes the stable error categories" do
@@ -726,6 +737,24 @@ RSpec.describe CliV1Contract do
     requests = described_class::EXPECTED_COMMANDS.map { |command| described_class.request(command) }
 
     expect(requests).to all(satisfy { |request| !described_class.contains_key?(request, "idempotency_key") })
+  end
+
+  it "keeps repository registration outside existing repository scope" do
+    registration = described_class.request("repository.register")
+    scoped_request = described_class.request("task.create").except("repository_id")
+
+    schema = described_class.definition("request")
+    validity = [ registration.key?("repository_id"), schema.valid?(registration), schema.valid?(scoped_request) ]
+
+    expect(validity).to eq([ false, true, false ])
+  end
+
+  it "does not expose central state paths on a repository resource" do
+    resource = described_class.repository.merge("snapshot_root" => "/home/user/.local/state/kos/workflow-snapshots")
+    schema = JSONSchemer.schema(described_class::SCHEMAS.fetch("resources.json"),
+      ref_resolver: described_class::REGISTRY.to_proc).ref("#/$defs/repository")
+
+    expect([ schema.valid?(described_class.repository), schema.valid?(resource) ]).to eq([ true, false ])
   end
 
   it "contracts the idempotency header value" do

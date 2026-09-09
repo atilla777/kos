@@ -7,7 +7,7 @@ status: active
 
 ## Repository Scope
 
-One central KOS installation may serve multiple Git repositories. Every repository-owned record and operation is scoped by immutable `repository_id`. The API resolves and authorizes that scope before mutation and never trusts a supplied filesystem path as the sole proof of identity. [ADR-0001](../decisions/0001-central-rest-api.md) owns the architecture rationale.
+One central KOS installation may serve multiple Git repositories. Every repository-owned record and operation is scoped by immutable `repository_id`. The API resolves and authorizes that scope before mutation and never trusts a supplied filesystem path as the sole proof of identity. Registration independently verifies the canonical Git common directory and trusted publication settings and is defined by [Central Persistence](central-persistence.md). [ADR-0001](../decisions/0001-central-rest-api.md) owns the multi-repository architecture rationale.
 
 ## Task Isolation
 

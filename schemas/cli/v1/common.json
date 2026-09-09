@@ -10,6 +10,9 @@
     "git_oid": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" },
     "repository_path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$" },
+    "absolute_path": { "type": "string", "minLength": 2, "maxLength": 4096, "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000]+$" },
+    "remote_url": { "type": "string", "format": "uri", "maxLength": 4096, "pattern": "^(?:https?|ssh|git|file)://(?![^/?#]*:[^/?#]*@)[^?#]+$" },
+    "base_ref": { "type": "string", "pattern": "^refs/heads/[^ ]+$" },
     "idempotency_key": { "type": "string", "minLength": 8, "maxLength": 255, "pattern": "^[A-Za-z0-9._:-]+$" },
     "preconditions": {
       "type": "object",

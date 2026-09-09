@@ -19,7 +19,7 @@ The normative machine schemas are:
 | --- | --- |
 | `schemas/cli/v1/common.json` | Identifiers, digests, paths, and mutation preconditions |
 | `schemas/cli/v1/envelopes.json` | Success and failure envelopes and stable errors |
-| `schemas/cli/v1/resources.json` | Task type, workflow, task, attempt, and worktree reservation resources |
+| `schemas/cli/v1/resources.json` | Repository, task type, workflow, task, attempt, and worktree reservation resources |
 | `schemas/cli/v1/artifacts.json` | Immutable artifact inputs and registered artifacts |
 | `schemas/cli/v1/workflow.json` | Workflow-step context and result manifests |
 | `schemas/cli/v1/commands.json` | Command requests, results, and command-specific payloads |
@@ -27,17 +27,19 @@ The normative machine schemas are:
 
 ## CLI Transport
 
-The stable machine invocation is:
+The stable repository-scoped machine invocation is:
 
 ```text
 kos <resource> <operation> --repository <repository-id> --json [command options]
 ```
 
+The sole unscoped command is `kos repository register --input <path|-> --idempotency-key <key> --json`. It creates repository scope and therefore neither accepts `--repository` nor carries `repository_id` in its request. It remains authenticated and uses the same JSON-only mutation transport.
+
 Read options form the logical command `body` defined in `commands.json`. A mutation takes `--input <path|->`, where the file or stdin contains only its command-specific `body`, and requires `--idempotency-key <key>`. The CLI validates input, then forms the complete versioned command request before sending it. A key is 8 to 255 ASCII letters, digits, `.`, `_`, `:`, or `-`. Secrets are never accepted in an input document.
 
 The API base URL comes from `KOS_API_URL` and defaults to `http://127.0.0.1:3000`. The bearer token comes only from `KOS_API_TOKEN`. Every API request except `GET /up` sends `Authorization: Bearer <token>` and `Accept: application/json`; requests with a JSON body also send `Content-Type: application/json`. Mutation requests send the CLI key as `Idempotency-Key`. The key is not duplicated in the JSON payload.
 
-Every scoped endpoint begins `/api/v1/repositories/{repository_id}`. The CLI includes the same immutable `repository_id` in its logical command request; for a mutation, the API body carries that full request and the API rejects a path/body mismatch as `malformed_input`. A filesystem path is never accepted as repository identity.
+Every scoped endpoint begins `/api/v1/repositories/{repository_id}`. The CLI includes the same immutable `repository_id` in its logical command request; for a mutation, the API body carries that full request and the API rejects a path/body mismatch as `malformed_input`. A filesystem path is never accepted as repository identity. The authenticated registration endpoint is the explicit exception at `POST /api/v1/repositories`; the server verifies its canonical Git common directory and trust settings rather than treating the submitted path as identity proof.
 
 Read commands map their logical body fields to the listed path and query parameters and do not send a GET body. List cursors are opaque, scoped to the repository and command filters, and limited to 255 characters. `limit` is required and ranges from 1 through 100. A response omits `next_cursor` when no next page exists.
 
@@ -47,10 +49,11 @@ The default request timeout is 30 seconds and may be changed with `KOS_API_TIMEO
 
 ## Command Catalog
 
-All commands require `--repository <repository-id> --json`. Read arguments shown below are additional CLI options. Every mutation instead requires `--input <path|-> --idempotency-key <key>` and obtains path identifiers from the validated input body. Every successful command exits `0`; the command catalog records this common success status as `x-success-cli-exit`.
+All commands except `repository.register` require `--repository <repository-id> --json`. Read arguments shown below are additional CLI options. Every mutation requires `--input <path|-> --idempotency-key <key>` and obtains path identifiers from the validated input body. Every successful command exits `0`; the command catalog records this common success status as `x-success-cli-exit`.
 
 | Identifier | CLI syntax | HTTP binding | Success |
 | --- | --- | --- | --- |
+| `repository.register` | `kos repository register` | `POST /api/v1/repositories` | `200` repository |
 | `task_type.list` | `kos task-type list --limit N [--cursor C]` | `GET /task-types?limit=N&cursor=C` | `200` task-type page |
 | `workflow.list` | `kos workflow list --limit N [--cursor C]` | `GET /workflows?limit=N&cursor=C` | `200` workflow page |
 | `workflow.get` | `kos workflow get --workflow ID --version VERSION` | `GET /workflows/{workflow_id}/versions/{version}` | `200` workflow |
@@ -84,6 +87,7 @@ The path values are taken from their same-named body fields or leased preconditi
 
 | Commands | I | L | A | F |
 | --- | --- | --- | --- | --- |
+| `repository.register` | yes | no | no | no |
 | `task.create` | yes | no | no | no |
 | `attempt.claim` | yes | yes | no | no |
 | `step.context` | yes | yes | yes | yes |
@@ -95,11 +99,13 @@ The path values are taken from their same-named body fields or leased preconditi
 
 Claim checks the task's expected lock version before creating an attempt and fencing token. Attempt reconciliation is available only after ownership has expired or the attempt is already interrupted; it identifies that attempt but has no live fencing token and cannot itself assert that an external effect succeeded. All mutations owned by a live attempt reject a missing, expired, or stale lease before changing state.
 
-The server scopes an idempotency record by repository and command identifier. Its request fingerprint is SHA-256 over the UTF-8 sequence `command`, newline, `repository_id`, newline, and the command body serialized with RFC 8785 JSON Canonicalization Scheme. Authorization data, request IDs, and the idempotency key are not fingerprint inputs. Version 1 retains records for the lifetime of the repository registration.
+The server scopes an idempotency record by repository and command identifier. `repository.register` instead uses a global scope because no repository exists yet. Its request fingerprint is SHA-256 over the UTF-8 sequence `command`, newline, scope, newline, and the command body serialized with RFC 8785 JSON Canonicalization Scheme, where scope is the repository UUID for scoped commands and the literal `global` for registration. Authorization data, request IDs, and the idempotency key are not fingerprint inputs. Version 1 retains scoped records for the lifetime of the repository registration and retains registration records for the lifetime of the central state.
 
 A repeat with the same key and fingerprint returns the same semantic data and original HTTP status without repeating work; it may have a new `request_id`. After authentication, repository authorization, command recognition, and request-shape validation, lookup of a completed idempotency record precedes mutable resource preconditions such as lock version, lease, and fencing checks. A completed replay therefore remains available after its original lease expires. Reuse with another fingerprint returns `idempotency_conflict`. An unfinished durable intent returns `idempotency_in_progress`; the caller reads or reconciles the named resource instead of blindly resubmitting the effect.
 
 ## Attempts, Artifacts, And Completion
+
+`repository.register` accepts the canonical absolute Git common directory, trusted remote name, normalized credential-free URL, and full base ref after the human confirmation required by initialization. The API independently verifies the Git directory and observed trust settings. A first registration and a matching repeat both return the same closed repository resource and HTTP `200`; a repeat never updates trust settings. Invalid or mismatched observed Git data returns `repository_registration_invalid`, while a previously registered common directory with different trust settings returns `repository_registration_conflict`. The complete behavior and state ownership are defined by [Central Persistence](central-persistence.md).
 
 Task creation accepts only the title and `quick-fix` task type. The server resolves the current workflow from the repository's authoritative configuration, creates its content-addressed snapshot, and returns the pinned workflow identity, version, and bundle digest on the task. A client cannot select or assert those values.
 
@@ -153,10 +159,10 @@ The stable leaf-code mapping is:
 
 | Category | Codes |
 | --- | --- |
-| `validation` | `malformed_input` (`400`), `unsupported_schema_version` (`400`), `unknown_command` (`400`), `invalid_artifact` (`422`) |
+| `validation` | `malformed_input` (`400`), `unsupported_schema_version` (`400`), `unknown_command` (`400`), `invalid_artifact` (`422`), `repository_registration_invalid` (`422`) |
 | `authentication` | `authentication_required`, `invalid_token` |
 | `authorization` | `forbidden`, `repository_access_denied` |
-| `conflict` | `stale_lock_version`, `invalid_transition`, `idempotency_conflict`, `idempotency_in_progress`, `dependency_unsatisfied`, `base_moved`, `context_unavailable`, `bundle_inconsistent` |
+| `conflict` | `stale_lock_version`, `invalid_transition`, `idempotency_conflict`, `idempotency_in_progress`, `dependency_unsatisfied`, `base_moved`, `context_unavailable`, `bundle_inconsistent`, `repository_registration_conflict` |
 | `lease_lost` | `lease_expired`, `fencing_token_stale` |
 | `not_found` | `task_not_found`, `workflow_not_found`, `attempt_not_found`, `reservation_not_found`, `artifact_not_found`, `publication_not_found` |
 | `transient` | `transport_unavailable` (`503`), `request_timeout` (`504`) |

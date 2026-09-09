@@ -11,6 +11,7 @@ status: active
 - The Rails application may serve multiple Git repositories. Every repository-owned record and operation must be scoped by an immutable repository identifier.
 - The Ruby CLI is the only agent-facing programmatic interface to KOS state. It reads and mutates state through the versioned Rails REST API and must not load Rails models or persistence code.
 - Only Rails persistence code may access SQLite. Agents, skills, the CLI, scripts, and tests outside the persistence boundary must not issue ad hoc SQL or edit the database directly.
+- Only the Rails workflow snapshot adapter may access snapshot storage paths. It materializes verified immutable bundles before a database transaction references them; clients receive no storage paths.
 - Database constraints protect invariants even when application validation is bypassed or concurrent processes race.
 
 ## API Boundary
@@ -41,6 +42,7 @@ status: active
 - A workflow transition, artifact registration, and validation of its contract must be one database transaction.
 - External side effects are not transactional with SQLite. Persist an intent before the effect and reconcile observed state after interruption or an unknown result.
 - Every mutating CLI command and corresponding API operation must be idempotent. Scope an idempotency key to the command and repository, store a request fingerprint with it, reject reuse with a different payload, and retain either its final result or a durable in-progress intent for reconciliation.
+- An operation that creates repository scope uses an explicitly global command idempotency scope; it never invents a repository identifier solely to satisfy scoping.
 - Use optimistic locking for changed records and a lease with fencing token to own a workflow attempt before an external side effect. Check ownership atomically before recording each effect; use effect-specific preconditions, such as an expected remote OID for push, to make a stale attempt fail safely where the external system cannot enforce the token.
 - Use database-enforced uniqueness for public task numbers, idempotency records, active worktree reservations, and other uniqueness invariants.
 - Enable SQLite foreign keys and WAL, choose an explicit durable synchronous policy and busy timeout, and keep write transactions short. Handle contention only as a bounded transient retry with the original idempotency key; do not retry validation, conflict, or lost-lease failures as if they were transport errors.

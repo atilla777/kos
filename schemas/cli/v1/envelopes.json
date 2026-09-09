@@ -7,11 +7,11 @@
     },
     "error_code": {
       "enum": [
-        "malformed_input", "unsupported_schema_version", "unknown_command", "authentication_required", "invalid_token",
+        "malformed_input", "unsupported_schema_version", "unknown_command", "repository_registration_invalid", "authentication_required", "invalid_token",
         "forbidden", "repository_access_denied", "stale_lock_version", "invalid_transition", "idempotency_conflict", "idempotency_in_progress",
         "invalid_artifact", "dependency_unsatisfied", "base_moved", "context_unavailable", "bundle_inconsistent", "lease_expired", "fencing_token_stale",
         "task_not_found", "workflow_not_found", "attempt_not_found", "reservation_not_found", "artifact_not_found",
-        "publication_not_found", "transport_unavailable",
+        "publication_not_found", "repository_registration_conflict", "transport_unavailable",
         "request_timeout", "internal_error"
       ]
     },
@@ -41,10 +41,10 @@
         },
         {
           "oneOf": [
-            { "properties": { "category": { "const": "validation" }, "code": { "enum": ["malformed_input", "unsupported_schema_version", "unknown_command", "invalid_artifact"] } } },
+            { "properties": { "category": { "const": "validation" }, "code": { "enum": ["malformed_input", "unsupported_schema_version", "unknown_command", "invalid_artifact", "repository_registration_invalid"] } } },
             { "properties": { "category": { "const": "authentication" }, "code": { "enum": ["authentication_required", "invalid_token"] } } },
             { "properties": { "category": { "const": "authorization" }, "code": { "enum": ["forbidden", "repository_access_denied"] } } },
-            { "properties": { "category": { "const": "conflict" }, "code": { "enum": ["stale_lock_version", "invalid_transition", "idempotency_conflict", "idempotency_in_progress", "dependency_unsatisfied", "base_moved", "context_unavailable", "bundle_inconsistent"] } } },
+            { "properties": { "category": { "const": "conflict" }, "code": { "enum": ["stale_lock_version", "invalid_transition", "idempotency_conflict", "idempotency_in_progress", "dependency_unsatisfied", "base_moved", "context_unavailable", "bundle_inconsistent", "repository_registration_conflict"] } } },
             { "properties": { "category": { "const": "lease_lost" }, "code": { "enum": ["lease_expired", "fencing_token_stale"] } } },
             { "properties": { "category": { "const": "not_found" }, "code": { "enum": ["task_not_found", "workflow_not_found", "attempt_not_found", "reservation_not_found", "artifact_not_found", "publication_not_found"] } } },
             { "properties": { "category": { "const": "transient" }, "code": { "enum": ["transport_unavailable", "request_timeout"] } } },

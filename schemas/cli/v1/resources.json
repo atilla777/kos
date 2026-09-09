@@ -2,6 +2,20 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://kos.local/schemas/cli/v1/resources.json",
   "$defs": {
+    "repository": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "common.json#/$defs/schema_version" },
+        "id": { "$ref": "common.json#/$defs/uuid" },
+        "git_common_dir": { "$ref": "common.json#/$defs/absolute_path" },
+        "trusted_remote": { "$ref": "common.json#/$defs/identifier" },
+        "trusted_remote_url": { "$ref": "common.json#/$defs/remote_url" },
+        "base_ref": { "$ref": "common.json#/$defs/base_ref" },
+        "registered_at": { "$ref": "common.json#/$defs/timestamp" }
+      },
+      "required": ["schema_version", "id", "git_common_dir", "trusted_remote", "trusted_remote_url", "base_ref", "registered_at"],
+      "additionalProperties": false
+    },
     "task_type": {
       "type": "object",
       "properties": {
@@ -155,7 +169,7 @@
         "current_owner_attempt_id": { "$ref": "common.json#/$defs/uuid" },
         "candidate_sha": { "$ref": "common.json#/$defs/git_oid" },
         "remote": { "$ref": "common.json#/$defs/identifier" },
-        "base_ref": { "type": "string", "pattern": "^refs/heads/[^ ]+$" },
+        "base_ref": { "$ref": "common.json#/$defs/base_ref" },
         "expected_remote_oid": { "$ref": "common.json#/$defs/git_oid" },
         "state": { "enum": ["prepared", "reconciled", "superseded", "completed"] },
         "observed_remote_tip": { "$ref": "common.json#/$defs/git_oid" },

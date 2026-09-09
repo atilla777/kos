@@ -4,7 +4,7 @@
   "$defs": {
     "command_identifier": {
       "enum": [
-        "task_type.list", "workflow.list", "workflow.get", "task.get", "attempt.get", "step.context", "worktree.get", "artifact.list", "publication.get", "task.create", "attempt.claim", "attempt.renew",
+        "repository.register", "task_type.list", "workflow.list", "workflow.get", "task.get", "attempt.get", "step.context", "worktree.get", "artifact.list", "publication.get", "task.create", "attempt.claim", "attempt.renew",
         "attempt.fail", "attempt.needs_human", "attempt.reconcile", "worktree.reserve", "worktree.confirm",
         "worktree.reconcile", "worktree.release", "artifact.register", "step.complete", "publication.prepare",
         "publication.reconcile", "publication.complete"
@@ -20,6 +20,27 @@
       "required": ["schema_version", "command", "repository_id", "body"]
     },
     "empty_body": { "type": "object", "additionalProperties": false },
+    "repository_register_body": {
+      "type": "object",
+      "properties": {
+        "git_common_dir": { "$ref": "common.json#/$defs/absolute_path" },
+        "trusted_remote": { "$ref": "common.json#/$defs/identifier" },
+        "trusted_remote_url": { "$ref": "common.json#/$defs/remote_url" },
+        "base_ref": { "$ref": "common.json#/$defs/base_ref" }
+      },
+      "required": ["git_common_dir", "trusted_remote", "trusted_remote_url", "base_ref"],
+      "additionalProperties": false
+    },
+    "repository_registration_request": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "common.json#/$defs/schema_version" },
+        "command": { "const": "repository.register" },
+        "body": { "$ref": "#/$defs/repository_register_body" }
+      },
+      "required": ["schema_version", "command", "body"],
+      "additionalProperties": false
+    },
     "task_locator": { "type": "object", "properties": { "task_number": { "$ref": "common.json#/$defs/task_number" } }, "required": ["task_number"], "additionalProperties": false },
     "attempt_locator": { "type": "object", "properties": { "attempt_id": { "$ref": "common.json#/$defs/uuid" } }, "required": ["attempt_id"], "additionalProperties": false },
     "reservation_locator": { "type": "object", "properties": { "reservation_id": { "$ref": "common.json#/$defs/uuid" } }, "required": ["reservation_id"], "additionalProperties": false },
@@ -81,11 +102,11 @@
     "worktree_observation_body": { "type": "object", "properties": { "reservation_id": { "$ref": "common.json#/$defs/uuid" }, "observed_state": { "enum": ["absent", "clean", "dirty", "mismatched"] }, "head_sha": { "$ref": "common.json#/$defs/git_oid" }, "evidence_digest": { "$ref": "common.json#/$defs/digest" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["reservation_id", "observed_state", "evidence_digest", "preconditions"], "additionalProperties": false },
     "artifact_register_body": { "type": "object", "properties": { "task_number": { "$ref": "common.json#/$defs/task_number" }, "artifact": { "$ref": "artifacts.json#/$defs/artifact_input" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["task_number", "artifact", "preconditions"], "additionalProperties": false },
     "step_complete_body": { "type": "object", "properties": { "task_number": { "$ref": "common.json#/$defs/task_number" }, "to_status": { "$ref": "common.json#/$defs/identifier" }, "result_manifest": { "$ref": "#/$defs/successful_manifest" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["task_number", "to_status", "result_manifest", "preconditions"], "additionalProperties": false },
-    "publication_prepare_body": { "type": "object", "properties": { "task_number": { "$ref": "common.json#/$defs/task_number" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "remote": { "$ref": "common.json#/$defs/identifier" }, "base_ref": { "type": "string", "pattern": "^refs/heads/[^ ]+$" }, "expected_remote_oid": { "$ref": "common.json#/$defs/git_oid" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["task_number", "candidate_sha", "remote", "base_ref", "expected_remote_oid", "preconditions"], "additionalProperties": false },
+    "publication_prepare_body": { "type": "object", "properties": { "task_number": { "$ref": "common.json#/$defs/task_number" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "remote": { "$ref": "common.json#/$defs/identifier" }, "base_ref": { "$ref": "common.json#/$defs/base_ref" }, "expected_remote_oid": { "$ref": "common.json#/$defs/git_oid" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["task_number", "candidate_sha", "remote", "base_ref", "expected_remote_oid", "preconditions"], "additionalProperties": false },
     "publication_reconcile_body": { "type": "object", "properties": { "publication_id": { "$ref": "common.json#/$defs/uuid" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "observed_remote_tip": { "$ref": "common.json#/$defs/git_oid" }, "candidate_reachable": { "type": "boolean" }, "observed_at": { "$ref": "common.json#/$defs/timestamp" }, "evidence_digest": { "$ref": "common.json#/$defs/digest" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["publication_id", "candidate_sha", "observed_remote_tip", "candidate_reachable", "observed_at", "evidence_digest", "preconditions"], "additionalProperties": false },
     "publication_complete_manifest": { "allOf": [{ "$ref": "#/$defs/successful_manifest" }, { "properties": { "artifacts": { "contains": { "properties": { "type": { "const": "publication" }, "state": { "const": "published" }, "metadata": { "$ref": "artifacts.json#/$defs/publication_metadata" } }, "required": ["type", "state", "metadata"] }, "minContains": 1 } } }] },
     "publication_complete_body": { "type": "object", "properties": { "publication_id": { "$ref": "common.json#/$defs/uuid" }, "task_number": { "$ref": "common.json#/$defs/task_number" }, "to_status": { "const": "completed" }, "result_manifest": { "$ref": "#/$defs/publication_complete_manifest" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["publication_id", "task_number", "to_status", "result_manifest", "preconditions"], "additionalProperties": false },
-    "request": { "oneOf": [{ "$ref": "#/$defs/read_request" }, { "$ref": "#/$defs/mutation_request" }] },
+    "request": { "oneOf": [{ "$ref": "#/$defs/repository_registration_request" }, { "$ref": "#/$defs/read_request" }, { "$ref": "#/$defs/mutation_request" }] },
     "task_types_data": { "type": "object", "properties": { "task_types": { "type": "array", "items": { "$ref": "resources.json#/$defs/task_type" } }, "next_cursor": { "type": "string", "minLength": 1, "maxLength": 255 } }, "required": ["task_types"], "additionalProperties": false },
     "workflows_data": { "type": "object", "properties": { "workflows": { "type": "array", "items": { "$ref": "resources.json#/$defs/workflow" } }, "next_cursor": { "type": "string", "minLength": 1, "maxLength": 255 } }, "required": ["workflows"], "additionalProperties": false },
     "artifacts_data": { "type": "object", "properties": { "artifacts": { "type": "array", "items": { "$ref": "artifacts.json#/$defs/artifact" } }, "next_cursor": { "type": "string", "minLength": 1, "maxLength": 255 } }, "required": ["artifacts"], "additionalProperties": false },
@@ -96,6 +117,7 @@
         { "$ref": "envelopes.json#/$defs/success" },
         {
           "oneOf": [
+            { "properties": { "command": { "const": "repository.register" }, "data": { "$ref": "resources.json#/$defs/repository" } } },
             { "properties": { "command": { "const": "task_type.list" }, "data": { "$ref": "#/$defs/task_types_data" } } },
             { "properties": { "command": { "const": "workflow.list" }, "data": { "$ref": "#/$defs/workflows_data" } } },
             { "properties": { "command": { "const": "workflow.get" }, "data": { "$ref": "resources.json#/$defs/workflow" } } },

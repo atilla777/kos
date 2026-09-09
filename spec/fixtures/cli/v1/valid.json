@@ -1,5 +1,34 @@
 [
   {
+    "name": "unscoped repository registration request",
+    "schema": "commands.json",
+    "definition": "request",
+    "instance": {
+      "schema_version": "1",
+      "command": "repository.register",
+      "body": {
+        "git_common_dir": "/home/user/project/.git",
+        "trusted_remote": "origin",
+        "trusted_remote_url": "ssh://git@example.com/team/project.git",
+        "base_ref": "refs/heads/main"
+      }
+    }
+  },
+  {
+    "name": "verified repository resource",
+    "schema": "resources.json",
+    "definition": "repository",
+    "instance": {
+      "schema_version": "1",
+      "id": "33333333-3333-4333-8333-333333333333",
+      "git_common_dir": "/home/user/project/.git",
+      "trusted_remote": "origin",
+      "trusted_remote_url": "ssh://git@example.com/team/project.git",
+      "base_ref": "refs/heads/main",
+      "registered_at": "2026-09-09T12:00:00Z"
+    }
+  },
+  {
     "name": "transient error envelope",
     "schema": "envelopes.json",
     "definition": "failure",

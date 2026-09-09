@@ -9,12 +9,19 @@
         "identifier": { "$ref": "commands.json#/$defs/command_identifier" },
         "cli_suffix": { "type": "string", "minLength": 1 },
         "http_method": { "enum": ["GET", "POST"] },
-        "http_path": { "type": "string", "pattern": "^/api/v1/repositories/\\{repository_id\\}/" },
+        "http_path": { "type": "string", "pattern": "^/api/v1/repositories(?:$|/\\{repository_id\\}/)" },
         "success_status": { "enum": [200, 201] },
         "mutation": { "type": "boolean" },
         "required_preconditions": { "type": "array", "items": { "enum": ["idempotency", "lock", "attempt", "fencing"] }, "uniqueItems": true }
       },
       "required": ["identifier", "cli_suffix", "http_method", "http_path", "success_status", "mutation", "required_preconditions"],
+      "allOf": [
+        {
+          "if": { "properties": { "identifier": { "const": "repository.register" } }, "required": ["identifier"] },
+          "then": { "properties": { "http_path": { "const": "/api/v1/repositories" } } },
+          "else": { "properties": { "http_path": { "pattern": "^/api/v1/repositories/\\{repository_id\\}/" } } }
+        }
+      ],
       "additionalProperties": false
     },
     "error_entry": {
@@ -31,6 +38,7 @@
     }
   },
   "x-command-catalog": [
+    { "identifier": "repository.register", "cli_suffix": "repository register", "http_method": "POST", "http_path": "/api/v1/repositories", "success_status": 200, "mutation": true, "required_preconditions": ["idempotency"] },
     { "identifier": "task_type.list", "cli_suffix": "task-type list", "http_method": "GET", "http_path": "/api/v1/repositories/{repository_id}/task-types", "success_status": 200, "mutation": false, "required_preconditions": [] },
     { "identifier": "workflow.list", "cli_suffix": "workflow list", "http_method": "GET", "http_path": "/api/v1/repositories/{repository_id}/workflows", "success_status": 200, "mutation": false, "required_preconditions": [] },
     { "identifier": "workflow.get", "cli_suffix": "workflow get", "http_method": "GET", "http_path": "/api/v1/repositories/{repository_id}/workflows/{workflow_id}/versions/{version}", "success_status": 200, "mutation": false, "required_preconditions": [] },
@@ -61,6 +69,7 @@
     { "code": "unsupported_schema_version", "category": "validation", "http_status": 400, "cli_exit": 2, "retryable": false },
     { "code": "unknown_command", "category": "validation", "http_status": 400, "cli_exit": 2, "retryable": false },
     { "code": "invalid_artifact", "category": "validation", "http_status": 422, "cli_exit": 2, "retryable": false },
+    { "code": "repository_registration_invalid", "category": "validation", "http_status": 422, "cli_exit": 2, "retryable": false },
     { "code": "authentication_required", "category": "authentication", "http_status": 401, "cli_exit": 3, "retryable": false },
     { "code": "invalid_token", "category": "authentication", "http_status": 401, "cli_exit": 3, "retryable": false },
     { "code": "forbidden", "category": "authorization", "http_status": 403, "cli_exit": 4, "retryable": false },
@@ -79,6 +88,7 @@
     { "code": "base_moved", "category": "conflict", "http_status": 409, "cli_exit": 6, "retryable": false },
     { "code": "context_unavailable", "category": "conflict", "http_status": 409, "cli_exit": 6, "retryable": false },
     { "code": "bundle_inconsistent", "category": "conflict", "http_status": 409, "cli_exit": 6, "retryable": false },
+    { "code": "repository_registration_conflict", "category": "conflict", "http_status": 409, "cli_exit": 6, "retryable": false },
     { "code": "lease_expired", "category": "lease_lost", "http_status": 409, "cli_exit": 7, "retryable": false },
     { "code": "fencing_token_stale", "category": "lease_lost", "http_status": 409, "cli_exit": 7, "retryable": false },
     { "code": "transport_unavailable", "category": "transient", "http_status": 503, "cli_exit": 8, "retryable": true },

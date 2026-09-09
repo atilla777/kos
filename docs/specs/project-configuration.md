@@ -57,7 +57,7 @@ The generated manifest has exactly `schema_version`, `workflow_id`, `workflow_ve
 
 The bundle digest is `sha256:` followed by SHA-256 over the UTF-8 bytes of the RFC 8785 JSON Canonicalization Scheme serialization of the complete manifest. The manifest has no `bundle_digest` field, so the digest input has no recursive omission rule. The task stores the resulting digest separately.
 
-The Rails application reads execution members only from the immutable snapshot, never `.kos/` from the current task worktree. It verifies the bundle and selected members and returns the complete instruction and referenced materials through the CLI's attempt-bound step-context operation. Orchestrators, subagents, and runtime skills do not receive snapshot storage paths or read snapshot files directly. Project instructions and capability skills are trusted project code, but the orchestrator invokes only capabilities allowed by the pinned bundle. Changes to `.kos/` do not affect an already started task.
+The Rails application reads execution members only from the immutable snapshot, never `.kos/` from the current task worktree. It verifies the bundle and selected members and returns the complete instruction and referenced materials through the CLI's attempt-bound step-context operation. Orchestrators, subagents, and runtime skills do not receive snapshot storage paths or read snapshot files directly. Snapshot placement and persistence ownership are defined by [Central Persistence](central-persistence.md). Project instructions and capability skills are trusted project code, but the orchestrator invokes only capabilities allowed by the pinned bundle. Changes to `.kos/` do not affect an already started task.
 
 ## Version 1 Documents And Validation
 
