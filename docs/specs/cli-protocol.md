@@ -11,7 +11,7 @@ The Ruby CLI is the only agent-facing interface to KOS state. It calls the Rails
 
 Protocol version 1 uses JSON Schema draft 2020-12. Every JSON document contains `"schema_version": "1"`; every schema has a unique `$id` under `https://kos.local/schemas/cli/v1/`; and every `$ref` resolves within `schemas/cli/v1/` without network access. Object properties use `snake_case`, optional values are omitted rather than represented as `null`, timestamps are RFC 3339 UTC date-times, SHA-256 digests use `sha256:<lowercase-hex>`, and Git object IDs are full 40-character lowercase SHA-1 values in this version.
 
-Objects are closed unless their schema explicitly says otherwise. A published schema is immutable. Any change to an existing document shape, enum, command, or meaning requires a new protocol major version and API namespace; a server may support old and new versions concurrently. A new schema that no version 1 document references may be added without changing version 1. The API rejects a version it cannot process with `unsupported_schema_version`; it never silently coerces versions.
+Objects are closed unless their schema explicitly says otherwise. Until a protocol version has an implemented release, its checked-in schemas are a draft and may be corrected when contract verification finds a gap. After the first implemented release, every schema in that version is immutable. Any later change to an existing document shape, enum, command, or meaning requires a new protocol major version and API namespace; a server may support old and new versions concurrently. A new schema that no released document references may be added without changing that version. The API rejects a version it cannot process with `unsupported_schema_version`; it never silently coerces versions.
 
 The normative machine schemas are:
 
@@ -41,6 +41,8 @@ Every scoped endpoint begins `/api/v1/repositories/{repository_id}`. The CLI inc
 
 Read commands map their logical body fields to the listed path and query parameters and do not send a GET body. List cursors are opaque, scoped to the repository and command filters, and limited to 255 characters. `limit` is required and ranges from 1 through 100. A response omits `next_cursor` when no next page exists.
 
+`step.context` is an idempotent mutation that requires lock, attempt, and fencing preconditions. The server validates repository scope, current task status, active lease ownership, and fencing token before atomically storing and returning executable project instructions.
+
 The default request timeout is 30 seconds and may be changed with `KOS_API_TIMEOUT_SECONDS` to a positive integer. The CLI makes at most three total attempts for a read or an idempotent mutation, reusing the same idempotency key. It retries only a `transient` failure or a connection failure that it represents as `transport_unavailable`. Before attempts two and three it uses full jitter in `[0, 250ms]` and `[0, 500ms]`; a larger server `retry_after_seconds` replaces that range, subject to the request timeout. It never retries `internal` or any non-transient category automatically.
 
 ## Command Catalog
@@ -54,6 +56,7 @@ All commands require `--repository <repository-id> --json`. Read arguments shown
 | `workflow.get` | `kos workflow get --workflow ID --version VERSION` | `GET /workflows/{workflow_id}/versions/{version}` | `200` workflow |
 | `task.get` | `kos task get --task TASK-NUMBER` | `GET /tasks/{task_number}` | `200` task |
 | `attempt.get` | `kos attempt get --attempt UUID` | `GET /attempts/{attempt_id}` | `200` attempt |
+| `step.context` | `kos step context` | `POST /attempts/{attempt_id}/step-context` | `200` workflow context |
 | `worktree.get` | `kos worktree get --reservation UUID` | `GET /worktree-reservations/{reservation_id}` | `200` reservation |
 | `artifact.list` | `kos artifact list --task TASK-NUMBER --limit N [--cursor C]` | `GET /tasks/{task_number}/artifacts?limit=N&cursor=C` | `200` artifact page |
 | `publication.get` | `kos publication get --publication UUID` | `GET /publications/{publication_id}` | `200` publication |
@@ -83,6 +86,7 @@ The path values are taken from their same-named body fields or leased preconditi
 | --- | --- | --- | --- | --- |
 | `task.create` | yes | no | no | no |
 | `attempt.claim` | yes | yes | no | no |
+| `step.context` | yes | yes | yes | yes |
 | `attempt.reconcile` | yes | yes | yes | no |
 | `attempt.renew`, `attempt.fail`, `attempt.needs_human` | yes | yes | yes | yes |
 | `worktree.reserve`, `worktree.confirm`, `worktree.reconcile`, `worktree.release` | yes | yes | yes | yes |
@@ -93,13 +97,21 @@ Claim checks the task's expected lock version before creating an attempt and fen
 
 The server scopes an idempotency record by repository and command identifier. Its request fingerprint is SHA-256 over the UTF-8 sequence `command`, newline, `repository_id`, newline, and the command body serialized with RFC 8785 JSON Canonicalization Scheme. Authorization data, request IDs, and the idempotency key are not fingerprint inputs. Version 1 retains records for the lifetime of the repository registration.
 
-A repeat with the same key and fingerprint returns the same semantic data and original HTTP status without repeating work; it may have a new `request_id`. Reuse with another fingerprint returns `idempotency_conflict`. An unfinished durable intent returns `idempotency_in_progress`; the caller reads or reconciles the named resource instead of blindly resubmitting the effect.
+A repeat with the same key and fingerprint returns the same semantic data and original HTTP status without repeating work; it may have a new `request_id`. After authentication, repository authorization, command recognition, and request-shape validation, lookup of a completed idempotency record precedes mutable resource preconditions such as lock version, lease, and fencing checks. A completed replay therefore remains available after its original lease expires. Reuse with another fingerprint returns `idempotency_conflict`. An unfinished durable intent returns `idempotency_in_progress`; the caller reads or reconciles the named resource instead of blindly resubmitting the effect.
 
 ## Attempts, Artifacts, And Completion
 
 Task creation accepts only the title and `quick-fix` task type. The server resolves the current workflow from the repository's authoritative configuration, creates its content-addressed snapshot, and returns the pinned workflow identity, version, and bundle digest on the task. A client cannot select or assert those values.
 
-`attempt.fail` accepts only a `failed` result manifest. `attempt.needs_human` accepts only a `needs_human` manifest and releases the lease. Neither command advances workflow status. `step.complete` accepts a `succeeded` manifest and atomically verifies the lease, lock version, transition, dependencies, artifact contracts, candidate generation, and distinct review attempt before registering the supplied artifacts, marking the attempt succeeded, and advancing workflow status.
+After claim and confirmation of any required worktree, `step.context` constructs the complete executable context from the task, active attempt, current status, and pinned snapshot. In one transaction it stores the immutable context and its digest on the attempt and returns the exact UTF-8 Markdown instruction, all directly referenced UTF-8 templates or materials, their bundle-relative paths, media types, and content digests together with the server-derived capability allowlist and artifact requirements. It never returns a snapshot root, storage path, or caller-selected bundle member. Members are sorted by path and paths are unique. Limits are measured over UTF-8 bytes, not Unicode characters: an instruction is at most 128 KiB, each material is at most 1 MiB, and all instruction and material content together is at most 4 MiB. The workflow schema exposes these application-level constraints as `x-*` contract annotations because JSON Schema `maxLength` counts characters rather than bytes and cannot express ordering or uniqueness by one object property.
+
+An instruction or material digest is SHA-256 over the exact stored file bytes, without newline, Unicode, or whitespace normalization, represented as `sha256:<lowercase-hex>`. Every returned member must be valid UTF-8, and its JSON `content` re-encoded as UTF-8 must reproduce those bytes. `input_context_digest` is SHA-256 over the RFC 8785 canonical JSON serialization of the complete `workflow.json#/$defs/context` object with only `input_context_digest` omitted. This binds instruction content, materials, capabilities, artifact requirements, worktree, and all other context fields to the result manifest without a circular digest input.
+
+A newly claimed attempt omits `input_context_digest` until `step.context` freezes its input. Repeating `step.context` with the same idempotency key returns the original response; a later call for the same active attempt returns the same frozen context rather than rebuilding it from changed repository or task state. `attempt.fail`, `attempt.needs_human`, `step.complete`, and `publication.complete` compare the manifest digest with the stored digest. A status requiring a worktree cannot freeze executable context until its reservation is confirmed.
+
+`step.context` returns `context_unavailable` when the attempt is not active for the task's current status or a required worktree is not confirmed. Normal lease and fencing failures retain `lease_expired` and `fencing_token_stale`. Missing resources retain their resource-specific `not_found` codes. A missing member, digest mismatch, invalid UTF-8 member, path escape, duplicate material path, unsorted material list, or content-size violation in the pinned snapshot returns `bundle_inconsistent`; KOS does not return partially verified instructions.
+
+`attempt.fail` accepts only a `failed` result manifest. `attempt.needs_human` accepts only a `needs_human` manifest and releases the lease. Neither command advances workflow status. No result can be submitted before context is frozen. `step.complete` accepts a `succeeded` manifest and atomically verifies the stored context digest, lease, lock version, transition, dependencies, artifact contracts, candidate generation, and distinct review attempt before registering the supplied artifacts, marking the attempt succeeded, and advancing workflow status.
 
 Artifact type and state pairs are closed in version 1: `document` and `candidate` use `produced`; `test` uses `passed` or `failed`; `review` uses `approved` or `changes_requested`; and `publication` uses `published`. Candidate-specific evidence must name the exact candidate SHA. A standalone `artifact.register` records only a workflow-declared durable non-transition artifact; it never satisfies a transition retroactively. Artifacts required by a successful transition must be supplied to `step.complete` or `publication.complete`.
 
@@ -144,7 +156,7 @@ The stable leaf-code mapping is:
 | `validation` | `malformed_input` (`400`), `unsupported_schema_version` (`400`), `unknown_command` (`400`), `invalid_artifact` (`422`) |
 | `authentication` | `authentication_required`, `invalid_token` |
 | `authorization` | `forbidden`, `repository_access_denied` |
-| `conflict` | `stale_lock_version`, `invalid_transition`, `idempotency_conflict`, `idempotency_in_progress`, `dependency_unsatisfied`, `base_moved` |
+| `conflict` | `stale_lock_version`, `invalid_transition`, `idempotency_conflict`, `idempotency_in_progress`, `dependency_unsatisfied`, `base_moved`, `context_unavailable`, `bundle_inconsistent` |
 | `lease_lost` | `lease_expired`, `fencing_token_stale` |
 | `not_found` | `task_not_found`, `workflow_not_found`, `attempt_not_found`, `reservation_not_found`, `artifact_not_found`, `publication_not_found` |
 | `transient` | `transport_unavailable` (`503`), `request_timeout` (`504`) |

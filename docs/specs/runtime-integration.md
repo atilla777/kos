@@ -46,6 +46,6 @@ All CLI commands are non-interactive and support `--json`. The CLI calls the ver
 
 The protocol exposes stable machine-readable error categories including validation, authentication, authorization, conflicts, lost leases, missing resources, transient failures, and internal failures. Mutating commands carry an idempotency key; existing-task mutations carry expected lock version, and operations owned by an active attempt carry its fencing token. Only transient errors receive bounded retry with jitter. After validation, conflict, or lost-lease errors, the agent rereads state and does not blindly retry the business operation.
 
-The minimum mutation capability includes task creation, attempt claim/renew/reconcile, worktree reservation/confirmation, artifact registration, and atomic step completion. Step completion verifies lease, expected version, dependencies, and artifact contract, records artifacts, and advances workflow status in one transaction.
+The minimum capability includes task creation, attempt claim/renew/reconcile, idempotent finalization of a complete attempt-bound step context, worktree reservation/confirmation, artifact registration, and atomic step completion. Step completion verifies the stored input-context digest, lease, expected version, dependencies, and artifact contract, records artifacts, and advances workflow status in one transaction. Runtime adapters never require direct access to KOS snapshot storage.
 
 Detailed runtime adapter behavior and installation UX belong to later runtime-integration work.

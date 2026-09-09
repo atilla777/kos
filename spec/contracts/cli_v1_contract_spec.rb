@@ -1,5 +1,6 @@
 require "json"
 require "json_schemer"
+require "digest"
 require "spec_helper"
 
 module CliV1Contract
@@ -9,7 +10,7 @@ module CliV1Contract
     [ File.basename(path), JSON.parse(File.read(path)) ]
   end
   REGISTRY = SCHEMAS.values.to_h { |schema| [ URI(schema.fetch("$id")), schema ] }
-  EXPECTED_COMMANDS = %w[task_type.list workflow.list workflow.get task.get attempt.get worktree.get artifact.list
+  EXPECTED_COMMANDS = %w[task_type.list workflow.list workflow.get task.get attempt.get step.context worktree.get artifact.list
     publication.get task.create attempt.claim attempt.renew attempt.fail attempt.needs_human attempt.reconcile worktree.reserve
     worktree.confirm worktree.reconcile worktree.release artifact.register step.complete publication.prepare
     publication.reconcile publication.complete]
@@ -49,6 +50,17 @@ module CliV1Contract
   def self.manifest(outcome, artifacts = [])
     { "schema_version" => "1", "attempt_id" => ATTEMPT_ID, "input_context_digest" => DIGEST,
       "outcome" => outcome, "artifacts" => artifacts }
+  end
+
+  def self.canonical_json(value)
+    case value
+    when Hash
+      "{#{value.keys.sort.map { |key| "#{JSON.generate(key)}:#{canonical_json(value.fetch(key))}" }.join(',')}}"
+    when Array
+      "[#{value.map { |item| canonical_json(item) }.join(',')}]"
+    else
+      JSON.generate(value)
+    end
   end
 
   def self.artifact_input(type = "candidate")
@@ -102,7 +114,33 @@ module CliV1Contract
   def self.attempt
     { "schema_version" => "1", "id" => ATTEMPT_ID, "task_id" => TASK_ID, "workflow_status" => "development",
       "owner_id" => "orchestrator-1", "state" => "started", "fencing_token" => 8,
-      "started_at" => "2026-09-09T12:00:00Z", "input_context_digest" => DIGEST }
+      "started_at" => "2026-09-09T12:00:00Z" }
+  end
+
+  def self.terminal_attempt(state)
+    outcome = state == "needs_human" ? "needs_human" : state
+    attempt.merge("state" => state, "completed_at" => "2026-09-09T12:01:00Z",
+      "input_context_digest" => DIGEST, "result_manifest" => manifest(outcome))
+  end
+
+  def self.context
+    instruction_content = "# Development\n\nImplement and test the approved change.\n"
+    material_content = "# Plan\n\nFollow the approved implementation plan.\n"
+    value = { "schema_version" => "1", "task_id" => TASK_ID, "task_number" => "TASK-000123",
+      "attempt_id" => ATTEMPT_ID, "repository_id" => REPOSITORY_ID, "workflow_id" => "quick-fix",
+      "workflow_version" => "1.0.0", "workflow_status" => "development", "bundle_digest" => DIGEST,
+      "instruction" => { "path" => ".kos/workflows/quick-fix/1.0.0/steps/development.md",
+        "media_type" => "text/markdown; charset=utf-8", "content" => instruction_content,
+        "digest" => "sha256:#{Digest::SHA256.hexdigest(instruction_content)}" },
+      "materials" => [ { "path" => ".kos/templates/implementation-plan/1.0.0/template.md",
+        "media_type" => "text/markdown; charset=utf-8", "content" => material_content,
+        "digest" => "sha256:#{Digest::SHA256.hexdigest(material_content)}" } ],
+      "expected_lock_version" => 3, "fencing_token" => 8,
+      "base_ref" => "refs/heads/main", "worktree" => { "reservation_id" => RESERVATION_ID,
+        "path" => "/tmp/task-123", "branch" => "kos/task-TASK-000123", "head_sha" => SHA },
+      "required_artifact_types" => %w[candidate test], "allowed_capabilities" => [ "kos-development" ] }
+    digest = Digest::SHA256.hexdigest(canonical_json(value))
+    value.merge("input_context_digest" => "sha256:#{digest}")
   end
 
   def self.worktree
@@ -140,6 +178,7 @@ module CliV1Contract
       "task_type.list" => { "limit" => 20 }, "workflow.list" => { "limit" => 20 },
       "workflow.get" => { "workflow_id" => "quick-fix", "version" => "1.0.0" },
       "task.get" => { "task_number" => "TASK-000123" }, "attempt.get" => { "attempt_id" => ATTEMPT_ID },
+      "step.context" => { "preconditions" => preconditions },
       "worktree.get" => { "reservation_id" => RESERVATION_ID },
       "artifact.list" => { "task_number" => "TASK-000123", "limit" => 20 },
       "publication.get" => { "publication_id" => PUBLICATION_ID },
@@ -181,14 +220,17 @@ module CliV1Contract
   end
 
   def self.result_data
-    attempt_commands = %w[attempt.get attempt.claim attempt.renew attempt.fail attempt.needs_human attempt.reconcile]
+    attempt_commands = %w[attempt.get attempt.claim attempt.renew attempt.reconcile]
     worktree_commands = %w[worktree.get worktree.reserve worktree.confirm worktree.reconcile worktree.release]
     data = { "task_type.list" => { "task_types" => [ task_type ] }, "workflow.list" => { "workflows" => [ workflow ] },
-      "workflow.get" => workflow, "task.get" => task, "task.create" => task, "artifact.list" => { "artifacts" => [ artifact ] },
+      "workflow.get" => workflow, "task.get" => task, "task.create" => task, "step.context" => context,
+      "artifact.list" => { "artifacts" => [ artifact ] },
       "artifact.register" => artifact, "step.complete" => completion_data, "publication.get" => publication,
       "publication.prepare" => publication, "publication.reconcile" => publication("reconciled"),
       "publication.complete" => { "task" => completed_task, "artifacts" => [ publication_artifact ] } }
     attempt_commands.each { |command| data[command] = attempt }
+    data["attempt.fail"] = terminal_attempt("failed")
+    data["attempt.needs_human"] = terminal_attempt("needs_human")
     worktree_commands.each { |command| data[command] = worktree }
     data
   end
@@ -233,9 +275,78 @@ module CliV1Contract
     schema.ref("#/$defs/requested_effect")
   end
 
+  def self.context_definition
+    schema = JSONSchemer.schema(SCHEMAS.fetch("workflow.json"), ref_resolver: REGISTRY.to_proc)
+    schema.ref("#/$defs/context")
+  end
+
   def self.task_definition
     schema = JSONSchemer.schema(SCHEMAS.fetch("resources.json"), ref_resolver: REGISTRY.to_proc)
     schema.ref("#/$defs/task")
+  end
+
+  def self.attempt_definition
+    schema = JSONSchemer.schema(SCHEMAS.fetch("resources.json"), ref_resolver: REGISTRY.to_proc)
+    schema.ref("#/$defs/attempt")
+  end
+
+  def self.context_constraint_errors(context)
+    instruction = context.fetch("instruction")
+    materials = context.fetch("materials")
+    members = [ instruction, *materials ]
+    errors = []
+    errors << "instruction_size" if instruction.fetch("content").bytesize > 131_072
+    errors << "material_size" if materials.any? { |material| material.fetch("content").bytesize > 1_048_576 }
+    errors << "total_size" if members.sum { |member| member.fetch("content").bytesize } > 4_194_304
+    material_paths = materials.map { |material| material.fetch("path") }
+    paths = [ instruction.fetch("path"), *material_paths ]
+    errors << "material_order" unless material_paths == material_paths.sort
+    errors << "member_paths" unless paths.uniq == paths
+    errors
+  end
+
+  def self.attempt_binding_errors(attempt)
+    manifest = attempt["result_manifest"]
+    return [] unless manifest
+
+    errors = []
+    errors << "attempt_id" unless attempt.fetch("id") == manifest.fetch("attempt_id")
+    errors << "input_context_digest" unless attempt.fetch("input_context_digest") == manifest.fetch("input_context_digest")
+    errors
+  end
+
+  def self.context_annotations
+    workflow = SCHEMAS.fetch("workflow.json").fetch("$defs")
+    { instruction: workflow.dig("instruction", "properties", "content", "x-max-utf8-bytes"),
+      material: workflow.dig("material", "properties", "content", "x-max-utf8-bytes"),
+      total: workflow.dig("context", "x-max-total-member-content-bytes"),
+      unique_members: workflow.dig("context", "x-unique-member-paths"),
+      materials: workflow.dig("context", "properties", "materials").slice("x-sorted-by", "x-unique-by") }
+  end
+
+  def self.context_constraint_examples
+    valid_context = context
+    material = valid_context.fetch("materials").first
+    contexts = {
+      valid: valid_context,
+      duplicate: valid_context.merge("materials" => [ material.merge("content" => "other"), material ]),
+      unsorted: valid_context.merge("materials" => [ material, material.merge("path" => ".kos/templates/a.md") ]),
+      collision: valid_context.merge("materials" => [ material.merge("path" => valid_context.dig("instruction", "path")) ]),
+      oversized: valid_context.merge("materials" => [ material.merge("content" => "é" * 600_000) ])
+    }
+    contexts.transform_values { |value| context_constraint_errors(value) }
+  end
+
+  def self.attempt_binding_contract
+    valid_attempt = terminal_attempt("succeeded")
+    mismatched_id = valid_attempt.merge("result_manifest" => valid_attempt.fetch("result_manifest").merge(
+      "attempt_id" => "88888888-8888-4888-8888-888888888888"
+    ))
+    mismatched_digest = valid_attempt.merge(
+      "input_context_digest" => "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    )
+    { bindings: SCHEMAS.fetch("resources.json").dig("$defs", "attempt", "x-field-equality"),
+      errors: [ valid_attempt, mismatched_id, mismatched_digest ].map { |value| attempt_binding_errors(value) } }
   end
 
   def self.commit_effect
@@ -438,6 +549,87 @@ RSpec.describe CliV1Contract do
     request.fetch("body").fetch("result_manifest")["outcome"] = "failed"
 
     expect(described_class.definition("request")).not_to be_valid(request)
+  end
+
+  it "binds inline instruction and material bytes to their content digests" do
+    members = [ described_class.context.fetch("instruction"), *described_class.context.fetch("materials") ]
+
+    expect(members).to all(satisfy do |member|
+      member.fetch("digest") == "sha256:#{Digest::SHA256.hexdigest(member.fetch('content').encode(Encoding::UTF_8))}"
+    end)
+  end
+
+  it "binds the complete context to its canonical input digest" do
+    context = described_class.context
+    digest = context.fetch("input_context_digest")
+    canonical_input = context.except("input_context_digest")
+
+    expect(digest).to eq("sha256:#{Digest::SHA256.hexdigest(described_class.canonical_json(canonical_input))}")
+  end
+
+  it "uses a canonical input digest in the checked-in workflow context fixture" do
+    fixtures = JSON.parse(File.read(File.join(described_class::FIXTURE_DIRECTORY, "valid.json")))
+    context = fixtures.find { |fixture| fixture.fetch("name") == "workflow context" }.fetch("instance")
+    digest = context.fetch("input_context_digest")
+
+    expect(digest).to eq("sha256:#{Digest::SHA256.hexdigest(described_class.canonical_json(context.except('input_context_digest')))}")
+  end
+
+  it "publishes machine-readable byte and collection constraints" do
+    expect(described_class.context_annotations).to eq(instruction: 131_072, material: 1_048_576, total: 4_194_304,
+      unique_members: true, materials: { "x-sorted-by" => "path", "x-unique-by" => "path" })
+  end
+
+  it "checks representative context collection constraints" do
+    expect(described_class.context_constraint_examples).to eq(
+      valid: [], duplicate: [ "member_paths" ], unsorted: [ "material_order" ],
+      collision: [ "member_paths" ], oversized: [ "material_size" ]
+    )
+  end
+
+  it "requires frozen context and matching results for terminal attempts" do
+    terminal_attempt = described_class.attempt.merge("state" => "succeeded", "completed_at" => "2026-09-09T12:01:00Z",
+      "input_context_digest" => described_class::DIGEST, "result_manifest" => described_class.manifest("succeeded"))
+
+    validity = [ terminal_attempt, terminal_attempt.except("input_context_digest"),
+      terminal_attempt.merge("state" => "failed") ].map { |attempt| described_class.attempt_definition.valid?(attempt) }
+
+    expect(validity).to eq([ true, false, false ])
+  end
+
+  it "publishes and checks terminal attempt evidence bindings" do
+    expect(described_class.attempt_binding_contract).to eq(
+      bindings: [ [ "id", "result_manifest.attempt_id" ],
+        [ "input_context_digest", "result_manifest.input_context_digest" ] ],
+      errors: [ [], [ "attempt_id" ], [ "input_context_digest" ] ]
+    )
+  end
+
+  %w[attempt.fail attempt.needs_human].each do |command|
+    it "rejects a started attempt result for #{command}" do
+      result = described_class.result(command).merge("data" => described_class.attempt)
+
+      expect(described_class.definition("result")).not_to be_valid(result)
+    end
+  end
+
+  it "rejects a submitted result on a started attempt" do
+    started_attempt = described_class.attempt.merge("result_manifest" => described_class.manifest("succeeded"))
+
+    expect(described_class.attempt_definition).not_to be_valid(started_attempt)
+  end
+
+  it "rejects workflow context without complete inline instruction evidence" do
+    context = Marshal.load(Marshal.dump(described_class.context))
+    context.fetch("instruction").delete("digest")
+
+    expect(described_class.context_definition).not_to be_valid(context)
+  end
+
+  it "rejects agent-visible snapshot storage paths" do
+    context = described_class.context.merge("snapshot_root" => "/var/lib/kos/snapshots/abc")
+
+    expect(described_class.context_definition).not_to be_valid(context)
   end
 
   it "publishes the complete operational command identifier set" do

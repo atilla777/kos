@@ -4,7 +4,7 @@
   "$defs": {
     "command_identifier": {
       "enum": [
-        "task_type.list", "workflow.list", "workflow.get", "task.get", "attempt.get", "worktree.get", "artifact.list", "publication.get", "task.create", "attempt.claim", "attempt.renew",
+        "task_type.list", "workflow.list", "workflow.get", "task.get", "attempt.get", "step.context", "worktree.get", "artifact.list", "publication.get", "task.create", "attempt.claim", "attempt.renew",
         "attempt.fail", "attempt.needs_human", "attempt.reconcile", "worktree.reserve", "worktree.confirm",
         "worktree.reconcile", "worktree.release", "artifact.register", "step.complete", "publication.prepare",
         "publication.reconcile", "publication.complete"
@@ -54,6 +54,7 @@
             { "properties": { "command": { "const": "attempt.fail" }, "body": { "$ref": "#/$defs/attempt_fail_body" } } },
             { "properties": { "command": { "const": "attempt.needs_human" }, "body": { "$ref": "#/$defs/attempt_needs_human_body" } } },
             { "properties": { "command": { "const": "attempt.reconcile" }, "body": { "$ref": "#/$defs/reconcile_attempt_body" } } },
+            { "properties": { "command": { "const": "step.context" }, "body": { "$ref": "#/$defs/step_context_body" } } },
             { "properties": { "command": { "const": "worktree.reserve" }, "body": { "$ref": "#/$defs/worktree_reserve_body" } } },
             { "properties": { "command": { "const": "worktree.confirm" }, "body": { "$ref": "#/$defs/worktree_confirm_body" } } },
             { "properties": { "command": { "enum": ["worktree.reconcile", "worktree.release"] }, "body": { "$ref": "#/$defs/worktree_observation_body" } } },
@@ -74,6 +75,7 @@
     "attempt_fail_body": { "type": "object", "properties": { "result_manifest": { "$ref": "#/$defs/failed_manifest" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["result_manifest", "preconditions"], "additionalProperties": false },
     "attempt_needs_human_body": { "type": "object", "properties": { "result_manifest": { "$ref": "#/$defs/needs_human_manifest" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["result_manifest", "preconditions"], "additionalProperties": false },
     "reconcile_attempt_body": { "type": "object", "properties": { "attempt_id": { "$ref": "common.json#/$defs/uuid" }, "observed_state": { "enum": ["no_effect", "worktree_materialized", "publication_unknown"] }, "evidence_digest": { "$ref": "common.json#/$defs/digest" }, "expected_lock_version": { "type": "integer", "minimum": 0 } }, "required": ["attempt_id", "observed_state", "evidence_digest", "expected_lock_version"], "additionalProperties": false },
+    "step_context_body": { "type": "object", "properties": { "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["preconditions"], "additionalProperties": false },
     "worktree_reserve_body": { "type": "object", "properties": { "task_number": { "$ref": "common.json#/$defs/task_number" }, "branch": { "type": "string", "pattern": "^kos/task-TASK-[0-9]{6}$" }, "path": { "type": "string", "minLength": 1 }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["task_number", "branch", "path", "preconditions"], "additionalProperties": false },
     "worktree_confirm_body": { "type": "object", "properties": { "reservation_id": { "$ref": "common.json#/$defs/uuid" }, "git_common_dir_digest": { "$ref": "common.json#/$defs/digest" }, "head_sha": { "$ref": "common.json#/$defs/git_oid" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["reservation_id", "git_common_dir_digest", "head_sha", "preconditions"], "additionalProperties": false },
     "worktree_observation_body": { "type": "object", "properties": { "reservation_id": { "$ref": "common.json#/$defs/uuid" }, "observed_state": { "enum": ["absent", "clean", "dirty", "mismatched"] }, "head_sha": { "$ref": "common.json#/$defs/git_oid" }, "evidence_digest": { "$ref": "common.json#/$defs/digest" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["reservation_id", "observed_state", "evidence_digest", "preconditions"], "additionalProperties": false },
@@ -98,7 +100,10 @@
             { "properties": { "command": { "const": "workflow.list" }, "data": { "$ref": "#/$defs/workflows_data" } } },
             { "properties": { "command": { "const": "workflow.get" }, "data": { "$ref": "resources.json#/$defs/workflow" } } },
             { "properties": { "command": { "enum": ["task.get", "task.create"] }, "data": { "$ref": "resources.json#/$defs/task" } } },
-            { "properties": { "command": { "enum": ["attempt.get", "attempt.claim", "attempt.renew", "attempt.fail", "attempt.needs_human", "attempt.reconcile"] }, "data": { "$ref": "resources.json#/$defs/attempt" } } },
+            { "properties": { "command": { "enum": ["attempt.get", "attempt.claim", "attempt.renew", "attempt.reconcile"] }, "data": { "$ref": "resources.json#/$defs/attempt" } } },
+            { "properties": { "command": { "const": "attempt.fail" }, "data": { "allOf": [{ "$ref": "resources.json#/$defs/attempt" }, { "properties": { "state": { "const": "failed" } } }] } } },
+            { "properties": { "command": { "const": "attempt.needs_human" }, "data": { "allOf": [{ "$ref": "resources.json#/$defs/attempt" }, { "properties": { "state": { "const": "needs_human" } } }] } } },
+            { "properties": { "command": { "const": "step.context" }, "data": { "$ref": "workflow.json#/$defs/context" } } },
             { "properties": { "command": { "enum": ["worktree.get", "worktree.reserve", "worktree.confirm", "worktree.reconcile", "worktree.release"] }, "data": { "$ref": "resources.json#/$defs/worktree_reservation" } } },
             { "properties": { "command": { "const": "artifact.list" }, "data": { "$ref": "#/$defs/artifacts_data" } } },
             { "properties": { "command": { "const": "artifact.register" }, "data": { "$ref": "artifacts.json#/$defs/artifact" } } },

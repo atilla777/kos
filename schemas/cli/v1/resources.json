@@ -82,7 +82,49 @@
         "input_context_digest": { "$ref": "common.json#/$defs/digest" },
         "result_manifest": { "$ref": "workflow.json#/$defs/result_manifest" }
       },
-      "required": ["schema_version", "id", "task_id", "workflow_status", "owner_id", "state", "fencing_token", "started_at", "input_context_digest"],
+      "required": ["schema_version", "id", "task_id", "workflow_status", "owner_id", "state", "fencing_token", "started_at"],
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "const": "started" } }, "required": ["state"] },
+          "then": { "not": { "anyOf": [{ "required": ["completed_at"] }, { "required": ["result_manifest"] }] } }
+        },
+        {
+          "if": { "properties": { "state": { "const": "interrupted" } }, "required": ["state"] },
+          "then": { "required": ["completed_at"], "not": { "required": ["result_manifest"] } }
+        },
+        {
+          "if": { "properties": { "state": { "enum": ["succeeded", "failed", "needs_human"] } }, "required": ["state"] },
+          "then": { "required": ["completed_at", "input_context_digest", "result_manifest"] }
+        },
+        {
+          "if": { "properties": { "state": { "const": "succeeded" } }, "required": ["state"] },
+          "then": {
+            "properties": {
+              "result_manifest": { "properties": { "outcome": { "const": "succeeded" } } }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "state": { "const": "failed" } }, "required": ["state"] },
+          "then": {
+            "properties": {
+              "result_manifest": { "properties": { "outcome": { "const": "failed" } } }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "state": { "const": "needs_human" } }, "required": ["state"] },
+          "then": {
+            "properties": {
+              "result_manifest": { "properties": { "outcome": { "const": "needs_human" } } }
+            }
+          }
+        }
+      ],
+      "x-field-equality": [
+        ["id", "result_manifest.attempt_id"],
+        ["input_context_digest", "result_manifest.input_context_digest"]
+      ],
       "additionalProperties": false
     },
     "worktree_reservation": {

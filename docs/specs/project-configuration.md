@@ -51,7 +51,7 @@ Workflow schema and template versions are part of their contract:
 - a digest mismatch blocks workflow transitions as inconsistent, while the snapshot remains available to continue the original task; and
 - new tasks use the task type's current version while started tasks continue their pinned version.
 
-Execution reads only the immutable snapshot, never `.kos/` from the current task worktree. Project instructions and capability skills are trusted project code, but the orchestrator invokes only capabilities allowed by the pinned bundle. Changes to `.kos/` do not affect an already started task.
+The Rails application reads execution members only from the immutable snapshot, never `.kos/` from the current task worktree. It verifies the bundle and selected members and returns the complete instruction and referenced materials through the CLI's attempt-bound step-context operation. Orchestrators, subagents, and runtime skills do not receive snapshot storage paths or read snapshot files directly. Project instructions and capability skills are trusted project code, but the orchestrator invokes only capabilities allowed by the pinned bundle. Changes to `.kos/` do not affect an already started task.
 
 [ADR-0003](../decisions/0003-pinned-project-workflows.md) records the decision to use project-controlled, immutable snapshot bundles. BOOT-008 will define the detailed YAML schema and canonical bundle-digest algorithm without changing these guarantees.
 

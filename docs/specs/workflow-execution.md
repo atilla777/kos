@@ -22,7 +22,7 @@ The workflow language is a small typed schema without arbitrary expressions or R
 
 ## Attempts And Ownership
 
-A `WorkflowAttempt` represents one execution of the current workflow status. It records an attempt ID, task and status, owner ID, idempotency key, monotonic fencing token, state (`started`, `succeeded`, `failed`, `interrupted`, or `needs_human`), start, heartbeat, and completion times, input-context digest, and result manifest.
+A `WorkflowAttempt` represents one execution of the current workflow status. It records an attempt ID, task and status, owner ID, idempotency key, monotonic fencing token, state (`started`, `succeeded`, `failed`, `interrupted`, or `needs_human`), start, heartbeat, and completion times, the immutable executable context and input-context digest after context finalization, and the result manifest after submission.
 
 Before mutating repository files or attempt-owned KOS state, an orchestrator atomically claims a lease for the task, workflow status, and expected lock version through the CLI. The lease has a bounded lifetime, can be renewed by its owner, and is released when the attempt completes, enters `needs_human`, or expires. After expiry, a new orchestrator reconciles the unfinished attempt before creating another. Every mutation owned by an active attempt and every `kos-repository` operation carries the current fencing token; task creation, attempt claim, and expired-attempt reconciliation do not. An attempt with a stale token cannot complete the step. Exact command preconditions are defined by [CLI Protocol Version 1](cli-protocol.md).
 
@@ -32,9 +32,9 @@ Every mutating CLI command requires an idempotency key. Repeating the same comma
 
 ## Execution
 
-The main-session `kos-orchestrate` skill obtains task state through the CLI and follows the pinned workflow. It runs statuses that require direct human interaction itself and invokes the common `kos-workflow-step` executor for every subagent status.
+The main-session `kos-orchestrate` skill obtains task state and the complete executable step context through the CLI and follows the pinned workflow. It runs statuses that require direct human interaction itself and invokes the common `kos-workflow-step` executor for every subagent status. Main-session and subagent statuses use the same context retrieval contract.
 
-The executor receives a versioned context envelope containing task and attempt IDs, workflow status, bundle and instruction digests, expected lock version, fencing token, repository identity, worktree, base ref, candidate SHA, required artifacts, and an allowed capability list. It reads the pinned instruction and invokes only allowed capability skills. A new step kind is introduced by a project instruction, not a new runtime skill.
+After claim and confirmation of any required worktree, the orchestrator finalizes an attempt-bound versioned context envelope with the idempotent `kos step context` mutation. KOS stores that immutable input before returning it. The context contains task and attempt identities, workflow status, bundle digest, exact pinned Markdown instruction, referenced templates or materials and their digests, expected lock version, fencing token, repository identity, worktree, base ref, candidate SHA, required artifacts, and an allowed capability list. The executor follows the inline instruction and invokes only allowed capability skills. Neither orchestrator nor executor reads KOS snapshot storage directly. A new step kind is introduced by a project instruction, not a new runtime skill.
 
 A main-session status such as `grooming` persists questions, decisions, the selected branch, and open items as a durable artifact. Waiting for a human changes the attempt to `needs_human` and releases its lease.
 
@@ -44,7 +44,7 @@ A subagent:
 - does not mutate KOS state through SQLite, the CLI, or the API, and does not perform mutating Git operations;
 - returns a versioned result manifest with attempt ID, input-context digest, produced artifacts, and `succeeded`, `failed`, or `needs_human` outcome.
 
-Only the lease-owning orchestrator submits the manifest. The CLI then registers artifacts and changes workflow status with the expected lock version in one transaction, as specified by [Artifact Contracts](artifact-contracts.md).
+Only the lease-owning orchestrator submits the manifest. The CLI verifies the manifest against the stored input-context digest, then registers artifacts and changes workflow status with the expected lock version in one transaction, as specified by [Artifact Contracts](artifact-contracts.md).
 
 ## Initial And Deferred Workflows
 
