@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kos.local/schemas/cli/v1/common.json",
+  "$defs": {
+    "schema_version": { "const": "1" },
+    "identifier": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,127}$" },
+    "uuid": { "type": "string", "format": "uuid" },
+    "task_number": { "type": "string", "pattern": "^TASK-[0-9]{6}$" },
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "git_oid": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "repository_path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$" },
+    "idempotency_key": { "type": "string", "minLength": 8, "maxLength": 255, "pattern": "^[A-Za-z0-9._:-]+$" },
+    "preconditions": {
+      "type": "object",
+      "properties": {
+        "expected_lock_version": { "type": "integer", "minimum": 0 },
+        "attempt_id": { "$ref": "#/$defs/uuid" },
+        "fencing_token": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["expected_lock_version"],
+      "additionalProperties": false
+    },
+    "leased_preconditions": {
+      "allOf": [
+        { "$ref": "#/$defs/preconditions" },
+        { "required": ["attempt_id", "fencing_token"] }
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

@@ -26,11 +26,11 @@ status: active
 - Keep each task limited to one cohesive, independently verifiable result. Its requirements, diff, and checks must be reviewable as one unit.
 - Propose decomposition before implementation when a request contains independently useful outcomes, crosses unrelated domains, or requires too many decisions for one reviewable change.
 - Do not include unrelated refactoring, cleanup, or opportunistic improvements. Record them as proposed follow-up tasks instead.
-- Apply this process proportionally. Discussion for an obvious small change may be brief, but requirements, a plan, and explicit implementation approval remain mandatory.
+- Apply this process proportionally. Discussion for an obvious small change may be brief, but requirements, a plan, and explicit baseline approval remain mandatory.
 
 ## Task Records
 
-- After implementation is authorized, create `tasks/<task-id>/task.md` as the first repository change. During bootstrap, use its `BOOT-NNN` identifier in the path.
+- After the baseline is approved, create `tasks/<task-id>/task.md` as the first repository change. During bootstrap, use its `BOOT-NNN` identifier in the path.
 - Record the approved goal, user outcome, context, requirements, scope, non-goals, related specifications and ADRs, task-local decisions, open questions, acceptance criteria, implementation plan, verification, and risks. Omit empty optional sections when that makes a small task clearer.
 - Reference durable behavior in `docs/specs/` and long-lived architecture decisions in `docs/decisions/`; do not repeat their full contracts or rationale in the task record. Keep only decisions local to this delivery as task-local decisions.
 - Do not create a repository `todo.md`. Use the agent's session-local todo list to execute the approved implementation plan.
@@ -54,23 +54,23 @@ status: active
 
 - At the end of discussion, present a self-contained summary in clear language. Include enough context to understand the change without reconstructing it from earlier messages.
 - The summary must cover the goal and user-visible result, current context, requirements, scope, non-goals, accepted decisions, acceptance criteria, implementation plan, verification plan, known risks, and unresolved questions.
-- Do not modify code, documentation, configuration, Git state, project state, or external systems before the user explicitly approves both the final requirements and the implementation plan, then separately authorizes implementation.
-- Approval of requirements or discussion completion alone is not authorization to implement. Treat an ambiguous response as no authorization.
-- Request baseline approval and implementation authorization as separate, concise numbered choices. Accept the corresponding number alone as an explicit response; do not require the user to repeat a prescribed confirmation sentence.
-- After authorization, mark the selected task `in-progress` in the external plan before implementing it.
+- Do not modify code, documentation, configuration, Git state, project state, or external systems before the user explicitly approves both the final requirements and the implementation plan.
+- Explicit approval of that final baseline authorizes its implementation, required verification, documentation and plan updates, commit, and normal publication unless the user restricts one of those actions. Treat an ambiguous response or discussion completion without explicit approval as no authorization.
+- Request approval as one concise numbered choice. Accept the corresponding number alone as explicit approval; do not require the user to repeat a prescribed confirmation sentence.
+- After approval, mark the selected task `in-progress` in the external plan before implementing it.
 
 ## Implementation Control
 
 - Implement only the approved scope. Make routine local implementation decisions independently only when they do not change behavior, architecture, risk, dependencies, or task size.
-- Once implementation is authorized, continue without further prompting through implementation, required verification, documentation and plan updates, commit, and publication. Resolve technical issues independently when they stay within the agreed baseline.
+- Once the baseline is approved, continue without further prompting through implementation, required verification, documentation and plan updates, commit, and publication. Resolve technical issues independently when they stay within the agreed baseline.
 - Do not stop merely to report progress or ask the user to perform work that the agent can safely perform. Stop only when a user decision is required, the agreed baseline must materially change, data or unrelated work may be at risk, required checks cannot be made to pass within scope, concurrent changes directly conflict with the task, or credentials, connectivity, or repository policy prevent publication.
 - Stop implementation if new information requires changing requirements, architecture, an external contract, the data model, dependencies, or the approved scope in a material way.
-- Explain why the baseline must change, provide numbered alternatives when appropriate, and continue only after the user chooses and explicitly authorizes the revised plan.
+- Explain why the baseline must change, provide numbered alternatives when appropriate, and continue only after the user explicitly approves the revised baseline.
 - Preserve unrelated worktree changes and never use them as a reason to broaden the task.
 
 ## Publication
 
-- Implementation authorization includes permission to commit the completed task and publish it with a normal push to the repository's default branch after all required checks pass, unless the user explicitly restricts publication for that task.
+- Baseline approval includes permission to commit the completed task and publish it with a normal push to the repository's default branch after all required checks pass, unless the user explicitly restricts publication for that task.
 - Commit only files that belong to the approved task. Never force-push, bypass branch protection or hooks, discard unrelated work, or publish known failing changes.
 - If publication fails, preserve the verified local work, mark the task `blocked`, record the exact blocker and next action in the external plan, and report what the user must do.
 

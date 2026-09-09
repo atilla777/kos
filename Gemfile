@@ -11,6 +11,7 @@ gem "bootsnap", require: false
 
 group :development, :test do
   gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"
+  gem "json_schemer", require: false
   gem "rspec-rails", "~> 8.0"
   gem "rubocop-rails-omakase", "~> 1.1", require: false
   gem "rubocop-rspec", require: false

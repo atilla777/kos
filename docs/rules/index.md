@@ -9,7 +9,7 @@ These documents are normative for code and agent work in this repository. A more
 
 | Document | Scope |
 | --- | --- |
-| [Collaboration](collaboration.md) | Task scope, user decisions, implementation approval, and project planning |
+| [Collaboration](collaboration.md) | Task scope, user decisions, baseline approval, and project planning |
 | [Architecture](architecture.md) | Domain boundaries, state, CLI, persistence, and Git side effects |
 | [Code Style](code-style.md) | Ruby and Rails implementation conventions |
 | [Testing](testing.md) | Automated verification and quality gates |

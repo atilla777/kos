@@ -24,11 +24,11 @@ The workflow language is a small typed schema without arbitrary expressions or R
 
 A `WorkflowAttempt` represents one execution of the current workflow status. It records an attempt ID, task and status, owner ID, idempotency key, monotonic fencing token, state (`started`, `succeeded`, `failed`, `interrupted`, or `needs_human`), start, heartbeat, and completion times, input-context digest, and result manifest.
 
-Before mutating repository files or KOS state, an orchestrator atomically claims a lease for the task, workflow status, and expected lock version through the CLI. The lease has a bounded lifetime, can be renewed by its owner, and is released when the attempt completes, enters `needs_human`, or expires. After expiry, a new orchestrator reconciles the unfinished attempt before creating another. Every mutating CLI or `kos-repository` operation carries the current fencing token; an attempt with a stale token cannot complete the step.
+Before mutating repository files or attempt-owned KOS state, an orchestrator atomically claims a lease for the task, workflow status, and expected lock version through the CLI. The lease has a bounded lifetime, can be renewed by its owner, and is released when the attempt completes, enters `needs_human`, or expires. After expiry, a new orchestrator reconciles the unfinished attempt before creating another. Every mutation owned by an active attempt and every `kos-repository` operation carries the current fencing token; task creation, attempt claim, and expired-attempt reconciliation do not. An attempt with a stale token cannot complete the step. Exact command preconditions are defined by [CLI Protocol Version 1](cli-protocol.md).
 
 Attempt failure does not change workflow status. KOS records durable intent before an external operation and, after interruption, reconciles observed state instead of blindly repeating the operation. [ADR-0002](../decisions/0002-recoverable-workflow-attempts.md) records this recovery decision.
 
-Every mutating CLI command requires an idempotency key. Repeating the same command and key returns the recorded result instead of creating another entity or side effect. Wire representation and command-specific requirements belong to BOOT-007.
+Every mutating CLI command requires an idempotency key. Repeating the same command and key returns the recorded result instead of creating another entity or side effect. Wire representation and command-specific requirements are defined by [CLI Protocol Version 1](cli-protocol.md).
 
 ## Execution
 

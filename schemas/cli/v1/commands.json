@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kos.local/schemas/cli/v1/commands.json",
+  "$defs": {
+    "command_identifier": {
+      "enum": [
+        "task_type.list", "workflow.list", "workflow.get", "task.get", "attempt.get", "worktree.get", "artifact.list", "publication.get", "task.create", "attempt.claim", "attempt.renew",
+        "attempt.fail", "attempt.needs_human", "attempt.reconcile", "worktree.reserve", "worktree.confirm",
+        "worktree.reconcile", "worktree.release", "artifact.register", "step.complete", "publication.prepare",
+        "publication.reconcile", "publication.complete"
+      ]
+    },
+    "request_base": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "command": { "$ref": "#/$defs/command_identifier" },
+        "repository_id": { "$ref": "common.json#/$defs/uuid" },
+        "body": { "type": "object" }
+      },
+      "required": ["schema_version", "command", "repository_id", "body"]
+    },
+    "empty_body": { "type": "object", "additionalProperties": false },
+    "task_locator": { "type": "object", "properties": { "task_number": { "$ref": "common.json#/$defs/task_number" } }, "required": ["task_number"], "additionalProperties": false },
+    "attempt_locator": { "type": "object", "properties": { "attempt_id": { "$ref": "common.json#/$defs/uuid" } }, "required": ["attempt_id"], "additionalProperties": false },
+    "reservation_locator": { "type": "object", "properties": { "reservation_id": { "$ref": "common.json#/$defs/uuid" } }, "required": ["reservation_id"], "additionalProperties": false },
+    "publication_locator": { "type": "object", "properties": { "publication_id": { "$ref": "common.json#/$defs/uuid" } }, "required": ["publication_id"], "additionalProperties": false },
+    "pagination": { "type": "object", "properties": { "cursor": { "type": "string", "minLength": 1, "maxLength": 255 }, "limit": { "type": "integer", "minimum": 1, "maximum": 100 } }, "required": ["limit"], "additionalProperties": false },
+    "artifact_list_body": { "type": "object", "properties": { "task_number": { "$ref": "common.json#/$defs/task_number" }, "cursor": { "type": "string", "minLength": 1, "maxLength": 255 }, "limit": { "type": "integer", "minimum": 1, "maximum": 100 } }, "required": ["task_number", "limit"], "additionalProperties": false },
+    "read_request": {
+      "allOf": [
+        { "$ref": "#/$defs/request_base" },
+        {
+          "oneOf": [
+            { "properties": { "command": { "enum": ["task_type.list", "workflow.list"] }, "body": { "$ref": "#/$defs/pagination" } } },
+            { "properties": { "command": { "const": "workflow.get" }, "body": { "type": "object", "properties": { "workflow_id": { "$ref": "common.json#/$defs/identifier" }, "version": { "type": "string", "minLength": 1 } }, "required": ["workflow_id", "version"], "additionalProperties": false } } },
+            { "properties": { "command": { "const": "task.get" }, "body": { "$ref": "#/$defs/task_locator" } } },
+            { "properties": { "command": { "const": "attempt.get" }, "body": { "$ref": "#/$defs/attempt_locator" } } },
+            { "properties": { "command": { "const": "worktree.get" }, "body": { "$ref": "#/$defs/reservation_locator" } } },
+            { "properties": { "command": { "const": "artifact.list" }, "body": { "$ref": "#/$defs/artifact_list_body" } } },
+            { "properties": { "command": { "const": "publication.get" }, "body": { "$ref": "#/$defs/publication_locator" } } }
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "mutation_request": {
+      "allOf": [
+        { "$ref": "#/$defs/request_base" },
+        {
+          "oneOf": [
+            { "properties": { "command": { "const": "task.create" }, "body": { "type": "object", "properties": { "title": { "type": "string", "minLength": 1 }, "task_type": { "const": "quick-fix" } }, "required": ["title", "task_type"], "additionalProperties": false } } },
+            { "properties": { "command": { "const": "attempt.claim" }, "body": { "type": "object", "properties": { "task_number": { "$ref": "common.json#/$defs/task_number" }, "owner_id": { "$ref": "common.json#/$defs/identifier" }, "lease_seconds": { "type": "integer", "minimum": 30, "maximum": 3600 }, "preconditions": { "$ref": "common.json#/$defs/preconditions" } }, "required": ["task_number", "owner_id", "lease_seconds", "preconditions"], "additionalProperties": false } } },
+            { "properties": { "command": { "const": "attempt.renew" }, "body": { "$ref": "#/$defs/attempt_renew_body" } } },
+            { "properties": { "command": { "const": "attempt.fail" }, "body": { "$ref": "#/$defs/attempt_fail_body" } } },
+            { "properties": { "command": { "const": "attempt.needs_human" }, "body": { "$ref": "#/$defs/attempt_needs_human_body" } } },
+            { "properties": { "command": { "const": "attempt.reconcile" }, "body": { "$ref": "#/$defs/reconcile_attempt_body" } } },
+            { "properties": { "command": { "const": "worktree.reserve" }, "body": { "$ref": "#/$defs/worktree_reserve_body" } } },
+            { "properties": { "command": { "const": "worktree.confirm" }, "body": { "$ref": "#/$defs/worktree_confirm_body" } } },
+            { "properties": { "command": { "enum": ["worktree.reconcile", "worktree.release"] }, "body": { "$ref": "#/$defs/worktree_observation_body" } } },
+            { "properties": { "command": { "const": "artifact.register" }, "body": { "$ref": "#/$defs/artifact_register_body" } } },
+            { "properties": { "command": { "const": "step.complete" }, "body": { "$ref": "#/$defs/step_complete_body" } } },
+            { "properties": { "command": { "const": "publication.prepare" }, "body": { "$ref": "#/$defs/publication_prepare_body" } } },
+            { "properties": { "command": { "const": "publication.reconcile" }, "body": { "$ref": "#/$defs/publication_reconcile_body" } } },
+            { "properties": { "command": { "const": "publication.complete" }, "body": { "$ref": "#/$defs/publication_complete_body" } } }
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "attempt_renew_body": { "type": "object", "properties": { "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" }, "lease_seconds": { "type": "integer", "minimum": 30, "maximum": 3600 } }, "required": ["preconditions", "lease_seconds"], "additionalProperties": false },
+    "failed_manifest": { "allOf": [{ "$ref": "workflow.json#/$defs/result_manifest" }, { "properties": { "outcome": { "const": "failed" } } }] },
+    "needs_human_manifest": { "allOf": [{ "$ref": "workflow.json#/$defs/result_manifest" }, { "properties": { "outcome": { "const": "needs_human" } } }] },
+    "successful_manifest": { "allOf": [{ "$ref": "workflow.json#/$defs/result_manifest" }, { "properties": { "outcome": { "const": "succeeded" } } }] },
+    "attempt_fail_body": { "type": "object", "properties": { "result_manifest": { "$ref": "#/$defs/failed_manifest" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["result_manifest", "preconditions"], "additionalProperties": false },
+    "attempt_needs_human_body": { "type": "object", "properties": { "result_manifest": { "$ref": "#/$defs/needs_human_manifest" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["result_manifest", "preconditions"], "additionalProperties": false },
+    "reconcile_attempt_body": { "type": "object", "properties": { "attempt_id": { "$ref": "common.json#/$defs/uuid" }, "observed_state": { "enum": ["no_effect", "worktree_materialized", "publication_unknown"] }, "evidence_digest": { "$ref": "common.json#/$defs/digest" }, "expected_lock_version": { "type": "integer", "minimum": 0 } }, "required": ["attempt_id", "observed_state", "evidence_digest", "expected_lock_version"], "additionalProperties": false },
+    "worktree_reserve_body": { "type": "object", "properties": { "task_number": { "$ref": "common.json#/$defs/task_number" }, "branch": { "type": "string", "pattern": "^kos/task-TASK-[0-9]{6}$" }, "path": { "type": "string", "minLength": 1 }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["task_number", "branch", "path", "preconditions"], "additionalProperties": false },
+    "worktree_confirm_body": { "type": "object", "properties": { "reservation_id": { "$ref": "common.json#/$defs/uuid" }, "git_common_dir_digest": { "$ref": "common.json#/$defs/digest" }, "head_sha": { "$ref": "common.json#/$defs/git_oid" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["reservation_id", "git_common_dir_digest", "head_sha", "preconditions"], "additionalProperties": false },
+    "worktree_observation_body": { "type": "object", "properties": { "reservation_id": { "$ref": "common.json#/$defs/uuid" }, "observed_state": { "enum": ["absent", "clean", "dirty", "mismatched"] }, "head_sha": { "$ref": "common.json#/$defs/git_oid" }, "evidence_digest": { "$ref": "common.json#/$defs/digest" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["reservation_id", "observed_state", "evidence_digest", "preconditions"], "additionalProperties": false },
+    "artifact_register_body": { "type": "object", "properties": { "task_number": { "$ref": "common.json#/$defs/task_number" }, "artifact": { "$ref": "artifacts.json#/$defs/artifact_input" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["task_number", "artifact", "preconditions"], "additionalProperties": false },
+    "step_complete_body": { "type": "object", "properties": { "task_number": { "$ref": "common.json#/$defs/task_number" }, "to_status": { "$ref": "common.json#/$defs/identifier" }, "result_manifest": { "$ref": "#/$defs/successful_manifest" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["task_number", "to_status", "result_manifest", "preconditions"], "additionalProperties": false },
+    "publication_prepare_body": { "type": "object", "properties": { "task_number": { "$ref": "common.json#/$defs/task_number" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "remote": { "$ref": "common.json#/$defs/identifier" }, "base_ref": { "type": "string", "pattern": "^refs/heads/[^ ]+$" }, "expected_remote_oid": { "$ref": "common.json#/$defs/git_oid" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["task_number", "candidate_sha", "remote", "base_ref", "expected_remote_oid", "preconditions"], "additionalProperties": false },
+    "publication_reconcile_body": { "type": "object", "properties": { "publication_id": { "$ref": "common.json#/$defs/uuid" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "observed_remote_tip": { "$ref": "common.json#/$defs/git_oid" }, "candidate_reachable": { "type": "boolean" }, "observed_at": { "$ref": "common.json#/$defs/timestamp" }, "evidence_digest": { "$ref": "common.json#/$defs/digest" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["publication_id", "candidate_sha", "observed_remote_tip", "candidate_reachable", "observed_at", "evidence_digest", "preconditions"], "additionalProperties": false },
+    "publication_complete_manifest": { "allOf": [{ "$ref": "#/$defs/successful_manifest" }, { "properties": { "artifacts": { "contains": { "properties": { "type": { "const": "publication" }, "state": { "const": "published" }, "metadata": { "$ref": "artifacts.json#/$defs/publication_metadata" } }, "required": ["type", "state", "metadata"] }, "minContains": 1 } } }] },
+    "publication_complete_body": { "type": "object", "properties": { "publication_id": { "$ref": "common.json#/$defs/uuid" }, "task_number": { "$ref": "common.json#/$defs/task_number" }, "to_status": { "const": "completed" }, "result_manifest": { "$ref": "#/$defs/publication_complete_manifest" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["publication_id", "task_number", "to_status", "result_manifest", "preconditions"], "additionalProperties": false },
+    "request": { "oneOf": [{ "$ref": "#/$defs/read_request" }, { "$ref": "#/$defs/mutation_request" }] },
+    "task_types_data": { "type": "object", "properties": { "task_types": { "type": "array", "items": { "$ref": "resources.json#/$defs/task_type" } }, "next_cursor": { "type": "string", "minLength": 1, "maxLength": 255 } }, "required": ["task_types"], "additionalProperties": false },
+    "workflows_data": { "type": "object", "properties": { "workflows": { "type": "array", "items": { "$ref": "resources.json#/$defs/workflow" } }, "next_cursor": { "type": "string", "minLength": 1, "maxLength": 255 } }, "required": ["workflows"], "additionalProperties": false },
+    "artifacts_data": { "type": "object", "properties": { "artifacts": { "type": "array", "items": { "$ref": "artifacts.json#/$defs/artifact" } }, "next_cursor": { "type": "string", "minLength": 1, "maxLength": 255 } }, "required": ["artifacts"], "additionalProperties": false },
+    "step_complete_data": { "type": "object", "properties": { "task": { "$ref": "resources.json#/$defs/task" }, "artifacts": { "type": "array", "items": { "$ref": "artifacts.json#/$defs/artifact" } } }, "required": ["task", "artifacts"], "additionalProperties": false },
+    "publication_complete_data": { "type": "object", "properties": { "task": { "$ref": "resources.json#/$defs/task" }, "artifacts": { "type": "array", "items": { "$ref": "artifacts.json#/$defs/artifact" }, "contains": { "properties": { "type": { "const": "publication" }, "state": { "const": "published" } }, "required": ["type", "state"] }, "minContains": 1 } }, "required": ["task", "artifacts"], "additionalProperties": false },
+    "result": {
+      "allOf": [
+        { "$ref": "envelopes.json#/$defs/success" },
+        {
+          "oneOf": [
+            { "properties": { "command": { "const": "task_type.list" }, "data": { "$ref": "#/$defs/task_types_data" } } },
+            { "properties": { "command": { "const": "workflow.list" }, "data": { "$ref": "#/$defs/workflows_data" } } },
+            { "properties": { "command": { "const": "workflow.get" }, "data": { "$ref": "resources.json#/$defs/workflow" } } },
+            { "properties": { "command": { "enum": ["task.get", "task.create"] }, "data": { "$ref": "resources.json#/$defs/task" } } },
+            { "properties": { "command": { "enum": ["attempt.get", "attempt.claim", "attempt.renew", "attempt.fail", "attempt.needs_human", "attempt.reconcile"] }, "data": { "$ref": "resources.json#/$defs/attempt" } } },
+            { "properties": { "command": { "enum": ["worktree.get", "worktree.reserve", "worktree.confirm", "worktree.reconcile", "worktree.release"] }, "data": { "$ref": "resources.json#/$defs/worktree_reservation" } } },
+            { "properties": { "command": { "const": "artifact.list" }, "data": { "$ref": "#/$defs/artifacts_data" } } },
+            { "properties": { "command": { "const": "artifact.register" }, "data": { "$ref": "artifacts.json#/$defs/artifact" } } },
+            { "properties": { "command": { "const": "publication.get" }, "data": { "$ref": "resources.json#/$defs/publication" } } },
+            { "properties": { "command": { "const": "step.complete" }, "data": { "$ref": "#/$defs/step_complete_data" } } },
+            { "properties": { "command": { "const": "publication.prepare" }, "data": { "allOf": [{ "$ref": "resources.json#/$defs/publication" }, { "properties": { "state": { "const": "prepared" } } }] } } },
+            { "properties": { "command": { "const": "publication.reconcile" }, "data": { "allOf": [{ "$ref": "resources.json#/$defs/publication" }, { "properties": { "state": { "const": "reconciled" } } }] } } },
+            { "properties": { "command": { "const": "publication.complete" }, "data": { "$ref": "#/$defs/publication_complete_data" } } }
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

@@ -1,0 +1,211 @@
+[
+  {
+    "name": "optional value represented by null",
+    "schema": "workflow.json",
+    "definition": "context",
+    "instance": {
+      "schema_version": "1", "task_id": "11111111-1111-4111-8111-111111111111", "attempt_id": "22222222-2222-4222-8222-222222222222",
+      "repository_id": "33333333-3333-4333-8333-333333333333", "workflow_status": "development",
+      "bundle_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "instruction_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "expected_lock_version": 3, "fencing_token": 8, "base_ref": "refs/heads/main", "candidate_sha": null,
+      "required_artifact_types": [], "allowed_capabilities": []
+    }
+  },
+  {
+    "name": "error category and code disagree",
+    "schema": "envelopes.json",
+    "definition": "failure",
+    "instance": {
+      "schema_version": "1", "request_id": "99999999-9999-4999-8999-999999999999", "command": "task.get",
+      "error": { "category": "validation", "code": "internal_error", "message": "bad", "retryable": false }
+    }
+  },
+  {
+    "name": "success envelope lacks request id",
+    "schema": "commands.json",
+    "definition": "result",
+    "instance": {
+      "schema_version": "1",
+      "command": "task_type.list",
+      "data": { "task_types": [] }
+    }
+  },
+  {
+    "name": "failure envelope lacks request id",
+    "schema": "envelopes.json",
+    "definition": "failure",
+    "instance": {
+      "schema_version": "1",
+      "command": "task.get",
+      "error": { "category": "not_found", "code": "task_not_found", "message": "task not found", "retryable": false }
+    }
+  },
+  {
+    "name": "command result has another command's data",
+    "schema": "commands.json",
+    "definition": "result",
+    "instance": {
+      "schema_version": "1",
+      "request_id": "99999999-9999-4999-8999-999999999999",
+      "command": "publication.prepare",
+      "data": { "task_types": [] }
+    }
+  },
+  {
+    "name": "artifact type and discriminator disagree",
+    "schema": "artifacts.json",
+    "definition": "artifact_input",
+    "instance": {
+      "schema_version": "1",
+      "type": "candidate", "state": "produced", "producer": "kos-development",
+      "evidence_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "metadata": { "kind": "test", "candidate_sha": "1111111111111111111111111111111111111111", "command": "rspec", "exit_code": 0, "log_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+    }
+  },
+  {
+    "name": "candidate artifact uses test state",
+    "schema": "artifacts.json",
+    "definition": "artifact_input",
+    "instance": {
+      "schema_version": "1", "type": "candidate", "state": "passed", "producer": "kos-development",
+      "evidence_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "metadata": { "kind": "candidate", "candidate_sha": "1111111111111111111111111111111111111111", "task_trailer": "TASK-000123" }
+    }
+  },
+  {
+    "name": "failed command carries needs human outcome",
+    "schema": "commands.json",
+    "definition": "request",
+    "instance": {
+      "schema_version": "1", "command": "attempt.fail", "repository_id": "33333333-3333-4333-8333-333333333333",
+      "body": {
+        "result_manifest": { "schema_version": "1", "attempt_id": "22222222-2222-4222-8222-222222222222", "input_context_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "outcome": "needs_human", "artifacts": [] },
+        "preconditions": { "expected_lock_version": 3, "attempt_id": "22222222-2222-4222-8222-222222222222", "fencing_token": 8 }
+      }
+    }
+  },
+  {
+    "name": "publication completion lacks publication artifact",
+    "schema": "commands.json",
+    "definition": "request",
+    "instance": {
+      "schema_version": "1", "command": "publication.complete", "repository_id": "33333333-3333-4333-8333-333333333333",
+      "body": {
+        "publication_id": "44444444-4444-4444-8444-444444444444", "task_number": "TASK-000123", "to_status": "completed",
+        "result_manifest": { "schema_version": "1", "attempt_id": "22222222-2222-4222-8222-222222222222", "input_context_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "outcome": "succeeded", "artifacts": [] },
+        "preconditions": { "expected_lock_version": 4, "attempt_id": "22222222-2222-4222-8222-222222222222", "fencing_token": 8 }
+      }
+    }
+  },
+  {
+    "name": "leased mutation lacks fencing token",
+    "schema": "commands.json",
+    "definition": "request",
+    "instance": {
+      "schema_version": "1", "command": "worktree.reserve", "repository_id": "33333333-3333-4333-8333-333333333333",
+      "body": { "task_number": "TASK-000123", "branch": "kos/task-TASK-000123", "path": "/tmp/task-123", "preconditions": { "expected_lock_version": 2, "attempt_id": "22222222-2222-4222-8222-222222222222" } }
+    }
+  },
+  {
+    "name": "recovery evidence has unknown field",
+    "schema": "commands.json",
+    "definition": "request",
+    "instance": {
+      "schema_version": "1", "command": "publication.reconcile", "repository_id": "33333333-3333-4333-8333-333333333333",
+      "body": {
+        "publication_id": "44444444-4444-4444-8444-444444444444", "candidate_sha": "2222222222222222222222222222222222222222",
+        "observed_remote_tip": "2222222222222222222222222222222222222222", "candidate_reachable": true, "observed_at": "2026-09-09T12:00:00Z",
+        "evidence_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "trusted": true,
+        "preconditions": { "expected_lock_version": 4, "attempt_id": "22222222-2222-4222-8222-222222222222", "fencing_token": 8 }
+      }
+    }
+  },
+  {
+    "name": "task create supplies server resolved workflow",
+    "schema": "commands.json",
+    "definition": "request",
+    "instance": {
+      "schema_version": "1", "command": "task.create", "repository_id": "33333333-3333-4333-8333-333333333333",
+      "body": { "title": "Repair timeout handling", "task_type": "quick-fix", "workflow_id": "quick-fix" }
+    }
+  },
+  {
+    "name": "approved review has changes requested verdict",
+    "schema": "artifacts.json",
+    "definition": "artifact_input",
+    "instance": {
+      "schema_version": "1", "type": "review", "state": "approved", "producer": "kos-review",
+      "evidence_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "metadata": { "kind": "review", "candidate_sha": "1111111111111111111111111111111111111111", "verdict": "changes_requested", "review_attempt_id": "88888888-8888-4888-8888-888888888888" }
+    }
+  },
+  {
+    "name": "passed test has nonzero exit",
+    "schema": "artifacts.json",
+    "definition": "artifact_input",
+    "instance": {
+      "schema_version": "1", "type": "test", "state": "passed", "producer": "kos-development",
+      "evidence_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "metadata": { "kind": "test", "candidate_sha": "1111111111111111111111111111111111111111", "command": "rspec", "exit_code": 1, "log_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+    }
+  },
+  {
+    "name": "failed test has zero exit",
+    "schema": "artifacts.json",
+    "definition": "artifact_input",
+    "instance": {
+      "schema_version": "1", "type": "test", "state": "failed", "producer": "kos-development",
+      "evidence_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "metadata": { "kind": "test", "candidate_sha": "1111111111111111111111111111111111111111", "command": "rspec", "exit_code": 0, "log_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+    }
+  },
+  {
+    "name": "push effect lacks expected remote oid",
+    "schema": "workflow.json",
+    "definition": "result_manifest",
+    "instance": {
+      "schema_version": "1", "attempt_id": "22222222-2222-4222-8222-222222222222",
+      "input_context_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "outcome": "succeeded", "artifacts": [],
+      "requested_effects": [{ "operation": "push", "publication_id": "44444444-4444-4444-8444-444444444444", "candidate_sha": "1111111111111111111111111111111111111111", "remote": "origin", "base_ref": "refs/heads/main" }]
+    }
+  },
+  {
+    "name": "timestamp uses non UTC offset",
+    "schema": "common.json",
+    "definition": "timestamp",
+    "instance": "2026-09-09T15:00:00+03:00"
+  },
+  {
+    "name": "completed workflow has active task status",
+    "schema": "resources.json",
+    "definition": "task",
+    "instance": {
+      "schema_version": "1", "id": "11111111-1111-4111-8111-111111111111", "repository_id": "33333333-3333-4333-8333-333333333333",
+      "number": "TASK-000123", "title": "Repair timeout", "task_type": "quick-fix", "status": "active", "workflow_status": "completed",
+      "workflow_id": "quick-fix", "workflow_version": "1.0.0", "bundle_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "lock_version": 3, "created_at": "2026-09-09T12:00:00Z", "updated_at": "2026-09-09T12:01:00Z"
+    }
+  },
+  {
+    "name": "non completed workflow has completed task status",
+    "schema": "resources.json",
+    "definition": "task",
+    "instance": {
+      "schema_version": "1", "id": "11111111-1111-4111-8111-111111111111", "repository_id": "33333333-3333-4333-8333-333333333333",
+      "number": "TASK-000123", "title": "Repair timeout", "task_type": "quick-fix", "status": "completed", "workflow_status": "review",
+      "workflow_id": "quick-fix", "workflow_version": "1.0.0", "bundle_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "lock_version": 3, "created_at": "2026-09-09T12:00:00Z", "updated_at": "2026-09-09T12:01:00Z"
+    }
+  },
+  {
+    "name": "success envelope uses unknown command fallback",
+    "schema": "envelopes.json",
+    "definition": "success",
+    "instance": {
+      "schema_version": "1", "request_id": "99999999-9999-4999-8999-999999999999",
+      "command": "unknown", "data": {}
+    }
+  }
+]

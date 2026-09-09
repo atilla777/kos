@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kos.local/schemas/cli/v1/envelopes.json",
+  "$defs": {
+    "error_category": {
+      "enum": ["validation", "authentication", "authorization", "conflict", "lease_lost", "not_found", "transient", "internal"]
+    },
+    "error_code": {
+      "enum": [
+        "malformed_input", "unsupported_schema_version", "unknown_command", "authentication_required", "invalid_token",
+        "forbidden", "repository_access_denied", "stale_lock_version", "invalid_transition", "idempotency_conflict", "idempotency_in_progress",
+        "invalid_artifact", "dependency_unsatisfied", "base_moved", "lease_expired", "fencing_token_stale",
+        "task_not_found", "workflow_not_found", "attempt_not_found", "reservation_not_found", "artifact_not_found",
+        "publication_not_found", "transport_unavailable",
+        "request_timeout", "internal_error"
+      ]
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "category": { "$ref": "#/$defs/error_category" },
+        "code": { "$ref": "#/$defs/error_code" },
+        "message": { "type": "string", "minLength": 1 },
+        "retryable": { "type": "boolean" },
+        "details": {
+          "type": "object",
+          "properties": {
+            "field": { "type": "string" }, "expected": { "type": ["string", "number", "integer", "boolean"] },
+            "actual": { "type": ["string", "number", "integer", "boolean"] }, "resource_id": { "type": "string" },
+            "retry_after_seconds": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["category", "code", "message", "retryable"],
+      "allOf": [
+        {
+          "if": { "properties": { "category": { "const": "transient" } }, "required": ["category"] },
+          "then": { "properties": { "retryable": { "const": true } } },
+          "else": { "properties": { "retryable": { "const": false } } }
+        },
+        {
+          "oneOf": [
+            { "properties": { "category": { "const": "validation" }, "code": { "enum": ["malformed_input", "unsupported_schema_version", "unknown_command", "invalid_artifact"] } } },
+            { "properties": { "category": { "const": "authentication" }, "code": { "enum": ["authentication_required", "invalid_token"] } } },
+            { "properties": { "category": { "const": "authorization" }, "code": { "enum": ["forbidden", "repository_access_denied"] } } },
+            { "properties": { "category": { "const": "conflict" }, "code": { "enum": ["stale_lock_version", "invalid_transition", "idempotency_conflict", "idempotency_in_progress", "dependency_unsatisfied", "base_moved"] } } },
+            { "properties": { "category": { "const": "lease_lost" }, "code": { "enum": ["lease_expired", "fencing_token_stale"] } } },
+            { "properties": { "category": { "const": "not_found" }, "code": { "enum": ["task_not_found", "workflow_not_found", "attempt_not_found", "reservation_not_found", "artifact_not_found", "publication_not_found"] } } },
+            { "properties": { "category": { "const": "transient" }, "code": { "enum": ["transport_unavailable", "request_timeout"] } } },
+            { "properties": { "category": { "const": "internal" }, "code": { "const": "internal_error" } } }
+          ]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "success": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "common.json#/$defs/schema_version" },
+        "request_id": { "$ref": "common.json#/$defs/uuid" },
+        "command": { "$ref": "commands.json#/$defs/command_identifier" },
+        "data": { "type": "object" }
+      },
+      "required": ["schema_version", "request_id", "command", "data"],
+      "additionalProperties": false
+    },
+    "failure": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "common.json#/$defs/schema_version" },
+        "request_id": { "$ref": "common.json#/$defs/uuid" },
+        "command": { "oneOf": [{ "$ref": "commands.json#/$defs/command_identifier" }, { "const": "unknown" }] },
+        "error": { "$ref": "#/$defs/error" }
+      },
+      "required": ["schema_version", "request_id", "command", "error"],
+      "allOf": [
+        {
+          "if": { "properties": { "error": { "properties": { "code": { "const": "unknown_command" } }, "required": ["code"] } }, "required": ["error"] },
+          "then": { "properties": { "command": { "const": "unknown" } } },
+          "else": { "properties": { "command": { "$ref": "commands.json#/$defs/command_identifier" } } }
+        }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

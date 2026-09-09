@@ -17,6 +17,7 @@ These documents are normative specifications of observable KOS behavior and mate
 | [Publication](publication.md) | Reviewed candidates, fast-forward publication, and recovery |
 | [Project Configuration](project-configuration.md) | Project-owned `.kos` configuration, versioning, and pinned bundles |
 | [Runtime Integration](runtime-integration.md) | Canonical skills, runtime targets, and CLI protocol |
+| [CLI Protocol Version 1](cli-protocol.md) | Versioned commands, JSON schemas, transport, preconditions, and stable errors |
 | [Initialization](initialization.md) | Safe target-project and runtime installation |
 
 Create or update a focused specification with any durable behavior change. Do not place implementation plans, private class design, detailed schemas assigned to later technical-contract tasks, or transient agent notes here.

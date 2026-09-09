@@ -42,4 +42,4 @@ Typical required evidence includes:
 | Review | An `approved` result for the candidate SHA from a separate attempt |
 | Publication | Fetch-based proof that the same SHA is reachable from the configured remote base ref |
 
-Detailed artifact and result-manifest JSON schemas and exact error response shapes are deferred to BOOT-007.
+Detailed artifact and result-manifest JSON schemas and exact error response shapes are defined by [CLI Protocol Version 1](cli-protocol.md).

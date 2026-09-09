@@ -42,10 +42,10 @@ Workflow orchestration and subagent restrictions are defined once in [Workflow E
 
 ## CLI Protocol
 
-All CLI commands are non-interactive and support `--json`. The CLI calls the versioned Rails JSON REST API under `/api/v1`; agents and skills never call that API directly. Structured input, API payloads, and stdout use versioned schemas. Stderr is diagnostics only.
+All CLI commands are non-interactive and support `--json`. The CLI calls the versioned Rails JSON REST API under `/api/v1`; agents and skills never call that API directly. Structured input, API payloads, and stdout use versioned schemas. Stderr is diagnostics only. [CLI Protocol Version 1](cli-protocol.md) defines the exact command and transport contract.
 
-The protocol exposes stable machine-readable error categories: `validation`, `conflict`, `lease_lost`, `not_found`, `transient`, and `internal`. Mutating commands carry an idempotency key; task mutations also carry expected lock version, and side-effecting operations carry a fencing token. Only transient errors receive bounded retry with jitter. After `validation`, `conflict`, or `lease_lost`, the agent rereads state and does not blindly retry the business operation.
+The protocol exposes stable machine-readable error categories including validation, authentication, authorization, conflicts, lost leases, missing resources, transient failures, and internal failures. Mutating commands carry an idempotency key; existing-task mutations carry expected lock version, and operations owned by an active attempt carry its fencing token. Only transient errors receive bounded retry with jitter. After validation, conflict, or lost-lease errors, the agent rereads state and does not blindly retry the business operation.
 
 The minimum mutation capability includes task creation, attempt claim/renew/reconcile, worktree reservation/confirmation, artifact registration, and atomic step completion. Step completion verifies lease, expected version, dependencies, and artifact contract, records artifacts, and advances workflow status in one transaction.
 
-BOOT-007 owns detailed versioned command and JSON schemas, payloads, and exact error response shapes. Detailed runtime adapter behavior and installation UX belong to later runtime-integration work.
+Detailed runtime adapter behavior and installation UX belong to later runtime-integration work.
