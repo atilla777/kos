@@ -71,21 +71,6 @@ FOREIGN KEY ("to_state_id", "workflow_version_id")
 , CONSTRAINT workflow_transitions_id_format CHECK (length(id) = 36 AND substr(id, 9, 1) = '-' AND substr(id, 14, 1) = '-' AND substr(id, 19, 1) = '-' AND substr(id, 24, 1) = '-' AND length(replace(id, '-', '')) = 32 AND replace(id, '-', '') NOT GLOB '*[^0-9a-f]*'), CONSTRAINT workflow_transitions_distinct_states CHECK (from_state_id <> to_state_id));
 CREATE INDEX "index_workflow_transitions_on_workflow_version_id" ON "workflow_transitions" ("workflow_version_id");
 CREATE UNIQUE INDEX "index_workflow_transitions_uniqueness" ON "workflow_transitions" ("workflow_version_id", "from_state_id", "to_state_id");
-CREATE TABLE "tasks" ("id" varchar NOT NULL PRIMARY KEY, "repository_id" varchar NOT NULL, "sequence" integer NOT NULL, "title" varchar NOT NULL, "task_type_id" varchar NOT NULL, "workflow_version_id" varchar NOT NULL, "workflow_state_id" varchar NOT NULL, "lock_version" integer DEFAULT 0 NOT NULL, "created_at" datetime(6) NOT NULL, "updated_at" datetime(6) NOT NULL, CONSTRAINT "fk_rails_895b56a423"
-FOREIGN KEY ("workflow_version_id", "task_type_id")
-  REFERENCES "workflow_versions" ("id", "task_type_id")
-, CONSTRAINT "fk_rails_172410944d"
-FOREIGN KEY ("repository_id")
-  REFERENCES "repositories" ("id")
-, CONSTRAINT "fk_rails_f6eab2208f"
-FOREIGN KEY ("task_type_id")
-  REFERENCES "task_types" ("id")
-, CONSTRAINT "fk_rails_75855fcbda"
-FOREIGN KEY ("workflow_state_id", "workflow_version_id")
-  REFERENCES "workflow_states" ("id", "workflow_version_id")
-, CONSTRAINT tasks_id_format CHECK (length(id) = 36 AND substr(id, 9, 1) = '-' AND substr(id, 14, 1) = '-' AND substr(id, 19, 1) = '-' AND substr(id, 24, 1) = '-' AND length(replace(id, '-', '')) = 32 AND replace(id, '-', '') NOT GLOB '*[^0-9a-f]*'), CONSTRAINT tasks_sequence_range CHECK (sequence BETWEEN 1 AND 999999), CONSTRAINT tasks_title_present CHECK (length(title) > 0), CONSTRAINT tasks_lock_version_nonnegative CHECK (lock_version >= 0));
-CREATE INDEX "index_tasks_on_repository_id" ON "tasks" ("repository_id");
-CREATE UNIQUE INDEX "index_tasks_on_repository_id_and_sequence" ON "tasks" ("repository_id", "sequence");
 CREATE TRIGGER task_types_primary_key_immutable
 BEFORE UPDATE OF id ON task_types
 BEGIN
@@ -138,11 +123,6 @@ BEGIN
 END;
 CREATE TRIGGER workflow_versions_primary_key_immutable
 BEFORE UPDATE OF id ON workflow_versions
-BEGIN
-  SELECT RAISE(ABORT, 'primary key is immutable');
-END;
-CREATE TRIGGER tasks_primary_key_immutable
-BEFORE UPDATE OF id ON tasks
 BEGIN
   SELECT RAISE(ABORT, 'primary key is immutable');
 END;
@@ -309,20 +289,6 @@ WHEN NEW.current_workflow_version_id IS NOT NULL
 BEGIN
   SELECT RAISE(ABORT, 'current workflow version must be published for this task type');
 END;
-CREATE TRIGGER tasks_workflow_version_must_be_published
-BEFORE INSERT ON tasks
-WHEN NOT EXISTS (
-  SELECT 1 FROM workflow_versions
-  WHERE id = NEW.workflow_version_id AND published_at IS NOT NULL
-)
-BEGIN
-  SELECT RAISE(ABORT, 'task workflow version must be published');
-END;
-CREATE TRIGGER tasks_immutable_identity
-BEFORE UPDATE OF repository_id, sequence, task_type_id, workflow_version_id ON tasks
-BEGIN
-  SELECT RAISE(ABORT, 'task identity and workflow version are immutable');
-END;
 CREATE TRIGGER workflow_transitions_same_version
 BEFORE INSERT ON workflow_transitions
 WHEN NOT EXISTS (
@@ -351,5 +317,276 @@ WHEN NOT EXISTS (
 BEGIN
   SELECT RAISE(ABORT, 'transition states must belong to its workflow version');
 END;
+CREATE TABLE "workflow_attempts" ("id" varchar NOT NULL PRIMARY KEY, "repository_id" varchar NOT NULL, "task_id" varchar NOT NULL, "workflow_state_id" varchar NOT NULL, "owner_id" varchar NOT NULL, "idempotency_key" varchar NOT NULL, "state" varchar DEFAULT 'started' NOT NULL, "fencing_token" integer NOT NULL, "lease_expires_at" datetime(6), "heartbeat_at" datetime(6), "started_at" datetime(6) NOT NULL, "completed_at" datetime(6), "input_context" text, "input_context_digest" varchar, "result_manifest" text, "created_at" datetime(6) NOT NULL, "updated_at" datetime(6) NOT NULL, CONSTRAINT "fk_rails_41dd974b5a"
+FOREIGN KEY ("task_id", "repository_id")
+  REFERENCES "tasks" ("id", "repository_id")
+, CONSTRAINT "fk_rails_bcec460837"
+FOREIGN KEY ("repository_id")
+  REFERENCES "repositories" ("id")
+, CONSTRAINT "fk_rails_523332645d"
+FOREIGN KEY ("workflow_state_id")
+  REFERENCES "workflow_states" ("id")
+, CONSTRAINT workflow_attempts_id_format CHECK (length(id) = 36 AND substr(id, 9, 1) = '-' AND substr(id, 14, 1) = '-' AND substr(id, 19, 1) = '-' AND substr(id, 24, 1) = '-' AND length(replace(id, '-', '')) = 32 AND replace(id, '-', '') NOT GLOB '*[^0-9a-f]*'), CONSTRAINT workflow_attempts_owner_id_format CHECK (length(owner_id) BETWEEN 1 AND 128 AND substr(owner_id, 1, 1) GLOB '[a-z]' AND owner_id NOT GLOB '*[^a-z0-9_-]*'), CONSTRAINT workflow_attempts_idempotency_key_format CHECK (length(idempotency_key) BETWEEN 8 AND 255 AND idempotency_key NOT GLOB '*[^A-Za-z0-9._:-]*'), CONSTRAINT workflow_attempts_fencing_token_positive CHECK (fencing_token >= 1), CONSTRAINT workflow_attempts_state_values CHECK (state IN ('started', 'succeeded', 'failed', 'interrupted', 'needs_human')), CONSTRAINT workflow_attempts_context_digest_format CHECK (input_context_digest IS NULL OR (substr(input_context_digest, 1, 7) = 'sha256:' AND length(input_context_digest) = 71 AND substr(input_context_digest, 8) NOT GLOB '*[^0-9a-f]*')), CONSTRAINT workflow_attempts_input_context_json CHECK (input_context IS NULL OR (json_valid(input_context) AND json_type(input_context) = 'object')), CONSTRAINT workflow_attempts_result_manifest_json CHECK (result_manifest IS NULL OR (json_valid(result_manifest) AND json_type(result_manifest) = 'object')), CONSTRAINT workflow_attempts_context_pair CHECK ((input_context IS NULL AND input_context_digest IS NULL) OR (input_context IS NOT NULL AND input_context_digest IS NOT NULL)), CONSTRAINT workflow_attempts_timestamp_order CHECK (heartbeat_at IS NOT NULL AND heartbeat_at >= started_at AND (lease_expires_at IS NULL OR lease_expires_at > heartbeat_at) AND (completed_at IS NULL OR completed_at >= heartbeat_at)), CONSTRAINT workflow_attempts_lifecycle_shape CHECK ((state = 'started' AND lease_expires_at IS NOT NULL AND heartbeat_at IS NOT NULL AND completed_at IS NULL AND result_manifest IS NULL) OR (state = 'interrupted' AND lease_expires_at IS NULL AND heartbeat_at IS NOT NULL AND completed_at IS NOT NULL AND result_manifest IS NULL) OR (state IN ('succeeded', 'failed', 'needs_human') AND lease_expires_at IS NULL AND heartbeat_at IS NOT NULL AND completed_at IS NOT NULL AND input_context IS NOT NULL AND result_manifest IS NOT NULL)), CONSTRAINT workflow_attempts_result_manifest_binding CHECK (result_manifest IS NULL OR ( json_extract(result_manifest, '$.attempt_id') IS id AND json_extract(result_manifest, '$.input_context_digest') IS input_context_digest AND json_extract(result_manifest, '$.outcome') IS state )));
+CREATE INDEX "index_workflow_attempts_on_repository_id" ON "workflow_attempts" ("repository_id");
+CREATE UNIQUE INDEX "index_workflow_attempts_on_id_and_repository_id" ON "workflow_attempts" ("id", "repository_id");
+CREATE UNIQUE INDEX "index_workflow_attempts_on_identity_and_ownership" ON "workflow_attempts" ("id", "task_id", "repository_id");
+CREATE UNIQUE INDEX "index_workflow_attempts_on_identity_and_fencing" ON "workflow_attempts" ("id", "task_id", "repository_id", "fencing_token");
+CREATE UNIQUE INDEX "index_workflow_attempts_on_task_and_fencing" ON "workflow_attempts" ("repository_id", "task_id", "fencing_token");
+CREATE UNIQUE INDEX "index_workflow_attempts_on_repository_id_and_idempotency_key" ON "workflow_attempts" ("repository_id", "idempotency_key");
+CREATE UNIQUE INDEX "index_workflow_attempts_one_started_per_task" ON "workflow_attempts" ("repository_id", "task_id") WHERE state = 'started';
+CREATE TABLE "idempotency_records" ("id" varchar NOT NULL PRIMARY KEY, "repository_id" varchar, "command" varchar NOT NULL, "idempotency_key" varchar NOT NULL, "request_fingerprint" varchar NOT NULL, "state" varchar DEFAULT 'in_progress' NOT NULL, "intent_resource_type" varchar, "intent_resource_id" varchar, "response_status" integer, "response_data" text, "completed_at" datetime(6), "created_at" datetime(6) NOT NULL, "updated_at" datetime(6) NOT NULL, CONSTRAINT "fk_rails_5301cd746c"
+FOREIGN KEY ("repository_id")
+  REFERENCES "repositories" ("id")
+, CONSTRAINT idempotency_records_id_format CHECK (length(id) = 36 AND substr(id, 9, 1) = '-' AND substr(id, 14, 1) = '-' AND substr(id, 19, 1) = '-' AND substr(id, 24, 1) = '-' AND length(replace(id, '-', '')) = 32 AND replace(id, '-', '') NOT GLOB '*[^0-9a-f]*'), CONSTRAINT idempotency_records_command_format CHECK (length(command) BETWEEN 1 AND 128 AND substr(command, 1, 1) GLOB '[a-z]' AND command NOT GLOB '*[^a-z0-9_.-]*'), CONSTRAINT idempotency_records_key_format CHECK (length(idempotency_key) BETWEEN 8 AND 255 AND idempotency_key NOT GLOB '*[^A-Za-z0-9._:-]*'), CONSTRAINT idempotency_records_fingerprint_format CHECK (substr(request_fingerprint, 1, 7) = 'sha256:' AND length(request_fingerprint) = 71 AND substr(request_fingerprint, 8) NOT GLOB '*[^0-9a-f]*'), CONSTRAINT idempotency_records_state_values CHECK (state IN ('in_progress', 'completed')), CONSTRAINT idempotency_records_intent_type_format CHECK (intent_resource_type IS NULL OR (length(intent_resource_type) BETWEEN 1 AND 128 AND substr(intent_resource_type, 1, 1) GLOB '[a-z]' AND intent_resource_type NOT GLOB '*[^a-z0-9_-]*')), CONSTRAINT idempotency_records_intent_id_format CHECK (intent_resource_id IS NULL OR (length(intent_resource_id) = 36 AND substr(intent_resource_id, 9, 1) = '-' AND substr(intent_resource_id, 14, 1) = '-' AND substr(intent_resource_id, 19, 1) = '-' AND substr(intent_resource_id, 24, 1) = '-' AND length(replace(intent_resource_id, '-', '')) = 32 AND replace(intent_resource_id, '-', '') NOT GLOB '*[^0-9a-f]*')), CONSTRAINT idempotency_records_response_data_json CHECK (response_data IS NULL OR (json_valid(response_data) AND json_type(response_data) = 'object')), CONSTRAINT idempotency_records_lifecycle_shape CHECK ((state = 'in_progress' AND intent_resource_type IS NOT NULL AND intent_resource_id IS NOT NULL AND response_status IS NULL AND response_data IS NULL AND completed_at IS NULL) OR (state = 'completed' AND intent_resource_type IS NULL AND intent_resource_id IS NULL AND response_status IS NOT NULL AND response_status BETWEEN 100 AND 599 AND response_data IS NOT NULL AND completed_at IS NOT NULL)));
+CREATE INDEX "index_idempotency_records_on_repository_id" ON "idempotency_records" ("repository_id");
+CREATE UNIQUE INDEX "index_idempotency_records_global_uniqueness" ON "idempotency_records" ("command", "idempotency_key") WHERE repository_id IS NULL;
+CREATE UNIQUE INDEX "index_idempotency_records_repository_uniqueness" ON "idempotency_records" ("repository_id", "command", "idempotency_key") WHERE repository_id IS NOT NULL;
+CREATE TABLE "task_artifacts" ("id" varchar NOT NULL PRIMARY KEY, "repository_id" varchar NOT NULL, "task_id" varchar NOT NULL, "workflow_attempt_id" varchar NOT NULL, "artifact_type" varchar NOT NULL, "state" varchar NOT NULL, "producer" varchar NOT NULL, "metadata" text NOT NULL, "created_at" datetime(6) NOT NULL, CONSTRAINT "fk_rails_ceb8cd3b46"
+FOREIGN KEY ("repository_id")
+  REFERENCES "repositories" ("id")
+, CONSTRAINT "fk_rails_e7be00fdcc"
+FOREIGN KEY ("workflow_attempt_id", "task_id", "repository_id")
+  REFERENCES "workflow_attempts" ("id", "task_id", "repository_id")
+, CONSTRAINT task_artifacts_id_format CHECK (length(id) = 36 AND substr(id, 9, 1) = '-' AND substr(id, 14, 1) = '-' AND substr(id, 19, 1) = '-' AND substr(id, 24, 1) = '-' AND length(replace(id, '-', '')) = 32 AND replace(id, '-', '') NOT GLOB '*[^0-9a-f]*'), CONSTRAINT task_artifacts_producer_format CHECK (length(producer) BETWEEN 1 AND 128 AND substr(producer, 1, 1) GLOB '[a-z]' AND producer NOT GLOB '*[^a-z0-9_-]*'), CONSTRAINT task_artifacts_metadata_json CHECK (json_valid(metadata) AND json_type(metadata) = 'object'), CONSTRAINT task_artifacts_type_state_pair CHECK ((artifact_type IN ('document', 'candidate') AND state = 'produced') OR (artifact_type = 'test' AND state IN ('passed', 'failed')) OR (artifact_type = 'review' AND state IN ('approved', 'changes_requested')) OR (artifact_type = 'publication' AND state = 'published')), CONSTRAINT task_artifacts_metadata_kind CHECK (json_extract(metadata, '$.kind') IS artifact_type), CONSTRAINT task_artifacts_test_result_binding CHECK (artifact_type <> 'test' OR ( json_type(metadata, '$.exit_code') IS 'integer' AND ((state = 'passed' AND json_extract(metadata, '$.exit_code') = 0) OR (state = 'failed' AND json_extract(metadata, '$.exit_code') >= 1)) )), CONSTRAINT task_artifacts_review_verdict_binding CHECK (artifact_type <> 'review' OR json_extract(metadata, '$.verdict') IS state), CONSTRAINT task_artifacts_publication_reachability CHECK (artifact_type <> 'publication' OR ( json_type(metadata, '$.reachable') IS 'true' AND json_extract(metadata, '$.reachable') IS 1 )));
+CREATE INDEX "index_task_artifacts_on_repository_id" ON "task_artifacts" ("repository_id");
+CREATE INDEX "index_task_artifacts_for_listing" ON "task_artifacts" ("repository_id", "task_id", "created_at", "id");
+CREATE INDEX "index_task_artifacts_for_contracts" ON "task_artifacts" ("repository_id", "task_id", "artifact_type", "state");
+CREATE TABLE "worktree_reservations" ("id" varchar NOT NULL PRIMARY KEY, "repository_id" varchar NOT NULL, "task_id" varchar NOT NULL, "workflow_attempt_id" varchar NOT NULL, "branch" varchar NOT NULL, "path" varchar NOT NULL, "state" varchar DEFAULT 'reserved' NOT NULL, "fencing_token" integer NOT NULL, "git_common_dir_digest" varchar, "head_sha" varchar, "observed_state" varchar, "observation_digest" varchar, "confirmed_at" datetime(6), "released_at" datetime(6), "created_at" datetime(6) NOT NULL, "updated_at" datetime(6) NOT NULL, CONSTRAINT "fk_rails_16fb0343f9"
+FOREIGN KEY ("repository_id")
+  REFERENCES "repositories" ("id")
+, CONSTRAINT "fk_rails_fb7d02166d"
+FOREIGN KEY ("workflow_attempt_id", "task_id", "repository_id", "fencing_token")
+  REFERENCES "workflow_attempts" ("id", "task_id", "repository_id", "fencing_token")
+, CONSTRAINT worktree_reservations_id_format CHECK (length(id) = 36 AND substr(id, 9, 1) = '-' AND substr(id, 14, 1) = '-' AND substr(id, 19, 1) = '-' AND substr(id, 24, 1) = '-' AND length(replace(id, '-', '')) = 32 AND replace(id, '-', '') NOT GLOB '*[^0-9a-f]*'), CONSTRAINT worktree_reservations_path_absolute CHECK (path LIKE '/%'), CONSTRAINT worktree_reservations_branch_present CHECK (length(branch) > 0), CONSTRAINT worktree_reservations_fencing_token_positive CHECK (fencing_token >= 1), CONSTRAINT worktree_reservations_state_values CHECK (state IN ('reserved', 'confirmed', 'release_pending', 'released')), CONSTRAINT worktree_reservations_observed_state_values CHECK (observed_state IS NULL OR observed_state IN ('absent', 'clean', 'dirty', 'mismatched')), CONSTRAINT worktree_reservations_common_dir_digest_format CHECK (git_common_dir_digest IS NULL OR (substr(git_common_dir_digest, 1, 7) = 'sha256:' AND length(git_common_dir_digest) = 71 AND substr(git_common_dir_digest, 8) NOT GLOB '*[^0-9a-f]*')), CONSTRAINT worktree_reservations_head_sha_format CHECK (head_sha IS NULL OR (length(head_sha) = 40 AND head_sha NOT GLOB '*[^0-9a-f]*')), CONSTRAINT worktree_reservations_observation_digest_format CHECK (observation_digest IS NULL OR (substr(observation_digest, 1, 7) = 'sha256:' AND length(observation_digest) = 71 AND substr(observation_digest, 8) NOT GLOB '*[^0-9a-f]*')), CONSTRAINT worktree_reservations_confirmation_shape CHECK ((state = 'reserved' AND git_common_dir_digest IS NULL AND head_sha IS NULL AND confirmed_at IS NULL) OR (state IN ('confirmed', 'release_pending', 'released') AND git_common_dir_digest IS NOT NULL AND head_sha IS NOT NULL AND confirmed_at IS NOT NULL)), CONSTRAINT worktree_reservations_observation_pair CHECK ((observed_state IS NULL AND observation_digest IS NULL) OR (observed_state IS NOT NULL AND observation_digest IS NOT NULL)), CONSTRAINT worktree_reservations_release_shape CHECK ((state <> 'released' AND released_at IS NULL) OR (state = 'released' AND released_at IS NOT NULL AND observed_state = 'absent')));
+CREATE INDEX "index_worktree_reservations_on_repository_id" ON "worktree_reservations" ("repository_id");
+CREATE UNIQUE INDEX "index_worktree_reservations_on_id_and_repository_id" ON "worktree_reservations" ("id", "repository_id");
+CREATE UNIQUE INDEX "index_worktree_reservations_on_identity_and_ownership" ON "worktree_reservations" ("id", "task_id", "repository_id");
+CREATE UNIQUE INDEX "index_worktree_reservations_one_active_per_task" ON "worktree_reservations" ("repository_id", "task_id") WHERE state <> 'released';
+CREATE UNIQUE INDEX "index_worktree_reservations_active_branch" ON "worktree_reservations" ("repository_id", "branch") WHERE state <> 'released';
+CREATE UNIQUE INDEX "index_worktree_reservations_active_path" ON "worktree_reservations" ("path") WHERE state <> 'released';
+CREATE TABLE "tasks" ("id" varchar NOT NULL PRIMARY KEY, "repository_id" varchar NOT NULL, "sequence" integer NOT NULL, "title" varchar NOT NULL, "task_type_id" varchar NOT NULL, "workflow_version_id" varchar NOT NULL, "workflow_state_id" varchar NOT NULL, "lock_version" integer DEFAULT 0 NOT NULL, "created_at" datetime(6) NOT NULL, "updated_at" datetime(6) NOT NULL, "active_attempt_id" varchar, "worktree_reservation_id" varchar, CONSTRAINT "fk_rails_b8caabc2f7"
+FOREIGN KEY ("active_attempt_id", "id", "repository_id")
+  REFERENCES "workflow_attempts" ("id", "task_id", "repository_id")
+, CONSTRAINT "fk_rails_895b56a423"
+FOREIGN KEY ("workflow_version_id", "task_type_id")
+  REFERENCES "workflow_versions" ("id", "task_type_id")
+, CONSTRAINT "fk_rails_172410944d"
+FOREIGN KEY ("repository_id")
+  REFERENCES "repositories" ("id")
+, CONSTRAINT "fk_rails_f6eab2208f"
+FOREIGN KEY ("task_type_id")
+  REFERENCES "task_types" ("id")
+, CONSTRAINT "fk_rails_75855fcbda"
+FOREIGN KEY ("workflow_state_id", "workflow_version_id")
+  REFERENCES "workflow_states" ("id", "workflow_version_id")
+, CONSTRAINT "fk_rails_95215c6001"
+FOREIGN KEY ("worktree_reservation_id", "id", "repository_id")
+  REFERENCES "worktree_reservations" ("id", "task_id", "repository_id")
+, CONSTRAINT tasks_id_format CHECK (length(id) = 36 AND substr(id, 9, 1) = '-' AND substr(id, 14, 1) = '-' AND substr(id, 19, 1) = '-' AND substr(id, 24, 1) = '-' AND length(replace(id, '-', '')) = 32 AND replace(id, '-', '') NOT GLOB '*[^0-9a-f]*'), CONSTRAINT tasks_sequence_range CHECK (sequence BETWEEN 1 AND 999999), CONSTRAINT tasks_title_present CHECK (length(title) > 0), CONSTRAINT tasks_lock_version_nonnegative CHECK (lock_version >= 0));
+CREATE INDEX "index_tasks_on_repository_id" ON "tasks" ("repository_id");
+CREATE UNIQUE INDEX "index_tasks_on_repository_id_and_sequence" ON "tasks" ("repository_id", "sequence");
+CREATE UNIQUE INDEX "index_tasks_on_id_and_repository_id" ON "tasks" ("id", "repository_id");
+CREATE UNIQUE INDEX "index_tasks_on_active_attempt_id" ON "tasks" ("active_attempt_id");
+CREATE UNIQUE INDEX "index_tasks_on_worktree_reservation_id" ON "tasks" ("worktree_reservation_id");
+CREATE TRIGGER workflow_attempts_primary_key_immutable
+BEFORE UPDATE OF id ON workflow_attempts
+BEGIN
+  SELECT RAISE(ABORT, 'primary key is immutable');
+END;
+CREATE TRIGGER idempotency_records_primary_key_immutable
+BEFORE UPDATE OF id ON idempotency_records
+BEGIN
+  SELECT RAISE(ABORT, 'primary key is immutable');
+END;
+CREATE TRIGGER task_artifacts_primary_key_immutable
+BEFORE UPDATE OF id ON task_artifacts
+BEGIN
+  SELECT RAISE(ABORT, 'primary key is immutable');
+END;
+CREATE TRIGGER worktree_reservations_primary_key_immutable
+BEFORE UPDATE OF id ON worktree_reservations
+BEGIN
+  SELECT RAISE(ABORT, 'primary key is immutable');
+END;
+CREATE TRIGGER tasks_primary_key_immutable
+BEFORE UPDATE OF id ON tasks
+BEGIN
+  SELECT RAISE(ABORT, 'primary key is immutable');
+END;
+CREATE TRIGGER tasks_workflow_version_must_be_published
+BEFORE INSERT ON tasks
+WHEN NOT EXISTS (
+  SELECT 1 FROM workflow_versions
+  WHERE id = NEW.workflow_version_id AND published_at IS NOT NULL
+)
+BEGIN
+  SELECT RAISE(ABORT, 'task workflow version must be published');
+END;
+CREATE TRIGGER tasks_immutable_identity
+BEFORE UPDATE OF repository_id, sequence, task_type_id, workflow_version_id ON tasks
+BEGIN
+  SELECT RAISE(ABORT, 'task identity and workflow version are immutable');
+END;
+CREATE TRIGGER workflow_attempts_current_task_state
+BEFORE INSERT ON workflow_attempts
+WHEN NOT EXISTS (
+  SELECT 1 FROM tasks
+  JOIN workflow_states ON workflow_states.id = tasks.workflow_state_id
+  WHERE tasks.id = NEW.task_id
+    AND tasks.repository_id = NEW.repository_id
+    AND tasks.workflow_state_id = NEW.workflow_state_id
+    AND workflow_states.terminal = 0
+)
+BEGIN
+  SELECT RAISE(ABORT, 'attempt state must be the current task state');
+END;
+CREATE TRIGGER workflow_attempts_monotonic_fencing
+BEFORE INSERT ON workflow_attempts
+WHEN NEW.fencing_token <> COALESCE((
+  SELECT MAX(fencing_token) + 1 FROM workflow_attempts
+  WHERE task_id = NEW.task_id AND repository_id = NEW.repository_id
+), 1)
+BEGIN
+  SELECT RAISE(ABORT, 'attempt fencing token must be the next task token');
+END;
+CREATE TRIGGER workflow_attempts_immutable_identity
+BEFORE UPDATE OF repository_id, task_id, workflow_state_id, owner_id, idempotency_key,
+  fencing_token, started_at ON workflow_attempts
+BEGIN
+  SELECT RAISE(ABORT, 'attempt identity is immutable');
+END;
+CREATE TRIGGER workflow_attempts_frozen_context
+BEFORE UPDATE OF input_context, input_context_digest ON workflow_attempts
+WHEN OLD.input_context IS NOT NULL
+  AND (NEW.input_context IS NOT OLD.input_context OR NEW.input_context_digest IS NOT OLD.input_context_digest)
+BEGIN
+  SELECT RAISE(ABORT, 'attempt context is immutable after finalization');
+END;
+CREATE TRIGGER workflow_attempts_terminal_immutable
+BEFORE UPDATE ON workflow_attempts WHEN OLD.state <> 'started'
+BEGIN
+  SELECT RAISE(ABORT, 'terminal attempt is immutable');
+END;
+CREATE TRIGGER workflow_attempts_terminal_requires_detached_task
+BEFORE UPDATE OF state ON workflow_attempts
+WHEN NEW.state <> 'started' AND EXISTS (
+  SELECT 1 FROM tasks WHERE active_attempt_id = OLD.id
+)
+BEGIN
+  SELECT RAISE(ABORT, 'task must release its active attempt before completion');
+END;
+CREATE TRIGGER workflow_attempts_no_delete
+BEFORE DELETE ON workflow_attempts
+BEGIN
+  SELECT RAISE(ABORT, 'attempt cannot be deleted');
+END;
+CREATE TRIGGER idempotency_records_immutable_request
+BEFORE UPDATE OF repository_id, command, idempotency_key, request_fingerprint ON idempotency_records
+BEGIN
+  SELECT RAISE(ABORT, 'idempotency request identity is immutable');
+END;
+CREATE TRIGGER idempotency_records_completed_immutable
+BEFORE UPDATE ON idempotency_records WHEN OLD.state = 'completed'
+BEGIN
+  SELECT RAISE(ABORT, 'completed idempotency record is immutable');
+END;
+CREATE TRIGGER idempotency_records_no_delete
+BEFORE DELETE ON idempotency_records
+BEGIN
+  SELECT RAISE(ABORT, 'idempotency record cannot be deleted');
+END;
+CREATE TRIGGER task_artifacts_immutable
+BEFORE UPDATE ON task_artifacts
+BEGIN
+  SELECT RAISE(ABORT, 'task artifact is immutable');
+END;
+CREATE TRIGGER task_artifacts_no_delete
+BEFORE DELETE ON task_artifacts
+BEGIN
+  SELECT RAISE(ABORT, 'task artifact cannot be deleted');
+END;
+CREATE TRIGGER worktree_reservations_task_branch
+BEFORE INSERT ON worktree_reservations
+WHEN NEW.branch <> (
+  SELECT 'kos/task-' || repositories.task_prefix || '-' || printf('%06d', tasks.sequence)
+  FROM tasks JOIN repositories ON repositories.id = tasks.repository_id
+  WHERE tasks.id = NEW.task_id AND tasks.repository_id = NEW.repository_id
+)
+BEGIN
+  SELECT RAISE(ABORT, 'reservation branch must match the task number');
+END;
+CREATE TRIGGER worktree_reservations_immutable_allocation
+BEFORE UPDATE OF repository_id, task_id, branch, path, created_at ON worktree_reservations
+BEGIN
+  SELECT RAISE(ABORT, 'worktree reservation allocation is immutable');
+END;
+CREATE TRIGGER worktree_reservations_active_owner_insert
+BEFORE INSERT ON worktree_reservations
+WHEN NOT EXISTS (
+  SELECT 1 FROM workflow_attempts
+  WHERE id = NEW.workflow_attempt_id AND task_id = NEW.task_id
+    AND repository_id = NEW.repository_id AND fencing_token = NEW.fencing_token
+    AND state = 'started'
+)
+BEGIN
+  SELECT RAISE(ABORT, 'reservation owner must be an active attempt');
+END;
+CREATE TRIGGER worktree_reservations_active_owner_update
+BEFORE UPDATE OF workflow_attempt_id, fencing_token ON worktree_reservations
+WHEN NOT EXISTS (
+  SELECT 1 FROM workflow_attempts
+  WHERE id = NEW.workflow_attempt_id AND task_id = NEW.task_id
+    AND repository_id = NEW.repository_id AND fencing_token = NEW.fencing_token
+    AND state = 'started'
+)
+BEGIN
+  SELECT RAISE(ABORT, 'reservation owner must be an active attempt');
+END;
+CREATE TRIGGER worktree_reservations_no_delete
+BEFORE DELETE ON worktree_reservations
+BEGIN
+  SELECT RAISE(ABORT, 'worktree reservation cannot be deleted');
+END;
+CREATE TRIGGER worktree_reservations_release_requires_detached_task
+BEFORE UPDATE OF state ON worktree_reservations
+WHEN NEW.state = 'released' AND EXISTS (
+  SELECT 1 FROM tasks WHERE worktree_reservation_id = OLD.id
+)
+BEGIN
+  SELECT RAISE(ABORT, 'task must release its worktree reservation pointer first');
+END;
+CREATE TRIGGER tasks_active_attempt_must_be_started
+BEFORE UPDATE OF active_attempt_id ON tasks
+WHEN NEW.active_attempt_id IS NOT NULL AND NOT EXISTS (
+  SELECT 1 FROM workflow_attempts
+  WHERE id = NEW.active_attempt_id AND task_id = NEW.id
+    AND repository_id = NEW.repository_id AND workflow_state_id = NEW.workflow_state_id
+    AND state = 'started'
+)
+BEGIN
+  SELECT RAISE(ABORT, 'active attempt must be started for this task');
+END;
+CREATE TRIGGER tasks_workflow_state_requires_matching_attempt
+BEFORE UPDATE OF workflow_state_id ON tasks
+WHEN NEW.active_attempt_id IS NOT NULL AND NOT EXISTS (
+  SELECT 1 FROM workflow_attempts
+  WHERE id = NEW.active_attempt_id AND task_id = NEW.id
+    AND repository_id = NEW.repository_id AND workflow_state_id = NEW.workflow_state_id
+    AND state = 'started'
+)
+BEGIN
+  SELECT RAISE(ABORT, 'active attempt must match the task workflow state');
+END;
+CREATE TRIGGER tasks_worktree_reservation_must_be_active
+BEFORE UPDATE OF worktree_reservation_id ON tasks
+WHEN NEW.worktree_reservation_id IS NOT NULL AND NOT EXISTS (
+  SELECT 1 FROM worktree_reservations
+  WHERE id = NEW.worktree_reservation_id AND task_id = NEW.id
+    AND repository_id = NEW.repository_id AND state <> 'released'
+)
+BEGIN
+  SELECT RAISE(ABORT, 'task worktree reservation must be active');
+END;
 INSERT INTO "schema_migrations" (version) VALUES
+('20260910000000'),
 ('20260909000000');

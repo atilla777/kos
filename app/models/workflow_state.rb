@@ -5,6 +5,7 @@ class WorkflowState < ApplicationRecord
   has_many :artifact_templates, dependent: :restrict_with_exception
   has_many :workflow_state_effects, dependent: :restrict_with_exception
   has_many :artifact_requirements, dependent: :restrict_with_exception
+  has_many :workflow_attempts, dependent: :restrict_with_exception
 
   validates :identifier, presence: true, uniqueness: { scope: :workflow_version_id }
   validates :identifier, format: { with: IDENTIFIER_FORMAT }
