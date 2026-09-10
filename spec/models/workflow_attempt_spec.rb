@@ -203,6 +203,28 @@ RSpec.describe WorkflowAttempt, :aggregate_failures, type: :model do
     [ reservation, create_attempt(task:, token: 2) ]
   end
 
+  def attempts_with_tied_timestamps(task)
+    timestamp = Time.current
+    first = create_attempt(task:, started_at: timestamp, heartbeat_at: timestamp)
+    finalize(first, state: "needs_human")
+    second = create_attempt(task:, token: 2, started_at: timestamp, heartbeat_at: timestamp)
+    finalize(second)
+  end
+
+  def task_with_cancelled_terminal
+    task_type = TaskType.create!(id: "cancel-type", name: "cancel-type", workflow_id: "cancel-workflow")
+    version = WorkflowVersion.create!(task_type:, workflow_id: task_type.workflow_id, version: "1.0.0",
+      content_digest: digest)
+    source = WorkflowState.create!(workflow_version: version, identifier: "development", initial: true,
+      execution_mode: "subagent", instruction: "Work.", worktree_policy: "required",
+      repository_changes_policy: "allowed")
+    terminal = WorkflowState.create!(workflow_version: version, identifier: "cancelled", terminal: true)
+    version.update!(published_at: Time.current)
+    task = create_task(workflow: { task_type:, version:, source: })
+    task.update!(workflow_state: terminal)
+    task
+  end
+
   it "persists attempt associations and JSON documents" do
     attempt = attempt_with_context
 
@@ -426,6 +448,17 @@ RSpec.describe WorkflowAttempt, :aggregate_failures, type: :model do
     reservation = create_reservation(attempt)
 
     expect { task.update!(active_attempt: attempt, worktree_reservation: reservation) }.not_to raise_error
+  end
+
+  it "derives blocked state from the latest fencing token instead of attempt timestamps" do
+    task = create_task
+    attempts_with_tied_timestamps(task)
+
+    expect(task.status).to eq("open")
+  end
+
+  it "derives cancelled state from a non-completed terminal workflow state" do
+    expect(task_with_cancelled_terminal.status).to eq("cancelled")
   end
 
   it "requires clearing the task pointer before completing its attempt" do

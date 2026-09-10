@@ -798,6 +798,12 @@ RSpec.describe CliV1Contract do
     expect(described_class.task_pinning_contract).to eq([ true, described_class::WORKFLOW_VERSION_ID, [] ])
   end
 
+  it "allows a task type to exist before workflow activation" do
+    task_type = described_class.task_type.except("current_workflow_version_id")
+
+    expect(described_class.definition("resources.json", "task_type")).to be_valid(task_type)
+  end
+
   it "requires frozen context and matching results for terminal attempts" do
     expect(described_class.terminal_attempt_contract).to eq([ true, false, false ])
   end

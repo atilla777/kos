@@ -30,6 +30,19 @@ By default the development database is `storage/development.sqlite3`. Set `KOS_D
 
 A production process also requires `SECRET_KEY_BASE`; provide both secrets and state paths through the process environment, never committed files. Puma binds to `127.0.0.1` in every environment by default.
 
+## CLI
+
+Set `KOS_API_TOKEN` to the API bearer token. `KOS_API_URL` defaults to `http://127.0.0.1:3000`, and `KOS_API_TIMEOUT_SECONDS` defaults to `30`. Read commands are non-interactive and require `--json`:
+
+```sh
+bin/kos task-type list --limit 20 --json
+bin/kos workflow get --workflow-version UUID --json
+bin/kos task get --repository UUID --task KOS-000123 --json
+bin/kos artifact list --repository UUID --task KOS-000123 --limit 20 --json
+```
+
+The CLI writes one versioned JSON result to stdout and diagnostics to stderr.
+
 ## Checks
 
 ```sh

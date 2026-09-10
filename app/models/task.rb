@@ -18,4 +18,12 @@ class Task < ApplicationRecord
   def number
     "#{repository.task_prefix}-#{sequence.to_s.rjust(6, "0")}"
   end
+
+  def status
+    return workflow_state.identifier == "completed" ? "completed" : "cancelled" if workflow_state.terminal?
+    return "active" if active_attempt&.state == "started"
+
+    latest_state = workflow_attempts.where(workflow_state_id:).order(fencing_token: :desc).pick(:state)
+    latest_state == "needs_human" ? "blocked" : "open"
+  end
 end
