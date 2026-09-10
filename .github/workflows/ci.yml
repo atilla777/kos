@@ -25,6 +25,6 @@ jobs:
       - name: Prepare database
         run: bin/rails db:prepare
       - name: Verify production boot
-        run: RAILS_ENV=production SECRET_KEY_BASE_DUMMY=1 KOS_DATABASE_PATH=storage/production-ci.sqlite3 bin/rails runner "Rails.application.eager_load!"
+        run: RAILS_ENV=production SECRET_KEY_BASE_DUMMY=1 KOS_DATABASE_PATH="$GITHUB_WORKSPACE/storage/production-ci.sqlite3" bin/rails runner "Rails.application.eager_load!"
       - name: Run checks
         run: mise run check

@@ -1,4 +1,5 @@
 require_relative "boot"
+require_relative "../lib/kos/state/layout"
 
 require "rails"
 # Pick the frameworks you want:
@@ -41,6 +42,10 @@ module Kos
     # Skip views, helpers and assets when generating a new resource.
     config.api_only = true
     config.active_record.schema_format = :sql
+
+    server do
+      Kos::State::ServerStartup.call if Rails.env.production?
+    end
 
     config.generators do |generators|
       generators.test_framework :rspec
