@@ -23,6 +23,10 @@ module Api
         "attempts#needs_human" => "attempt.needs_human",
         "attempts#reconcile" => "attempt.reconcile",
         "worktree_reservations#show" => "worktree.get",
+        "worktree_reservations#reserve" => "worktree.reserve",
+        "worktree_reservations#confirm" => "worktree.confirm",
+        "worktree_reservations#reconcile" => "worktree.reconcile",
+        "worktree_reservations#release" => "worktree.release",
         "artifacts#index" => "artifact.list",
         "workflow_steps#complete" => "step.complete"
       }.freeze

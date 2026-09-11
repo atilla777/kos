@@ -43,6 +43,10 @@ module Kos
         %w[step context] => [ "step.context", "repository", {}, true ],
         %w[step complete] => [ "step.complete", "repository", {}, true ],
         %w[worktree get] => [ "worktree.get", "repository", { "reservation_id" => "--reservation" } ],
+        %w[worktree reserve] => [ "worktree.reserve", "repository", {}, true ],
+        %w[worktree confirm] => [ "worktree.confirm", "repository", {}, true ],
+        %w[worktree reconcile] => [ "worktree.reconcile", "repository", {}, true ],
+        %w[worktree release] => [ "worktree.release", "repository", {}, true ],
         %w[artifact list] => [ "artifact.list", "repository",
           { "task_number" => "--task", "limit" => "--limit", "cursor" => "--cursor" } ]
       }.freeze
@@ -164,6 +168,10 @@ module Kos
         "step.context" => "/api/v1/repositories/%<repository_id>s/attempts/%<attempt_id>s/step-context",
         "step.complete" => "/api/v1/repositories/%<repository_id>s/tasks/%<task_number>s/steps/complete",
         "worktree.get" => "/api/v1/repositories/%<repository_id>s/worktree-reservations/%<reservation_id>s",
+        "worktree.reserve" => "/api/v1/repositories/%<repository_id>s/tasks/%<task_number>s/worktree-reservations",
+        "worktree.confirm" => "/api/v1/repositories/%<repository_id>s/worktree-reservations/%<reservation_id>s/confirm",
+        "worktree.reconcile" => "/api/v1/repositories/%<repository_id>s/worktree-reservations/%<reservation_id>s/reconcile",
+        "worktree.release" => "/api/v1/repositories/%<repository_id>s/worktree-reservations/%<reservation_id>s/release",
         "artifact.list" => "/api/v1/repositories/%<repository_id>s/tasks/%<task_number>s/artifacts"
       }.freeze
 

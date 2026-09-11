@@ -633,7 +633,36 @@ BEGIN
   SELECT RAISE(ABORT, 'attempt cannot be deleted');
 END;
 CREATE TABLE "runtime_configs" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "retrospective_enabled" boolean DEFAULT FALSE NOT NULL, "lock_version" integer DEFAULT 0 NOT NULL, "created_at" datetime(6) NOT NULL, "updated_at" datetime(6) NOT NULL, CONSTRAINT runtime_configs_singleton CHECK (id = 1));
+CREATE TRIGGER worktree_reservations_lifecycle
+BEFORE UPDATE OF state ON worktree_reservations
+WHEN NOT (
+  (OLD.state = 'reserved' AND NEW.state IN ('reserved', 'confirmed'))
+  OR (OLD.state = 'confirmed' AND NEW.state IN ('confirmed', 'released'))
+  OR (OLD.state = 'confirmed' AND NEW.state = 'release_pending'
+    AND NEW.observed_state = 'clean' AND NEW.observation_digest IS NOT NULL
+    AND NEW.head_sha = OLD.head_sha)
+  OR (OLD.state = 'release_pending' AND NEW.state IN ('release_pending', 'released'))
+  OR (OLD.state = 'released' AND NEW.state = 'released')
+)
+BEGIN
+  SELECT RAISE(ABORT, 'invalid worktree reservation lifecycle transition');
+END;
+CREATE TRIGGER worktree_reservations_confirmation_immutable
+BEFORE UPDATE OF git_common_dir_digest, head_sha, confirmed_at ON worktree_reservations
+WHEN (OLD.git_common_dir_digest IS NOT NULL AND NEW.git_common_dir_digest IS NOT OLD.git_common_dir_digest)
+  OR (OLD.confirmed_at IS NOT NULL AND NEW.confirmed_at IS NOT OLD.confirmed_at)
+  OR (OLD.state = 'release_pending' AND NEW.head_sha IS NOT OLD.head_sha)
+BEGIN
+  SELECT RAISE(ABORT, 'worktree reservation confirmation identity is immutable');
+END;
+CREATE TRIGGER worktree_reservations_released_immutable
+BEFORE UPDATE ON worktree_reservations
+WHEN OLD.state = 'released'
+BEGIN
+  SELECT RAISE(ABORT, 'released worktree reservation is immutable');
+END;
 INSERT INTO "schema_migrations" (version) VALUES
+('20260911030000'),
 ('20260911020000'),
 ('20260911010000'),
 ('20260911000000'),

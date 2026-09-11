@@ -74,6 +74,17 @@ Claim requires the task number, owner ID, lease duration, and expected task lock
 
 `step context` requires the active attempt ID, fencing token, and expected task lock version. It atomically freezes and returns the pinned instruction, templates, artifact requirements, allowed repository effects, and execution metadata. A status requiring a worktree remains unavailable until its task-bound reservation is confirmed; publication context also remains unavailable until its durable publication intent has been prepared by the publication protocol.
 
+Reserve, confirm, reconcile, and explicitly release task worktrees through the same mutation transport:
+
+```sh
+bin/kos worktree reserve --repository UUID --input reserve.json --idempotency-key worktree-reserve-1 --json
+bin/kos worktree confirm --repository UUID --input confirm.json --idempotency-key worktree-confirm-1 --json
+bin/kos worktree reconcile --repository UUID --input observation.json --idempotency-key worktree-reconcile-1 --json
+bin/kos worktree release --repository UUID --input observation.json --idempotency-key worktree-release-1 --json
+```
+
+KOS reserves and fences state but does not create or remove a Git worktree. Confirmation and observations must come from the owning orchestrator after `kos-repository` verifies the persisted allocation. Cleanup first records a matching clean worktree as `release_pending`, then records its absence after external removal; dirty or mismatched worktrees remain reserved for explicit resolution.
+
 The CLI writes one versioned JSON result to stdout and diagnostics to stderr.
 
 ## Checks

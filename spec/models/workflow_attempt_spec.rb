@@ -186,10 +186,13 @@ RSpec.describe WorkflowAttempt, :aggregate_failures, type: :model do
 
   def release(reservation)
     reservation.update!(
-      state: "released",
+      state: "confirmed",
       git_common_dir_digest: digest,
       head_sha: "b" * 40,
-      confirmed_at: Time.current,
+      confirmed_at: Time.current
+    )
+    reservation.update!(
+      state: "released",
       observed_state: "absent",
       observation_digest: digest,
       released_at: Time.current

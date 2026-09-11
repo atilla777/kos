@@ -14,6 +14,10 @@ module WorkflowAttempts
           owner_id:, idempotency_key:, fencing_token: token, started_at: now, heartbeat_at: now,
           lease_expires_at: now + lease_seconds.seconds)
         task.update!(active_attempt: attempt)
+        reservation = task.worktree_reservation
+        if reservation && reservation.state != "released"
+          reservation.update!(workflow_attempt: attempt, fencing_token: token)
+        end
         attempt
       end
     end

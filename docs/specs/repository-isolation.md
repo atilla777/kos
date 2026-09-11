@@ -21,12 +21,16 @@ Allocation is a recoverable protocol:
 
 An incomplete reservation is reconciled after lease expiry. An existing worktree cannot be adopted without proof that it belongs to the same reservation.
 
+The state service accepts only a task-derived branch and a lexically canonical absolute reservation path. It does not inspect that path or execute Git. The repository adapter remains responsible for filesystem canonicalization, symlink containment, Git common-directory identity, branch, HEAD, and cleanliness before an effect. Confirmation compares the adapter's common-directory digest with SHA-256 over the repository's persisted canonical UTF-8 common-directory path and records the observed HEAD.
+
+After an expired attempt is reconciled, the next claim transfers an unresolved reservation's current owner and fencing token without changing its allocation or treating the worktree as confirmed. A clean reconciliation with an observed HEAD can confirm a reserved allocation. An absent observation leaves an unmaterialized reservation available for the owning attempt to reuse, and completes release only after materialization. Dirty and mismatched observations preserve the allocation and require explicit resolution; they never authorize adoption or removal.
+
 ## Git Ownership
 
 `kos-repository` is the only skill allowed to perform mutating Git operations, including worktree creation or removal, commit, fetch, rebase, and push. The CLI persists and protects worktree reservations, publication intents, and generic commit/fetch/rebase intents but does not execute Git commands. During a workflow-step session, the generic executor may send an attempt-bound typed effect request to the lease-owning orchestrator. The orchestrator validates and durably prepares it, invokes `kos-repository`, reconciles its typed success, failure, or unknown observation, and returns that result before the executor finalizes its result manifest.
 
 Before every operation, `kos-repository` validates repository identity, reservation, fencing token, expected branch and HEAD, and worktree cleanliness against the operation's preconditions. Detailed adapter requirements are defined by the [architecture rules](../rules/architecture.md).
 
-Terminal cleanup is a separate idempotent operation. KOS never automatically removes a dirty or unknown worktree.
+Terminal cleanup is a separate idempotent two-phase operation. An observed clean worktree with its confirmed HEAD moves the reservation to `release_pending`; only a later `absent` observation atomically detaches it from the task and marks it `released`. A crash after removal is recovered by reconciling that absence. KOS never automatically removes a dirty or mismatched worktree, and released reservation history remains immutable while no longer occupying its active uniqueness keys.
 
 [ADR-0004](../decisions/0004-task-git-protocol.md) records why KOS centralizes Git mutations and uses reservations.
