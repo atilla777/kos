@@ -35,6 +35,11 @@ module Kos
         %w[task create] => [ "task.create", "repository", {}, true ],
         %w[task get] => [ "task.get", "repository", { "task_number" => "--task" } ],
         %w[attempt get] => [ "attempt.get", "repository", { "attempt_id" => "--attempt" } ],
+        %w[attempt claim] => [ "attempt.claim", "repository", {}, true ],
+        %w[attempt renew] => [ "attempt.renew", "repository", {}, true ],
+        %w[attempt fail] => [ "attempt.fail", "repository", {}, true ],
+        %w[attempt needs-human] => [ "attempt.needs_human", "repository", {}, true ],
+        %w[attempt reconcile] => [ "attempt.reconcile", "repository", {}, true ],
         %w[worktree get] => [ "worktree.get", "repository", { "reservation_id" => "--reservation" } ],
         %w[artifact list] => [ "artifact.list", "repository",
           { "task_number" => "--task", "limit" => "--limit", "cursor" => "--cursor" } ]
@@ -149,6 +154,11 @@ module Kos
         "task.create" => "/api/v1/repositories/%<repository_id>s/tasks",
         "task.get" => "/api/v1/repositories/%<repository_id>s/tasks/%<task_number>s",
         "attempt.get" => "/api/v1/repositories/%<repository_id>s/attempts/%<attempt_id>s",
+        "attempt.claim" => "/api/v1/repositories/%<repository_id>s/tasks/%<task_number>s/attempts/claim",
+        "attempt.renew" => "/api/v1/repositories/%<repository_id>s/attempts/%<attempt_id>s/renew",
+        "attempt.fail" => "/api/v1/repositories/%<repository_id>s/attempts/%<attempt_id>s/fail",
+        "attempt.needs_human" => "/api/v1/repositories/%<repository_id>s/attempts/%<attempt_id>s/needs-human",
+        "attempt.reconcile" => "/api/v1/repositories/%<repository_id>s/attempts/%<attempt_id>s/reconcile",
         "worktree.get" => "/api/v1/repositories/%<repository_id>s/worktree-reservations/%<reservation_id>s",
         "artifact.list" => "/api/v1/repositories/%<repository_id>s/tasks/%<task_number>s/artifacts"
       }.freeze
@@ -198,7 +208,8 @@ module Kos
           raise Error.new("validation", "malformed_input", "KOS_API_URL is invalid")
         end
 
-        values = logical_request.fetch("body").merge("repository_id" => logical_request["repository_id"])
+        body = logical_request.fetch("body")
+        values = body.merge(body.fetch("preconditions", {}), "repository_id" => logical_request["repository_id"])
         path = format(PATHS.fetch(logical_request.fetch("command")), **values.transform_keys(&:to_sym))
         uri = URI.parse(base.delete_suffix("/") + path)
         query = logical_request.fetch("body").slice("limit", "cursor")

@@ -22,8 +22,14 @@ Rails.application.routes.draw do
       scope "repositories/:repository_id" do
         resources :tasks, only: %i[create show], param: :task_number do
           resources :artifacts, only: :index
+          post "attempts/claim", to: "attempts#claim", on: :member
         end
-        resources :attempts, only: :show
+        resources :attempts, only: :show do
+          post :renew, on: :member
+          post :fail, action: :fail_attempt, on: :member
+          post :needs_human, path: "needs-human", on: :member
+          post :reconcile, on: :member
+        end
         resources :worktree_reservations, only: :show, path: "worktree-reservations"
       end
     end

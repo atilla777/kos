@@ -26,7 +26,11 @@ module Kos
       end
 
       def error_status(code)
-        catalog.fetch("x-error-catalog").find { |entry| entry.fetch("code") == code }.fetch("http_status")
+        error_entry(code).fetch("http_status")
+      end
+
+      def error_category(code)
+        error_entry(code).fetch("category")
       end
 
       private
@@ -37,6 +41,10 @@ module Kos
 
       def catalog
         @schemas.fetch("catalog.json")
+      end
+
+      def error_entry(code)
+        catalog.fetch("x-error-catalog").find { |entry| entry.fetch("code") == code }
       end
     end
   end

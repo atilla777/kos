@@ -77,7 +77,10 @@ module Api
             "heartbeat_at" => optional_timestamp(record.heartbeat_at),
             "completed_at" => optional_timestamp(record.completed_at),
             "input_context_digest" => record.input_context_digest,
-            "result_manifest" => record.result_manifest
+            "result_manifest" => record.result_manifest,
+            "reconciliation_state" => record.reconciliation_state,
+            "reconciliation_evidence_digest" => record.reconciliation_evidence_digest,
+            "reconciled_at" => optional_timestamp(record.reconciled_at)
           })
         end
 

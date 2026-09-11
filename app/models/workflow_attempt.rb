@@ -2,6 +2,9 @@ class WorkflowAttempt < ApplicationRecord
   include HasUuidPrimaryKey
 
   STATES = %w[started succeeded failed interrupted needs_human].freeze
+  RECONCILIATION_STATES = %w[
+    no_effect worktree_materialized repository_effect_pending publication_unknown
+  ].freeze
 
   belongs_to :repository
   belongs_to :task
@@ -13,6 +16,7 @@ class WorkflowAttempt < ApplicationRecord
   validates :owner_id, :idempotency_key, :started_at, presence: true
   validates :owner_id, format: { with: IDENTIFIER_FORMAT }
   validates :state, inclusion: { in: STATES }
+  validates :reconciliation_state, inclusion: { in: RECONCILIATION_STATES }, allow_nil: true
   validates :fencing_token, numericality: { only_integer: true, greater_than: 0 }
 
   def input_context=(value)

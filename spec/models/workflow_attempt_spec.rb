@@ -67,7 +67,8 @@ RSpec.describe WorkflowAttempt, :aggregate_failures, type: :model do
   end
 
   def interrupt(attempt)
-    attempt.update!(state: "interrupted", lease_expires_at: nil, completed_at: Time.current)
+    attempt.update!(state: "interrupted", lease_expires_at: nil, completed_at: Time.current,
+      reconciliation_state: "no_effect", reconciliation_evidence_digest: digest, reconciled_at: Time.current)
   end
 
   def finalize(attempt, state: "failed")
@@ -300,6 +301,33 @@ RSpec.describe WorkflowAttempt, :aggregate_failures, type: :model do
     finalize(attempt)
 
     expect { attempt.touch }.to raise_error(ActiveRecord::StatementInvalid, /terminal attempt is immutable/)
+  end
+
+  it "requires complete reconciliation evidence on an interrupted attempt" do
+    attempt = create_attempt(task: create_task)
+
+    expect {
+      attempt.update_columns(state: "interrupted", lease_expires_at: nil, completed_at: Time.current,
+        reconciliation_state: "no_effect")
+    }.to raise_error(ActiveRecord::StatementInvalid, /workflow_attempts_reconciliation_shape/)
+  end
+
+  it "rejects reconciliation evidence on a non-interrupted attempt" do
+    attempt = create_attempt(task: create_task)
+
+    expect {
+      attempt.update_columns(reconciliation_state: "no_effect", reconciliation_evidence_digest: digest,
+        reconciled_at: Time.current)
+    }.to raise_error(ActiveRecord::StatementInvalid, /workflow_attempts_reconciliation_shape/)
+  end
+
+  it "keeps attached reconciliation evidence immutable" do
+    attempt = create_attempt(task: create_task)
+    attempt.update!(state: "interrupted", lease_expires_at: nil, completed_at: Time.current,
+      reconciliation_state: "no_effect", reconciliation_evidence_digest: digest, reconciled_at: Time.current)
+
+    expect { attempt.update_column(:reconciliation_state, "publication_unknown") }
+      .to raise_error(ActiveRecord::StatementInvalid, /terminal attempt is immutable/)
   end
 
   it "isolates global idempotency scope by command" do

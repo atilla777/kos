@@ -213,6 +213,9 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
   def mutation_cases
     definition = JSON.parse(File.read(File.expand_path("../../../fixtures/workflow_definitions/v1/valid/quick-fix.json",
       __dir__)))
+    preconditions = { "expected_lock_version" => 3, "attempt_id" => resource_id, "fencing_token" => 8 }
+    manifest = { "schema_version" => "1", "attempt_id" => resource_id,
+      "input_context_digest" => "sha256:#{'a' * 64}", "outcome" => "failed", "artifacts" => [] }
     [
       [ %w[workflow-draft import], "workflow_draft.import", "/api/v1/workflow-drafts/quick-fix",
         { "workflow_id" => "quick-fix", "definition" => definition, "expected_lock_version" => 0 } ],
@@ -222,7 +225,24 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
         { "task_type" => "quick-fix", "workflow_version_id" => resource_id, "expected_lock_version" => 0 } ],
       [ [ "task", "create", "--repository", repository_id ], "task.create",
         "/api/v1/repositories/#{repository_id}/tasks",
-        { "title" => "Repair timeout", "task_type" => "quick-fix" } ]
+        { "title" => "Repair timeout", "task_type" => "quick-fix" } ],
+      [ [ "attempt", "claim", "--repository", repository_id ], "attempt.claim",
+        "/api/v1/repositories/#{repository_id}/tasks/KOS-000001/attempts/claim",
+        { "task_number" => "KOS-000001", "owner_id" => "orchestrator-1", "lease_seconds" => 300,
+          "preconditions" => { "expected_lock_version" => 3 } } ],
+      [ [ "attempt", "renew", "--repository", repository_id ], "attempt.renew",
+        "/api/v1/repositories/#{repository_id}/attempts/#{resource_id}/renew",
+        { "lease_seconds" => 300, "preconditions" => preconditions } ],
+      [ [ "attempt", "fail", "--repository", repository_id ], "attempt.fail",
+        "/api/v1/repositories/#{repository_id}/attempts/#{resource_id}/fail",
+        { "result_manifest" => manifest, "preconditions" => preconditions } ],
+      [ [ "attempt", "needs-human", "--repository", repository_id ], "attempt.needs_human",
+        "/api/v1/repositories/#{repository_id}/attempts/#{resource_id}/needs-human",
+        { "result_manifest" => manifest.merge("outcome" => "needs_human"), "preconditions" => preconditions } ],
+      [ [ "attempt", "reconcile", "--repository", repository_id ], "attempt.reconcile",
+        "/api/v1/repositories/#{repository_id}/attempts/#{resource_id}/reconcile",
+        { "attempt_id" => resource_id, "observed_state" => "no_effect",
+          "evidence_digest" => "sha256:#{'a' * 64}", "expected_lock_version" => 3 } ]
     ]
   end
 
@@ -233,11 +253,27 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
       stdout, _stderr, status = run_cli(url, *arguments, "--input", "-", "--idempotency-key", "catalog-key-1",
         "--json", stdin_data: JSON.generate(body))
       expected = { "schema_version" => "1", "command" => command, "body" => body }
-      expected["repository_id"] = repository_id if command == "task.create"
+      expected["repository_id"] = repository_id if arguments.include?("--repository")
       expect([ status.exitstatus, requests.first.first, JSON.parse(bodies.first), JSON.parse(stdout) ])
         .to eq([ 6, "POST #{path} HTTP/1.1\r\n", expected, response ])
       expect(requests.first.join).to include("Content-Type: application/json", "Idempotency-Key: catalog-key-1")
     end
+  end
+
+  def expect_lease_lost_exit
+    body = { "lease_seconds" => 300, "preconditions" => { "expected_lock_version" => 3,
+      "attempt_id" => resource_id, "fencing_token" => 8 } }
+    response = failure("attempt.renew", category: "lease_lost", code: "lease_expired")
+    with_server([ [ "409 Conflict", response ] ]) do |url, _requests|
+      stdout, _stderr, status = run_cli(url, "attempt", "renew", "--repository", repository_id,
+        "--input", "-", "--idempotency-key", "attempt-renew-key", "--json", stdin_data: JSON.generate(body))
+
+      expect([ status.exitstatus, JSON.parse(stdout) ]).to eq([ 7, response ])
+    end
+  end
+
+  it "maps attempt lease loss to CLI exit 7" do
+    expect_lease_lost_exit
   end
 
   def expect_mutation_retry

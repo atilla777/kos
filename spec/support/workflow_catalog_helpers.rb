@@ -12,6 +12,7 @@ module WorkflowCatalogHelpers
   end
 
   def import_workflow(definition = workflow_definition, expected_lock_version: 0)
+    quick_fix_task_type
     WorkflowCatalog::ImportDraft.call(workflow_id: "quick-fix", definition: definition,
       expected_lock_version: expected_lock_version)
   end

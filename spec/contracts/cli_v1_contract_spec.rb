@@ -163,8 +163,15 @@ module CliV1Contract
     value = { "schema_version" => "1", "id" => ATTEMPT_ID, "task_id" => TASK_ID, "workflow_status" => "development",
       "owner_id" => "orchestrator-1", "state" => state, "fencing_token" => 8,
       "started_at" => "2026-09-09T12:00:00Z" }
-    return value if state == "started"
-    return value.merge("completed_at" => "2026-09-09T12:01:00Z") if state == "interrupted"
+    if state == "started"
+      return value.merge("heartbeat_at" => "2026-09-09T12:00:00Z",
+        "lease_expires_at" => "2026-09-09T12:05:00Z")
+    end
+    if state == "interrupted"
+      return value.merge("heartbeat_at" => "2026-09-09T12:00:00Z", "completed_at" => "2026-09-09T12:01:00Z",
+        "reconciliation_state" => "no_effect", "reconciliation_evidence_digest" => DIGEST,
+        "reconciled_at" => "2026-09-09T12:01:00Z")
+    end
 
     outcome = state == "needs_human" ? "needs_human" : state
     value.merge("completed_at" => "2026-09-09T12:01:00Z", "input_context_digest" => DIGEST,
@@ -275,7 +282,8 @@ module CliV1Contract
       "publication.prepare" => publication, "publication.reconcile" => publication("reconciled"),
       "publication.complete" => { "task" => completed_task, "artifacts" => [ artifact(artifact_input("publication")) ] }
     }
-    %w[attempt.get attempt.claim attempt.renew attempt.reconcile].each { |command| data[command] = attempt }
+    %w[attempt.get attempt.claim attempt.renew].each { |command| data[command] = attempt }
+    data["attempt.reconcile"] = attempt("interrupted")
     data["attempt.fail"] = attempt("failed")
     data["attempt.needs_human"] = attempt("needs_human")
     %w[worktree.reserve worktree.confirm worktree.reconcile worktree.release].each { |command| data[command] = worktree }
@@ -481,7 +489,11 @@ module CliV1Contract
   def terminal_attempt_contract
     schema = definition("resources.json", "attempt")
     succeeded = attempt("succeeded")
-    [ succeeded, succeeded.except("input_context_digest"), succeeded.merge("state" => "failed") ]
+    [ succeeded, succeeded.except("input_context_digest"), succeeded.merge("state" => "failed"),
+      succeeded.merge("lease_expires_at" => "2026-09-09T12:05:00Z"),
+      succeeded.merge("reconciliation_state" => "no_effect"), attempt.except("heartbeat_at"),
+      attempt("interrupted").except("reconciliation_evidence_digest"),
+      attempt("interrupted").except("reconciliation_state", "reconciliation_evidence_digest", "reconciled_at") ]
       .map { |value| schema.valid?(value) }
   end
 
@@ -828,7 +840,7 @@ RSpec.describe CliV1Contract do
   end
 
   it "requires frozen context and matching results for terminal attempts" do
-    expect(described_class.terminal_attempt_contract).to eq([ true, false, false ])
+    expect(described_class.terminal_attempt_contract).to eq([ true, false, false, false, false, false, false, true ])
   end
 
   it "requires safe commit boundaries" do

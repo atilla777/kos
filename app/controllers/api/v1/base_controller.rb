@@ -16,6 +16,11 @@ module Api
         "tasks#create" => "task.create",
         "tasks#show" => "task.get",
         "attempts#show" => "attempt.get",
+        "attempts#claim" => "attempt.claim",
+        "attempts#renew" => "attempt.renew",
+        "attempts#fail_attempt" => "attempt.fail",
+        "attempts#needs_human" => "attempt.needs_human",
+        "attempts#reconcile" => "attempt.reconcile",
         "worktree_reservations#show" => "worktree.get",
         "artifacts#index" => "artifact.list"
       }.freeze
@@ -120,23 +125,18 @@ module Api
 
         result = Idempotency::Execute.call(command: @command, key: key, body: body,
           status: Rack::Utils.status_code(status), serialize: serialize, repository: @repository,
-          error_status: ->(error) { schema_registry.error_status(error.code) }, &operation)
+          error_status: ->(error) { schema_registry.error_status(error.code) }) { operation.call(key) }
         render_success(result.data, status: result.status)
       end
 
       def render_operation_error(error)
-        category, status = case error.code
-        when "workflow_not_found", "workflow_draft_not_found", "workflow_version_not_found"
-          [ "not_found", :not_found ]
-        when "workflow_definition_invalid"
-          [ "validation", :unprocessable_entity ]
-        when "request_timeout"
-          [ "transient", :gateway_timeout ]
-        else
-          [ "conflict", :conflict ]
+        details = if error.details.is_a?(Array)
+          error.details.first&.slice("field")
+        elsif error.details.is_a?(Hash)
+          error.details.slice("field", "expected", "actual", "resource_id", "retry_after_seconds")
         end
-        details = error.details&.first&.slice("field")
-        render_failure(status, category, error.code, error.message, details: details)
+        render_failure(schema_registry.error_status(error.code), schema_registry.error_category(error.code),
+          error.code, error.message, details: details.presence)
       end
 
       def envelope
