@@ -40,6 +40,7 @@ module Kos
         %w[attempt fail] => [ "attempt.fail", "repository", {}, true ],
         %w[attempt needs-human] => [ "attempt.needs_human", "repository", {}, true ],
         %w[attempt reconcile] => [ "attempt.reconcile", "repository", {}, true ],
+        %w[step context] => [ "step.context", "repository", {}, true ],
         %w[step complete] => [ "step.complete", "repository", {}, true ],
         %w[worktree get] => [ "worktree.get", "repository", { "reservation_id" => "--reservation" } ],
         %w[artifact list] => [ "artifact.list", "repository",
@@ -160,6 +161,7 @@ module Kos
         "attempt.fail" => "/api/v1/repositories/%<repository_id>s/attempts/%<attempt_id>s/fail",
         "attempt.needs_human" => "/api/v1/repositories/%<repository_id>s/attempts/%<attempt_id>s/needs-human",
         "attempt.reconcile" => "/api/v1/repositories/%<repository_id>s/attempts/%<attempt_id>s/reconcile",
+        "step.context" => "/api/v1/repositories/%<repository_id>s/attempts/%<attempt_id>s/step-context",
         "step.complete" => "/api/v1/repositories/%<repository_id>s/tasks/%<task_number>s/steps/complete",
         "worktree.get" => "/api/v1/repositories/%<repository_id>s/worktree-reservations/%<reservation_id>s",
         "artifact.list" => "/api/v1/repositories/%<repository_id>s/tasks/%<task_number>s/artifacts"

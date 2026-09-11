@@ -67,9 +67,12 @@ bin/kos attempt renew --repository UUID --input renew.json --idempotency-key att
 bin/kos attempt fail --repository UUID --input failed.json --idempotency-key attempt-fail-1 --json
 bin/kos attempt needs-human --repository UUID --input needs-human.json --idempotency-key attempt-human-1 --json
 bin/kos attempt reconcile --repository UUID --input reconcile.json --idempotency-key attempt-reconcile-1 --json
+bin/kos step context --repository UUID --input context.json --idempotency-key step-context-1 --json
 ```
 
 Claim requires the task number, owner ID, lease duration, and expected task lock version. Renew, fail, and needs-human require the active attempt ID, fencing token, and expected lock version. Reconcile is available after lease expiry and records the observed recovery state and evidence digest without asserting that an external effect succeeded.
+
+`step context` requires the active attempt ID, fencing token, and expected task lock version. It atomically freezes and returns the pinned instruction, templates, artifact requirements, allowed repository effects, and execution metadata. A status requiring a worktree remains unavailable until its task-bound reservation is confirmed; publication context also remains unavailable until its durable publication intent has been prepared by the publication protocol.
 
 The CLI writes one versioned JSON result to stdout and diagnostics to stderr.
 

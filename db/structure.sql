@@ -632,7 +632,9 @@ BEFORE DELETE ON workflow_attempts
 BEGIN
   SELECT RAISE(ABORT, 'attempt cannot be deleted');
 END;
+CREATE TABLE "runtime_configs" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "retrospective_enabled" boolean DEFAULT FALSE NOT NULL, "lock_version" integer DEFAULT 0 NOT NULL, "created_at" datetime(6) NOT NULL, "updated_at" datetime(6) NOT NULL, CONSTRAINT runtime_configs_singleton CHECK (id = 1));
 INSERT INTO "schema_migrations" (version) VALUES
+('20260911020000'),
 ('20260911010000'),
 ('20260911000000'),
 ('20260910000000'),

@@ -34,6 +34,14 @@ module Api
         end
       end
 
+      def step_context
+        execute_leased_mutation(serialize: ->(context) { context }) do |_body, preconditions|
+          WorkflowSteps::CaptureContext.call(repository:, attempt_id: preconditions.fetch("attempt_id"),
+            fencing_token: preconditions.fetch("fencing_token"),
+            expected_lock_version: preconditions.fetch("expected_lock_version"))
+        end
+      end
+
       def fail_attempt
         finish("failed")
       end
@@ -65,14 +73,14 @@ module Api
         end
       end
 
-      def execute_leased_mutation(&operation)
+      def execute_leased_mutation(serialize: Serializer.method(:attempt), &operation)
         body = mutation_body
         return if performed?
 
         preconditions = body.fetch("preconditions")
         return render_malformed_input unless preconditions["attempt_id"] == params[:id]
 
-        execute_mutation(body, status: :ok, serialize: Serializer.method(:attempt)) do
+        execute_mutation(body, status: :ok, serialize:) do
           operation.call(body, preconditions)
         end
       end

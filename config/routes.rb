@@ -26,6 +26,7 @@ Rails.application.routes.draw do
           post "steps/complete", to: "workflow_steps#complete", on: :member
         end
         resources :attempts, only: :show do
+          post :step_context, path: "step-context", on: :member
           post :renew, on: :member
           post :fail, action: :fail_attempt, on: :member
           post :needs_human, path: "needs-human", on: :member

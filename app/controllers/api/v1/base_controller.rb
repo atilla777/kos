@@ -17,6 +17,7 @@ module Api
         "tasks#show" => "task.get",
         "attempts#show" => "attempt.get",
         "attempts#claim" => "attempt.claim",
+        "attempts#step_context" => "step.context",
         "attempts#renew" => "attempt.renew",
         "attempts#fail_attempt" => "attempt.fail",
         "attempts#needs_human" => "attempt.needs_human",

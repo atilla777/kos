@@ -111,7 +111,7 @@ module WorkflowSteps
 
     def self.validate_candidate_generation!(task, attempt, requirements, artifacts)
       supplied_candidate = artifacts.find { _1.fetch("type") == "candidate" }
-      current = current_candidate(task)
+      current = CurrentCandidate.call(task)
       candidate_sha = supplied_candidate&.dig("metadata", "candidate_sha") || current&.metadata&.fetch("candidate_sha")
 
       requirements.each_value do |requirement|
@@ -132,13 +132,6 @@ module WorkflowSteps
       end
     end
     private_class_method :validate_candidate_generation!
-
-    def self.current_candidate(task)
-      task.task_artifacts.joins(:workflow_attempt)
-        .where(artifact_type: "candidate", workflow_attempts: { state: "succeeded" })
-        .order("workflow_attempts.fencing_token DESC").first
-    end
-    private_class_method :current_candidate
 
     def self.invalid!(message)
       raise OperationError.new("invalid_artifact", message)

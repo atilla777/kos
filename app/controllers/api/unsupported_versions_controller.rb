@@ -6,6 +6,7 @@ module Api
       %r{\Aworkflow-versions/[^/]+\z} => "workflow.get",
       %r{\Aworkflow-drafts/[^/]+\z} => "workflow_draft.get",
       %r{\Arepositories/[^/]+/tasks/[^/]+/artifacts\z} => "artifact.list",
+      %r{\Arepositories/[^/]+/attempts/[^/]+/step-context\z} => "step.context",
       %r{\Arepositories/[^/]+/tasks/[^/]+\z} => "task.get",
       %r{\Arepositories/[^/]+/attempts/[^/]+\z} => "attempt.get",
       %r{\Arepositories/[^/]+/worktree-reservations/[^/]+\z} => "worktree.get"

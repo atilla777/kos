@@ -124,7 +124,7 @@ RSpec.describe AddCompletedTransitionToWorkflowAttempts, :aggregate_failures do
       migrate!(env, 20_260_911_000_000)
       original_triggers = attempt_trigger_names(env)
       task_id, attempt_id, transition_id, other_transition_id, digest = seed_attempt(env)
-      migrate!(env)
+      migrate!(env, 20_260_911_010_000)
       upgraded = verify_upgrade(env, task_id, attempt_id, transition_id, other_transition_id, digest)
       command!(env, "ActiveRecord::Base.connection_pool.migration_context.rollback(1)")
       [ original_triggers, upgraded, verify_rollback(env, attempt_id) ]

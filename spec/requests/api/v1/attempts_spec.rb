@@ -47,6 +47,14 @@ RSpec.describe "API v1 workflow attempts", :aggregate_failures, type: :request d
       "attempt_id" => attempt.id, "fencing_token" => attempt.fencing_token })
   end
 
+  def confirm_worktree(attempt)
+    reservation = WorktreeReservation.create!(repository:, task:, workflow_attempt: attempt,
+      branch: "kos/task-#{task.number}", path: "/tmp/worktrees/#{task.number}", state: "confirmed",
+      fencing_token: attempt.fencing_token, git_common_dir_digest: digest, head_sha: "b" * 40,
+      confirmed_at: Time.current)
+    task.reload.update!(worktree_reservation: reservation)
+  end
+
   def manifest(attempt, outcome)
     { "schema_version" => "1", "attempt_id" => attempt.id, "input_context_digest" => digest,
       "outcome" => outcome, "artifacts" => [] }
@@ -54,7 +62,13 @@ RSpec.describe "API v1 workflow attempts", :aggregate_failures, type: :request d
 
   def post_attempt(attempt, operation, body, key: "attempt-#{operation}-key")
     path_operation = operation == "needs_human" ? "needs-human" : operation
-    command = operation == "needs_human" ? "attempt.needs_human" : "attempt.#{operation}"
+    command = if operation == "needs_human"
+      "attempt.needs_human"
+    elsif operation == "step-context"
+      "step.context"
+    else
+      "attempt.#{operation}"
+    end
     post "/api/v1/repositories/#{repository.id}/attempts/#{attempt.id}/#{path_operation}",
       params: request_document(command, body), headers: headers(key), as: :json
     JSON.parse(response.body)
@@ -136,6 +150,28 @@ RSpec.describe "API v1 workflow attempts", :aggregate_failures, type: :request d
     [ response.status, first.dig("data", "id"), second.dig("data", "id"), IdempotencyRecord.count ]
   end
 
+  def context_expiry_replay_summary
+    attempt = WorkflowAttempt.find(claim(key: "claim-for-context").dig("data", "id"))
+    confirm_worktree(attempt)
+    body = leased_body(attempt)
+    first = post_attempt(attempt, "step-context", body, key: "step-context-key")
+    second = travel_to(6.minutes.from_now) do
+      post_attempt(attempt, "step-context", body, key: "step-context-key")
+    end
+    [ response.status, first.fetch("data"), second.fetch("data"),
+      Kos::Cli::SchemaRegistry.new.valid?("commands.json", "result", second) ]
+  end
+
+  def context_new_key_summary
+    attempt = WorkflowAttempt.find(claim(key: "claim-for-frozen-context").dig("data", "id"))
+    confirm_worktree(attempt)
+    body = leased_body(attempt)
+    first = post_attempt(attempt, "step-context", body, key: "step-context-first-key")
+    RuntimeConfig.current.update!(retrospective_enabled: true)
+    second = post_attempt(attempt, "step-context", body, key: "step-context-second-key")
+    [ first.fetch("data"), second.fetch("data"), second.dig("data", "retrospective_enabled") ]
+  end
+
   it "claims once and replays the original HTTP 201 response" do
     summary = claim_replay_summary
     expect(summary.values_at(0, 1, 2, 3, 4, 5)).to eq([ 201, summary.fetch(1), summary.fetch(1), 1, 1, true ])
@@ -148,6 +184,16 @@ RSpec.describe "API v1 workflow attempts", :aggregate_failures, type: :request d
 
     expect([ response.status, result.dig("data", "id"), result.dig("data", "state") ])
       .to eq([ 200, attempt.id, "started" ])
+  end
+
+  it "freezes context and replays it after lease expiry" do
+    summary = context_expiry_replay_summary
+    expect(summary).to eq([ 200, summary.fetch(1), summary.fetch(1), true ])
+  end
+
+  it "returns one frozen context for later idempotency keys" do
+    summary = context_new_key_summary
+    expect(summary).to eq([ summary.first, summary.first, false ])
   end
 
   it "replays a lease renewal after the lease has expired" do
