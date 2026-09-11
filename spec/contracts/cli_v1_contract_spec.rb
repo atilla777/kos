@@ -1,5 +1,6 @@
 require "digest"
 require "json"
+require_relative "../../app/services/workflow_catalog/canonical_json"
 require "json_schemer"
 require "spec_helper"
 
@@ -54,18 +55,31 @@ module CliV1Contract
   end
 
   def canonical_json(value)
-    case value
-    when Hash
-      "{#{value.keys.sort.map { |key| "#{JSON.generate(key)}:#{canonical_json(value.fetch(key))}" }.join(',')}}"
-    when Array
-      "[#{value.map { |item| canonical_json(item) }.join(',')}]"
-    else
-      JSON.generate(value)
+    WorkflowCatalog::CanonicalJson.generate(value)
+  end
+
+  def canonical_workflow_definition
+    value = Marshal.load(Marshal.dump(workflow_definition))
+    value.fetch("statuses").each do |status|
+      status.fetch("artifact_templates").sort_by! { |template| template.fetch("id") }
+      status.fetch("allowed_repository_effects").sort!
+      status.fetch("required_artifacts").each { |requirement| requirement.fetch("allowed_states").sort! }
+      status.fetch("required_artifacts").sort_by! { |requirement| requirement.fetch("type") }
     end
+    value.fetch("statuses").sort_by! { |status| status.fetch("id") }
+    value.fetch("transitions").each do |transition|
+      transition.fetch("conditions").sort_by! do |item|
+        %w[type artifact_type state decision value].map { |key| item[key].to_s }
+      end
+    end
+    value.fetch("transitions").sort_by! do |transition|
+      [ transition.fetch("from"), transition.fetch("to"), canonical_json(transition.fetch("conditions")) ]
+    end
+    value
   end
 
   def workflow_content_digest
-    "sha256:#{Digest::SHA256.hexdigest(canonical_json(workflow_definition))}"
+    "sha256:#{Digest::SHA256.hexdigest(canonical_json(canonical_workflow_definition))}"
   end
 
   def preconditions
@@ -103,7 +117,7 @@ module CliV1Contract
   end
 
   def workflow_version
-    workflow_summary.merge("definition" => workflow_definition)
+    workflow_summary.merge("definition" => canonical_workflow_definition)
   end
 
   def workflow_draft
@@ -715,7 +729,9 @@ RSpec.describe CliV1Contract do
   end
 
   it "computes one canonical workflow content digest" do
-    expected = "sha256:#{Digest::SHA256.hexdigest(described_class.canonical_json(described_class.workflow_definition))}"
+    expected = "sha256:#{Digest::SHA256.hexdigest(described_class.canonical_json(
+      described_class.canonical_workflow_definition
+    ))}"
 
     expect(described_class.workflow_summary.fetch("content_digest")).to eq(expected)
   end

@@ -32,7 +32,7 @@ A production process also requires `SECRET_KEY_BASE`; provide both secrets and s
 
 ## CLI
 
-Set `KOS_API_TOKEN` to the API bearer token. `KOS_API_URL` defaults to `http://127.0.0.1:3000`, and `KOS_API_TIMEOUT_SECONDS` defaults to `30`. Read commands are non-interactive and require `--json`:
+Set `KOS_API_TOKEN` to the API bearer token. `KOS_API_URL` defaults to `http://127.0.0.1:3000`, and `KOS_API_TIMEOUT_SECONDS` defaults to `30`. Every command is non-interactive and requires `--json`:
 
 ```sh
 bin/kos task-type list --limit 20 --json
@@ -40,6 +40,18 @@ bin/kos workflow get --workflow-version UUID --json
 bin/kos task get --repository UUID --task KOS-000123 --json
 bin/kos artifact list --repository UUID --task KOS-000123 --limit 20 --json
 ```
+
+Workflow catalog mutations read only their command body from a JSON file or stdin and require an idempotency key:
+
+```sh
+bin/kos workflow-draft import --input draft-import.json --idempotency-key draft-import-1 --json
+bin/kos workflow-draft validate --workflow quick-fix --json
+bin/kos workflow publish --input publish.json --idempotency-key workflow-publish-1 --json
+bin/kos workflow activate --input activate.json --idempotency-key workflow-activate-1 --json
+bin/kos workflow export --workflow-version UUID --json
+```
+
+The import body contains `workflow_id`, the complete `definition`, and `expected_lock_version`. Publish contains `workflow_id` and `expected_lock_version`; activate contains `task_type`, `workflow_version_id`, and `expected_lock_version`. Use `--input -` to read the body from stdin.
 
 The CLI writes one versioned JSON result to stdout and diagnostics to stderr.
 

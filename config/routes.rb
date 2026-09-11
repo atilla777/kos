@@ -7,9 +7,17 @@ Rails.application.routes.draw do
 
   namespace :api do
     namespace :v1 do
-      resources :task_types, only: :index, path: "task-types"
-      resources :workflow_versions, only: %i[index show], path: "workflow-versions"
-      resources :workflow_drafts, only: :show, param: :workflow_id, path: "workflow-drafts"
+      resources :task_types, only: :index, path: "task-types" do
+        post :current_workflow, on: :member, path: "current-workflow"
+      end
+      resources :workflow_versions, only: %i[index show], path: "workflow-versions" do
+        get :export, on: :member
+      end
+      resources :workflow_drafts, only: :show, param: :workflow_id, path: "workflow-drafts" do
+        post "", action: :update, on: :member
+        get :validation, on: :member
+        post :publication, on: :member
+      end
 
       scope "repositories/:repository_id" do
         resources :tasks, only: :show, param: :task_number do

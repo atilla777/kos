@@ -17,6 +17,18 @@ module Api
       rescue KeyError
         render_malformed_input
       end
+
+      def current_workflow
+        body = mutation_body
+        return if performed?
+        return render_malformed_input unless body.fetch("task_type") == params[:id]
+
+        execute_mutation(body, status: :ok, serialize: Serializer.method(:task_type)) do
+          WorkflowCatalog::ActivateVersion.call(task_type_id: body.fetch("task_type"),
+            workflow_version_id: body.fetch("workflow_version_id"),
+            expected_lock_version: body.fetch("expected_lock_version"))
+        end
+      end
     end
   end
 end

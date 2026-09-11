@@ -39,6 +39,18 @@ module Api
 
         render_success(Serializer.workflow_version(record))
       end
+
+      def export
+        return render_malformed_input if request.query_parameters.any?
+
+        body = { "workflow_version_id" => params[:id] }
+        return if performed? || !validate_request!(body)
+
+        record = WorkflowVersion.where.not(published_at: nil).includes(*ASSOCIATIONS).find_by(id: params[:id])
+        return render_not_found("workflow_version_not_found", "Workflow version not found") unless record
+
+        render_success(WorkflowCatalog::CanonicalDefinition.from_record(record))
+      end
     end
   end
 end

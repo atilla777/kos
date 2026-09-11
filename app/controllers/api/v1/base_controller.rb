@@ -1,11 +1,18 @@
 module Api
   module V1
     class BaseController < ApplicationController
+      wrap_parameters false
+
       COMMANDS = {
         "task_types#index" => "task_type.list",
         "workflow_versions#index" => "workflow.list",
         "workflow_versions#show" => "workflow.get",
+        "workflow_versions#export" => "workflow.export",
         "workflow_drafts#show" => "workflow_draft.get",
+        "workflow_drafts#update" => "workflow_draft.import",
+        "workflow_drafts#validation" => "workflow_draft.validate",
+        "workflow_drafts#publication" => "workflow.publish",
+        "task_types#current_workflow" => "workflow.activate",
         "tasks#show" => "task.get",
         "attempts#show" => "attempt.get",
         "worktree_reservations#show" => "worktree.get",
@@ -17,7 +24,9 @@ module Api
       before_action :resolve_repository, if: -> { params[:repository_id] }
 
       rescue_from StandardError, with: :render_internal_error
+      rescue_from ActionDispatch::Http::Parameters::ParseError, with: :render_malformed_input
       rescue_from Api::V1::Cursor::Invalid, with: :render_malformed_input
+      rescue_from WorkflowCatalog::Error, with: :render_catalog_error
 
       private
 
@@ -56,13 +65,13 @@ module Api
         false
       end
 
-      def render_success(data)
+      def render_success(data, status: :ok)
         document = envelope.merge("data" => data)
         unless schema_registry.valid?("commands.json", "result", document)
           return render_internal_error
         end
 
-        render json: document, status: :ok
+        render json: document, status: status
       end
 
       def render_not_found(code, message)
@@ -77,14 +86,54 @@ module Api
         render_failure(:internal_server_error, "internal", "internal_error", "Internal server error")
       end
 
-      def render_failure(status, category, code, message)
+      def render_failure(status, category, code, message, details: nil)
         document = envelope.merge("error" => {
           "category" => category,
           "code" => code,
           "message" => message,
           "retryable" => category == "transient"
-        })
+        }.tap { |error| error["details"] = details if details })
         render json: document, status: status
+      end
+
+      def mutation_body
+        document = Kos::JsonParser.parse(request.raw_post)
+        return render_malformed_input unless document.is_a?(Hash)
+
+        if document["schema_version"] && document["schema_version"] != "1"
+          render_failure(:bad_request, "validation", "unsupported_schema_version", "Schema version is unsupported")
+          return
+        end
+        return render_malformed_input unless request.query_parameters.empty? &&
+          schema_registry.valid?("commands.json", "request", document) && document["command"] == @command
+
+        document.fetch("body")
+      rescue JSON::ParserError
+        render_malformed_input
+      end
+
+      def execute_mutation(body, status:, serialize:, &operation)
+        key = request.headers["Idempotency-Key"].to_s
+        return render_malformed_input unless key.match?(IdempotencyRecord::KEY_FORMAT)
+
+        result = Idempotency::Execute.call(command: @command, key: key, body: body,
+          status: Rack::Utils.status_code(status), serialize: serialize, &operation)
+        render_success(result.data, status: result.status)
+      end
+
+      def render_catalog_error(error)
+        category, status = case error.code
+        when "workflow_not_found", "workflow_draft_not_found", "workflow_version_not_found"
+          [ "not_found", :not_found ]
+        when "workflow_definition_invalid"
+          [ "validation", :unprocessable_entity ]
+        when "request_timeout"
+          [ "transient", :gateway_timeout ]
+        else
+          [ "conflict", :conflict ]
+        end
+        details = error.details&.first&.slice("field")
+        render_failure(status, category, error.code, error.message, details: details)
       end
 
       def envelope

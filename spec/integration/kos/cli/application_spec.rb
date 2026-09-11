@@ -2,6 +2,7 @@ require "json"
 require "open3"
 require "socket"
 require "spec_helper"
+require "tempfile"
 require_relative "../../../../lib/kos/cli"
 
 RSpec.describe Kos::Cli::Application, :aggregate_failures do
@@ -40,12 +41,12 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
     value
   end
 
-  def run_cli(url, *arguments, environment: {})
+  def run_cli(url, *arguments, environment: {}, stdin_data: "")
     Open3.capture3({ "KOS_API_URL" => url, "KOS_API_TOKEN" => token,
-      "KOS_API_TIMEOUT_SECONDS" => "2" }.merge(environment), bin, *arguments)
+      "KOS_API_TIMEOUT_SECONDS" => "2" }.merge(environment), bin, *arguments, stdin_data: stdin_data)
   end
 
-  def with_server(responses)
+  def with_server(responses, request_bodies: nil)
     server = TCPServer.new("127.0.0.1", 0)
     requests = []
     thread = Thread.new do
@@ -54,6 +55,10 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
         lines = []
         lines << socket.gets until lines.last == "\r\n"
         requests << lines
+        if request_bodies
+          length = lines.find { |line| line.downcase.start_with?("content-length:") }.to_s.split(":", 2).last.to_i
+          request_bodies << socket.read(length)
+        end
         if response == :close
           socket.close
           next
@@ -85,8 +90,12 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
       [ %w[workflow list --limit 1 --json], "workflow.list", "/api/v1/workflow-versions?limit=1" ],
       [ [ "workflow", "get", "--workflow-version", resource_id, "--json" ], "workflow.get",
         "/api/v1/workflow-versions/#{resource_id}" ],
+      [ [ "workflow", "export", "--workflow-version", resource_id, "--json" ], "workflow.export",
+        "/api/v1/workflow-versions/#{resource_id}/export" ],
       [ %w[workflow-draft get --workflow quick-fix --json], "workflow_draft.get",
         "/api/v1/workflow-drafts/quick-fix" ],
+      [ %w[workflow-draft validate --workflow quick-fix --json], "workflow_draft.validate",
+        "/api/v1/workflow-drafts/quick-fix/validation" ],
       [ [ "task", "get", "--repository", repository_id, "--task", "KOS-000001", "--json" ], "task.get",
         "/api/v1/repositories/#{repository_id}/tasks/KOS-000001" ],
       [ [ "attempt", "get", "--repository", repository_id, "--attempt", resource_id, "--json" ], "attempt.get",
@@ -99,7 +108,8 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
   end
 
   def expect_command_case(arguments, command, path)
-    code = { "workflow.get" => "workflow_version_not_found", "workflow_draft.get" => "workflow_draft_not_found",
+    code = { "workflow.get" => "workflow_version_not_found", "workflow.export" => "workflow_version_not_found",
+      "workflow_draft.get" => "workflow_draft_not_found", "workflow_draft.validate" => "workflow_draft_not_found",
       "attempt.get" => "attempt_not_found", "worktree.get" => "reservation_not_found",
       "artifact.list" => "task_not_found" }.fetch(command, "task_not_found")
     with_server([ [ "404 Not Found", failure(command, code:) ] ]) do |url, requests|
@@ -146,6 +156,47 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
     expect_no_retry
   end
 
+  it "maps catalog mutations to POST with the complete request and idempotency headers" do
+    mutation_cases.each { |arguments, command, path, body| expect_mutation_case(arguments, command, path, body) }
+  end
+
+  it "reads mutation input from stdin" do
+    expect_stdin_mutation
+  end
+
+  it "reads mutation input from a file" do
+    expect_file_mutation
+  end
+
+  def expect_stdin_mutation
+    body = { "workflow_id" => "quick-fix", "expected_lock_version" => 0 }
+    response = failure("workflow.publish", category: "conflict", code: "stale_lock_version")
+    with_server([ [ "409 Conflict", response ] ]) do |url, requests|
+      stdout, _stderr, status = run_cli(url, "workflow", "publish", "--input", "-", "--idempotency-key",
+        "publish-key-1", "--json", stdin_data: JSON.generate(body))
+      expect([ status.exitstatus, requests.first.first, JSON.parse(stdout) ])
+        .to eq([ 6, "POST /api/v1/workflow-drafts/quick-fix/publication HTTP/1.1\r\n", response ])
+    end
+  end
+
+  def expect_file_mutation
+    body = { "workflow_id" => "quick-fix", "expected_lock_version" => 0 }
+    Tempfile.create([ "workflow", ".json" ]) do |file|
+      file.write(JSON.generate(body))
+      file.flush
+      response = failure("workflow.publish", category: "conflict", code: "stale_lock_version")
+      with_server([ [ "409 Conflict", response ] ]) do |url, _requests|
+        stdout, = run_cli(url, "workflow", "publish", "--input", file.path, "--idempotency-key",
+          "publish-key-1", "--json")
+        expect(JSON.parse(stdout)).to eq(response)
+      end
+    end
+  end
+
+  it "retries a catalog mutation with the same key and body" do
+    expect_mutation_retry
+  end
+
   it "returns transport_unavailable after three malformed HTTP responses" do
     expect_malformed_http_retries
   end
@@ -159,11 +210,58 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
     end
   end
 
+  def mutation_cases
+    definition = JSON.parse(File.read(File.expand_path("../../../fixtures/workflow_definitions/v1/valid/quick-fix.json",
+      __dir__)))
+    [
+      [ %w[workflow-draft import], "workflow_draft.import", "/api/v1/workflow-drafts/quick-fix",
+        { "workflow_id" => "quick-fix", "definition" => definition, "expected_lock_version" => 0 } ],
+      [ %w[workflow publish], "workflow.publish", "/api/v1/workflow-drafts/quick-fix/publication",
+        { "workflow_id" => "quick-fix", "expected_lock_version" => 0 } ],
+      [ %w[workflow activate], "workflow.activate", "/api/v1/task-types/quick-fix/current-workflow",
+        { "task_type" => "quick-fix", "workflow_version_id" => resource_id, "expected_lock_version" => 0 } ]
+    ]
+  end
+
+  def expect_mutation_case(arguments, command, path, body)
+    response = failure(command, category: "conflict", code: "stale_lock_version")
+    bodies = []
+    with_server([ [ "409 Conflict", response ] ], request_bodies: bodies) do |url, requests|
+      stdout, _stderr, status = run_cli(url, *arguments, "--input", "-", "--idempotency-key", "catalog-key-1",
+        "--json", stdin_data: JSON.generate(body))
+      expected = { "schema_version" => "1", "command" => command, "body" => body }
+      expect([ status.exitstatus, requests.first.first, JSON.parse(bodies.first), JSON.parse(stdout) ])
+        .to eq([ 6, "POST #{path} HTTP/1.1\r\n", expected, response ])
+      expect(requests.first.join).to include("Content-Type: application/json", "Idempotency-Key: catalog-key-1")
+    end
+  end
+
+  def expect_mutation_retry
+    body = { "workflow_id" => "quick-fix", "expected_lock_version" => 0 }
+    final = failure("workflow.publish", category: "conflict", code: "stale_lock_version")
+    bodies = []
+    with_server([ [ "503 Service Unavailable", transient("workflow.publish") ],
+      [ "503 Service Unavailable", transient("workflow.publish") ], [ "409 Conflict", final ] ],
+      request_bodies: bodies) do |url, requests|
+      _stdout, _stderr, status = run_cli(url, "workflow", "publish", "--input", "-", "--idempotency-key",
+        "publish-key-1", "--json", stdin_data: JSON.generate(body))
+      expect([ status.exitstatus, requests.length, bodies.uniq.length,
+        requests.map { |lines| lines.join.scan(/Idempotency-Key: publish-key-1/).length } ])
+        .to eq([ 6, 3, 1, [ 1, 1, 1 ] ])
+    end
+  end
+
   it "validates arguments before transport with a stable exit" do
     stdout, stderr, status = Open3.capture3({ "KOS_API_TOKEN" => token }, bin, "task", "get", "--json")
     document = JSON.parse(stdout)
     expect([ status.exitstatus, document.dig("error", "code") ]).to eq([ 2, "malformed_input" ])
     expect(stderr).not_to be_empty
+  end
+
+  it "rejects duplicate mutation input members before transport" do
+    stdout, _stderr, status = run_cli("http://127.0.0.1:1", "workflow", "publish", "--input", "-",
+      "--idempotency-key", "publish-key-1", "--json", stdin_data: '{"expected_lock_version":0,"expected_lock_version":1}')
+    expect([ status.exitstatus, JSON.parse(stdout).dig("error", "code") ]).to eq([ 2, "malformed_input" ])
   end
 
   it "requires the token environment variable with a stable exit" do

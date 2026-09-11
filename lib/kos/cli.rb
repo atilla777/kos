@@ -6,6 +6,7 @@ require "timeout"
 require "uri"
 
 require_relative "cli/schema_registry"
+require_relative "json_parser"
 
 module Kos
   module Cli
@@ -20,11 +21,17 @@ module Kos
     end
 
     class Parser
+      IDEMPOTENCY_KEY_FORMAT = /\A[A-Za-z0-9._:-]{8,255}\z/
       COMMANDS = {
         %w[task-type list] => [ "task_type.list", nil, { "limit" => "--limit", "cursor" => "--cursor" } ],
         %w[workflow list] => [ "workflow.list", nil, { "limit" => "--limit", "cursor" => "--cursor" } ],
         %w[workflow get] => [ "workflow.get", nil, { "workflow_version_id" => "--workflow-version" } ],
+        %w[workflow export] => [ "workflow.export", nil, { "workflow_version_id" => "--workflow-version" } ],
+        %w[workflow publish] => [ "workflow.publish", nil, {}, true ],
+        %w[workflow activate] => [ "workflow.activate", nil, {}, true ],
         %w[workflow-draft get] => [ "workflow_draft.get", nil, { "workflow_id" => "--workflow" } ],
+        %w[workflow-draft import] => [ "workflow_draft.import", nil, {}, true ],
+        %w[workflow-draft validate] => [ "workflow_draft.validate", nil, { "workflow_id" => "--workflow" } ],
         %w[task get] => [ "task.get", "repository", { "task_number" => "--task" } ],
         %w[attempt get] => [ "attempt.get", "repository", { "attempt_id" => "--attempt" } ],
         %w[worktree get] => [ "worktree.get", "repository", { "reservation_id" => "--reservation" } ],
@@ -32,8 +39,9 @@ module Kos
           { "task_number" => "--task", "limit" => "--limit", "cursor" => "--cursor" } ]
       }.freeze
 
-      def initialize(schema_registry: SchemaRegistry.new)
+      def initialize(schema_registry: SchemaRegistry.new, input: $stdin)
         @schema_registry = schema_registry
+        @input = input
       end
 
       def parse(arguments)
@@ -41,15 +49,13 @@ module Kos
         definition = COMMANDS[key]
         raise Error.new("validation", "unknown_command", "Command is not implemented") unless definition
 
-        command, scope, option_definitions = definition
-        options = parse_options(arguments.drop(2), option_definitions.values + [ "--repository" ])
+        command, scope, option_definitions, mutation = definition
+        extra_options = mutation ? %w[--input --idempotency-key] : []
+        options = parse_options(arguments.drop(2), option_definitions.values + [ "--repository", *extra_options ])
         raise Error.new("validation", "malformed_input", "--json is required") unless options.delete("--json")
 
-        body = option_definitions.to_h do |field, option|
-          value = options.delete(option)
-          value = integer(value) if field == "limit" && value
-          [ field, value ]
-        end.compact
+        body = mutation ? mutation_body(options) : read_body(options, option_definitions)
+        idempotency_key = options.delete("--idempotency-key") if mutation
         repository_id = options.delete("--repository")
         if scope == "repository" && !repository_id
           raise Error.new("validation", "malformed_input", "--repository is required")
@@ -65,6 +71,10 @@ module Kos
           raise Error.new("validation", "malformed_input", "Arguments are malformed")
         end
 
+        if mutation
+          request["_mutation"] = true
+          request["_idempotency_key"] = idempotency_key
+        end
         request
       end
 
@@ -95,6 +105,30 @@ module Kos
       rescue ArgumentError
         value
       end
+
+      def read_body(options, definitions)
+        definitions.to_h do |field, option|
+          value = options.delete(option)
+          value = integer(value) if field == "limit" && value
+          [ field, value ]
+        end.compact
+      end
+
+      def mutation_body(options)
+        path = options.delete("--input")
+        key = options["--idempotency-key"]
+        unless path && key&.match?(IDEMPOTENCY_KEY_FORMAT)
+          raise Error.new("validation", "malformed_input", "--input and a valid --idempotency-key are required")
+        end
+
+        content = path == "-" ? @input.read : File.binread(path)
+        value = Kos::JsonParser.parse(content)
+        raise JSON::ParserError unless value.is_a?(Hash)
+
+        value
+      rescue JSON::ParserError, SystemCallError
+        raise Error.new("validation", "malformed_input", "Mutation input must be a readable JSON object")
+      end
     end
 
     class Client
@@ -105,7 +139,12 @@ module Kos
         "task_type.list" => "/api/v1/task-types",
         "workflow.list" => "/api/v1/workflow-versions",
         "workflow.get" => "/api/v1/workflow-versions/%<workflow_version_id>s",
+        "workflow.export" => "/api/v1/workflow-versions/%<workflow_version_id>s/export",
+        "workflow.publish" => "/api/v1/workflow-drafts/%<workflow_id>s/publication",
+        "workflow.activate" => "/api/v1/task-types/%<task_type>s/current-workflow",
         "workflow_draft.get" => "/api/v1/workflow-drafts/%<workflow_id>s",
+        "workflow_draft.import" => "/api/v1/workflow-drafts/%<workflow_id>s",
+        "workflow_draft.validate" => "/api/v1/workflow-drafts/%<workflow_id>s/validation",
         "task.get" => "/api/v1/repositories/%<repository_id>s/tasks/%<task_number>s",
         "attempt.get" => "/api/v1/repositories/%<repository_id>s/attempts/%<attempt_id>s",
         "worktree.get" => "/api/v1/repositories/%<repository_id>s/worktree-reservations/%<reservation_id>s",
@@ -127,7 +166,7 @@ module Kos
         timeout = request_timeout
         response = nil
         3.times do |attempt|
-          response = perform(uri, token, timeout, logical_request.fetch("command"))
+          response = perform(uri, token, timeout, logical_request)
           return response unless transient?(response) && attempt < 2
 
           delay(attempt, response, timeout)
@@ -177,8 +216,17 @@ module Kos
         raise Error.new("validation", "malformed_input", "KOS_API_TIMEOUT_SECONDS must be a positive integer")
       end
 
-      def perform(uri, token, timeout, command)
-        request = Net::HTTP::Get.new(uri)
+      def perform(uri, token, timeout, logical_request)
+        command = logical_request.fetch("command")
+        request = if logical_request["_mutation"]
+          Net::HTTP::Post.new(uri).tap do |post|
+            post["Content-Type"] = "application/json"
+            post["Idempotency-Key"] = logical_request.fetch("_idempotency_key")
+            post.body = JSON.generate(logical_request.slice("schema_version", "command", "repository_id", "body"))
+          end
+        else
+          Net::HTTP::Get.new(uri)
+        end
         request["Authorization"] = "Bearer #{token}"
         request["Accept"] = "application/json"
         raw = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https", open_timeout: timeout,

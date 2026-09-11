@@ -26,7 +26,7 @@ module Api
         end
 
         def workflow_version(record)
-          workflow_summary(record).merge("definition" => workflow_definition(record))
+          workflow_summary(record).merge("definition" => WorkflowCatalog::CanonicalDefinition.from_record(record))
         end
 
         def workflow_draft(record)
@@ -111,53 +111,6 @@ module Api
         end
 
         private
-
-        def workflow_definition(record)
-          states = record.workflow_states.sort_by(&:identifier)
-          executable = states.reject(&:terminal?)
-          {
-            "schema_version" => "1",
-            "workflow_id" => record.workflow_id,
-            "task_type" => record.task_type.name,
-            "version" => record.version,
-            "initial_status" => states.find(&:initial?).identifier,
-            "terminal_status" => states.find(&:terminal?).identifier,
-            "statuses" => executable.map { |state| workflow_status(state) },
-            "transitions" => record.workflow_transitions.sort_by do |transition|
-              [ transition.from_state.identifier, transition.to_state.identifier ]
-            end.map { |transition| workflow_transition(transition) }
-          }
-        end
-
-        def workflow_status(state)
-          {
-            "id" => state.identifier,
-            "execution_mode" => state.execution_mode,
-            "instruction" => state.instruction,
-            "artifact_templates" => state.artifact_templates.sort_by(&:identifier).map do |template|
-              { "id" => template.identifier, "media_type" => template.media_type, "content" => template.content }
-            end,
-            "allowed_repository_effects" => state.workflow_state_effects.map(&:effect).sort,
-            "worktree" => state.worktree_policy,
-            "repository_changes" => state.repository_changes_policy,
-            "required_artifacts" => state.artifact_requirements.sort_by(&:artifact_type).map do |requirement|
-              { "type" => requirement.artifact_type, "cardinality" => requirement.cardinality,
-                "subject" => requirement.subject,
-                "allowed_states" => requirement.artifact_requirement_states.map(&:state).sort }
-            end
-          }
-        end
-
-        def workflow_transition(transition)
-          {
-            "from" => transition.from_state.identifier,
-            "to" => transition.to_state.identifier,
-            "conditions" => transition.workflow_transition_conditions.sort_by(&:position).map do |condition|
-              optional({ "type" => condition.condition_type, "artifact_type" => condition.artifact_type,
-                "state" => condition.artifact_state, "decision" => condition.decision, "value" => condition.value })
-            end
-          }
-        end
 
         def optional(value)
           value.compact
