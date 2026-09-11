@@ -30,6 +30,29 @@ RSpec.describe Idempotency::Execute, :aggregate_failures do
     end
   end
 
+  def prepared_replay_summary
+    calls = []
+    baseline = ActiveRecord::Base.connection.open_transactions
+    prepare = -> { calls << ActiveRecord::Base.connection.open_transactions; "prepared" }
+    first = described_class.call(command: "workflow.publish", key: "prepared-key", body:, status: 201,
+      serialize: serializer, prepare:) { |value| value }
+    replay = described_class.call(command: "workflow.publish", key: "prepared-key", body:, status: 201,
+      serialize: serializer, prepare:) { "repeated" }
+    [ first.data, replay.data, calls, baseline ]
+  end
+
+  def preparation_failure_calls
+    calls = 0
+    prepare = -> { calls += 1; raise OperationError.new("invalid_artifact", "Invalid") }
+    2.times do
+      expect {
+        described_class.call(command: "workflow.publish", key: "failed-prepare", body:, status: 201,
+          serialize: serializer, prepare:) { "unused" }
+      }.to raise_error(OperationError) { |error| expect(error.code).to eq("invalid_artifact") }
+    end
+    calls
+  end
+
   def execute(value = "first", request_body: body, &block)
     described_class.call(command: "workflow.publish", key: "publish-key-1", body: request_body,
       status: 201, serialize: serializer) { block ? block.call : value }
@@ -57,6 +80,15 @@ RSpec.describe Idempotency::Execute, :aggregate_failures do
 
     expect([ calls, record.response_status, record.response_data.dig("_operation_error", "code") ])
       .to eq([ 1, 409, "task_type_unavailable" ])
+  end
+
+  it "prepares outside the transaction and skips preparation on replay" do
+    first, replay, calls, baseline = prepared_replay_summary
+    expect([ first, replay, calls ]).to eq([ { "value" => "prepared" }, first, [ baseline ] ])
+  end
+
+  it "records a preparation failure for replay" do
+    expect(preparation_failure_calls).to eq(1)
   end
 
   it "rolls back partial operation state before recording its failure" do

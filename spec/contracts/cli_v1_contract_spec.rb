@@ -681,6 +681,11 @@ module CliV1Contract
         [ "effect_result.result.operation", "request.effect.operation" ] ] ]
   end
 
+  def step_completion_bindings
+    definition = SCHEMAS.fetch("commands.json").fetch("$defs").fetch("step_complete_body")
+    [ definition.fetch("x-field-equality"), definition.fetch("x-context-bindings") ]
+  end
+
   def repository_effect_validity
     schema = definition("resources.json", "repository_effect")
     succeeded = repository_effect("succeeded")
@@ -847,12 +852,25 @@ RSpec.describe CliV1Contract do
     expect(described_class.commit_boundary_contract).to eq([ true, [ false, false, false, false, false ] ])
   end
 
+  it "rejects null bytes in repository paths before adapter invocation" do
+    schema = described_class.definition("common.json", "repository_path")
+    expect([ schema.valid?("tasks/KOS-000001/task.md"), schema.valid?("tasks/KOS-000001/bad\0path") ])
+      .to eq([ true, false ])
+  end
+
   it "supports an attempt-bound typed effect round trip before final result" do
     expect(described_class.effect_round_trip_contract).to eq([ true, true, true, true ])
   end
 
   it "binds generic effect ownership and context at command boundaries" do
     expect(described_class.effect_binding_contract).to eq(described_class.expected_effect_bindings)
+  end
+
+  it "binds successful completion to its leased attempt and frozen context" do
+    expect(described_class.step_completion_bindings).to eq([
+      [ [ "result_manifest.attempt_id", "preconditions.attempt_id" ] ],
+      [ [ "result_manifest.input_context_digest", "stored_attempt.input_context_digest" ] ]
+    ])
   end
 
   it "binds generic effect state to outcomes and excludes specialized protocols" do

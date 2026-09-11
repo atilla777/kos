@@ -242,7 +242,11 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
       [ [ "attempt", "reconcile", "--repository", repository_id ], "attempt.reconcile",
         "/api/v1/repositories/#{repository_id}/attempts/#{resource_id}/reconcile",
         { "attempt_id" => resource_id, "observed_state" => "no_effect",
-          "evidence_digest" => "sha256:#{'a' * 64}", "expected_lock_version" => 3 } ]
+          "evidence_digest" => "sha256:#{'a' * 64}", "expected_lock_version" => 3 } ],
+      [ [ "step", "complete", "--repository", repository_id ], "step.complete",
+        "/api/v1/repositories/#{repository_id}/tasks/KOS-000001/steps/complete",
+        { "task_number" => "KOS-000001", "to_status" => "development",
+          "result_manifest" => manifest.merge("outcome" => "succeeded"), "preconditions" => preconditions } ]
     ]
   end
 

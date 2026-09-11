@@ -23,6 +23,7 @@ Rails.application.routes.draw do
         resources :tasks, only: %i[create show], param: :task_number do
           resources :artifacts, only: :index
           post "attempts/claim", to: "attempts#claim", on: :member
+          post "steps/complete", to: "workflow_steps#complete", on: :member
         end
         resources :attempts, only: :show do
           post :renew, on: :member

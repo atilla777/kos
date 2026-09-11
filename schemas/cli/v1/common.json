@@ -12,7 +12,7 @@
     "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "git_oid": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" },
-    "repository_path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$" },
+    "repository_path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\u0000).+$" },
     "absolute_path": { "type": "string", "minLength": 2, "maxLength": 4096, "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000]+$" },
     "remote_url": { "type": "string", "format": "uri", "maxLength": 4096, "pattern": "^(?:https?|ssh|git|file)://(?![^/?#]*:[^/?#]*@)[^?#]+$" },
     "base_ref": { "type": "string", "pattern": "^refs/heads/[^ ]+$" },

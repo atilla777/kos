@@ -512,15 +512,18 @@ WHEN NEW.worktree_reservation_id IS NOT NULL AND NOT EXISTS (
 BEGIN
   SELECT RAISE(ABORT, 'task worktree reservation must be active');
 END;
-CREATE TABLE "workflow_attempts" ("id" varchar NOT NULL PRIMARY KEY, "repository_id" varchar NOT NULL, "task_id" varchar NOT NULL, "workflow_state_id" varchar NOT NULL, "owner_id" varchar NOT NULL, "idempotency_key" varchar NOT NULL, "state" varchar DEFAULT 'started' NOT NULL, "fencing_token" integer NOT NULL, "lease_expires_at" datetime(6), "heartbeat_at" datetime(6), "started_at" datetime(6) NOT NULL, "completed_at" datetime(6), "input_context" text, "input_context_digest" varchar, "result_manifest" text, "created_at" datetime(6) NOT NULL, "updated_at" datetime(6) NOT NULL, "reconciliation_state" varchar, "reconciliation_evidence_digest" varchar, "reconciled_at" datetime(6), "legacy_reconciliation_pending" boolean DEFAULT FALSE NOT NULL, CONSTRAINT "fk_rails_523332645d"
-FOREIGN KEY ("workflow_state_id")
-  REFERENCES "workflow_states" ("id")
+CREATE TABLE "workflow_attempts" ("id" varchar NOT NULL PRIMARY KEY, "repository_id" varchar NOT NULL, "task_id" varchar NOT NULL, "workflow_state_id" varchar NOT NULL, "owner_id" varchar NOT NULL, "idempotency_key" varchar NOT NULL, "state" varchar DEFAULT 'started' NOT NULL, "fencing_token" integer NOT NULL, "lease_expires_at" datetime(6), "heartbeat_at" datetime(6), "started_at" datetime(6) NOT NULL, "completed_at" datetime(6), "input_context" text, "input_context_digest" varchar, "result_manifest" text, "created_at" datetime(6) NOT NULL, "updated_at" datetime(6) NOT NULL, "reconciliation_state" varchar, "reconciliation_evidence_digest" varchar, "reconciled_at" datetime(6), "legacy_reconciliation_pending" boolean DEFAULT FALSE NOT NULL, "completed_transition_id" varchar, CONSTRAINT "fk_rails_41dd974b5a"
+FOREIGN KEY ("task_id", "repository_id")
+  REFERENCES "tasks" ("id", "repository_id")
 , CONSTRAINT "fk_rails_bcec460837"
 FOREIGN KEY ("repository_id")
   REFERENCES "repositories" ("id")
-, CONSTRAINT "fk_rails_41dd974b5a"
-FOREIGN KEY ("task_id", "repository_id")
-  REFERENCES "tasks" ("id", "repository_id")
+, CONSTRAINT "fk_rails_523332645d"
+FOREIGN KEY ("workflow_state_id")
+  REFERENCES "workflow_states" ("id")
+, CONSTRAINT "fk_rails_23840df9f9"
+FOREIGN KEY ("completed_transition_id")
+  REFERENCES "workflow_transitions" ("id")
 , CONSTRAINT workflow_attempts_id_format CHECK (length(id) = 36 AND substr(id, 9, 1) = '-' AND substr(id, 14, 1) = '-' AND substr(id, 19, 1) = '-' AND substr(id, 24, 1) = '-' AND length(replace(id, '-', '')) = 32 AND replace(id, '-', '') NOT GLOB '*[^0-9a-f]*'), CONSTRAINT workflow_attempts_owner_id_format CHECK (length(owner_id) BETWEEN 1 AND 128 AND substr(owner_id, 1, 1) GLOB '[a-z]' AND owner_id NOT GLOB '*[^a-z0-9_-]*'), CONSTRAINT workflow_attempts_idempotency_key_format CHECK (length(idempotency_key) BETWEEN 8 AND 255 AND idempotency_key NOT GLOB '*[^A-Za-z0-9._:-]*'), CONSTRAINT workflow_attempts_fencing_token_positive CHECK (fencing_token >= 1), CONSTRAINT workflow_attempts_state_values CHECK (state IN ('started', 'succeeded', 'failed', 'interrupted', 'needs_human')), CONSTRAINT workflow_attempts_context_digest_format CHECK (input_context_digest IS NULL OR (substr(input_context_digest, 1, 7) = 'sha256:' AND length(input_context_digest) = 71 AND substr(input_context_digest, 8) NOT GLOB '*[^0-9a-f]*')), CONSTRAINT workflow_attempts_input_context_json CHECK (input_context IS NULL OR (json_valid(input_context) AND json_type(input_context) = 'object')), CONSTRAINT workflow_attempts_result_manifest_json CHECK (result_manifest IS NULL OR (json_valid(result_manifest) AND json_type(result_manifest) = 'object')), CONSTRAINT workflow_attempts_context_pair CHECK ((input_context IS NULL AND input_context_digest IS NULL) OR (input_context IS NOT NULL AND input_context_digest IS NOT NULL)), CONSTRAINT workflow_attempts_timestamp_order CHECK (heartbeat_at IS NOT NULL AND heartbeat_at >= started_at AND (lease_expires_at IS NULL OR lease_expires_at > heartbeat_at) AND (completed_at IS NULL OR completed_at >= heartbeat_at)), CONSTRAINT workflow_attempts_lifecycle_shape CHECK ((state = 'started' AND lease_expires_at IS NOT NULL AND heartbeat_at IS NOT NULL AND completed_at IS NULL AND result_manifest IS NULL) OR (state = 'interrupted' AND lease_expires_at IS NULL AND heartbeat_at IS NOT NULL AND completed_at IS NOT NULL AND result_manifest IS NULL) OR (state IN ('succeeded', 'failed', 'needs_human') AND lease_expires_at IS NULL AND heartbeat_at IS NOT NULL AND completed_at IS NOT NULL AND input_context IS NOT NULL AND result_manifest IS NOT NULL)), CONSTRAINT workflow_attempts_result_manifest_binding CHECK (result_manifest IS NULL OR ( json_extract(result_manifest, '$.attempt_id') IS id AND json_extract(result_manifest, '$.input_context_digest') IS input_context_digest AND json_extract(result_manifest, '$.outcome') IS state )), CONSTRAINT workflow_attempts_reconciliation_state_values CHECK (reconciliation_state IS NULL OR reconciliation_state IN ( 'no_effect', 'worktree_materialized', 'repository_effect_pending', 'publication_unknown' )), CONSTRAINT workflow_attempts_reconciliation_evidence_digest_format CHECK (reconciliation_evidence_digest IS NULL OR ( substr(reconciliation_evidence_digest, 1, 7) = 'sha256:' AND length(reconciliation_evidence_digest) = 71 AND substr(reconciliation_evidence_digest, 8) NOT GLOB '*[^0-9a-f]*' )), CONSTRAINT workflow_attempts_reconciliation_shape CHECK ((reconciliation_state IS NULL AND reconciliation_evidence_digest IS NULL AND reconciled_at IS NULL AND (state <> 'interrupted' OR legacy_reconciliation_pending = 1)) OR (state = 'interrupted' AND reconciliation_state IS NOT NULL AND reconciliation_evidence_digest IS NOT NULL AND reconciled_at IS NOT NULL AND legacy_reconciliation_pending = 0)), CONSTRAINT workflow_attempts_legacy_reconciliation_pending_boolean CHECK (legacy_reconciliation_pending IN (0, 1)));
 CREATE INDEX "index_workflow_attempts_on_repository_id" ON "workflow_attempts" ("repository_id") /*application='Kos'*/;
 CREATE UNIQUE INDEX "index_workflow_attempts_on_id_and_repository_id" ON "workflow_attempts" ("id", "repository_id") /*application='Kos'*/;
@@ -529,6 +532,28 @@ CREATE UNIQUE INDEX "index_workflow_attempts_on_identity_and_fencing" ON "workfl
 CREATE UNIQUE INDEX "index_workflow_attempts_on_task_and_fencing" ON "workflow_attempts" ("repository_id", "task_id", "fencing_token") /*application='Kos'*/;
 CREATE UNIQUE INDEX "index_workflow_attempts_on_repository_id_and_idempotency_key" ON "workflow_attempts" ("repository_id", "idempotency_key") /*application='Kos'*/;
 CREATE UNIQUE INDEX "index_workflow_attempts_one_started_per_task" ON "workflow_attempts" ("repository_id", "task_id") WHERE state = 'started' /*application='Kos'*/;
+CREATE INDEX "index_workflow_attempts_on_completed_transition_id" ON "workflow_attempts" ("completed_transition_id") /*application='Kos'*/;
+CREATE TRIGGER workflow_attempts_completed_transition_insert
+BEFORE INSERT ON workflow_attempts
+WHEN NEW.state = 'succeeded' OR NEW.completed_transition_id IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'a new attempt cannot be inserted as succeeded or with a completed transition');
+END;
+CREATE TRIGGER workflow_attempts_completed_transition_update
+BEFORE UPDATE OF state, completed_transition_id ON workflow_attempts
+WHEN (NEW.state = 'succeeded' AND (
+  NEW.completed_transition_id IS NULL OR NOT EXISTS (
+    SELECT 1 FROM workflow_transitions transition_record
+    JOIN tasks ON tasks.id = NEW.task_id AND tasks.repository_id = NEW.repository_id
+    WHERE transition_record.id = NEW.completed_transition_id
+      AND transition_record.from_state_id = NEW.workflow_state_id
+      AND transition_record.to_state_id = tasks.workflow_state_id
+      AND transition_record.workflow_version_id = tasks.workflow_version_id
+  )
+)) OR (NEW.state <> 'succeeded' AND NEW.completed_transition_id IS NOT NULL)
+BEGIN
+  SELECT RAISE(ABORT, 'completed transition must match a succeeded attempt and advanced task');
+END;
 CREATE TRIGGER workflow_attempts_legacy_reconciliation_pending_insert
 BEFORE INSERT ON workflow_attempts
 WHEN NEW.legacy_reconciliation_pending <> 0
@@ -608,6 +633,7 @@ BEGIN
   SELECT RAISE(ABORT, 'attempt cannot be deleted');
 END;
 INSERT INTO "schema_migrations" (version) VALUES
+('20260911010000'),
 ('20260911000000'),
 ('20260910000000'),
 ('20260909000000');

@@ -108,7 +108,7 @@ RSpec.describe WorkflowAttempts::Reconcile, :aggregate_failures do
       env = environment(directory)
       migrate!(env, 20_260_910_000_000)
       repository_id, attempt_id = seed_legacy_attempt(env)
-      migrate!(env)
+      migrate!(env, 20_260_911_000_000)
       upgraded = verify_upgrade(env, repository_id, attempt_id)
       rollback!(env)
       [ upgraded, verify_rollback(env, attempt_id) ]

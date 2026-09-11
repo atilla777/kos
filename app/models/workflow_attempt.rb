@@ -9,6 +9,7 @@ class WorkflowAttempt < ApplicationRecord
   belongs_to :repository
   belongs_to :task
   belongs_to :workflow_state
+  belongs_to :completed_transition, class_name: "WorkflowTransition", optional: true
 
   has_many :task_artifacts, dependent: :restrict_with_exception
   has_many :worktree_reservations, dependent: :restrict_with_exception

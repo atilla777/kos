@@ -22,7 +22,8 @@ module Api
         "attempts#needs_human" => "attempt.needs_human",
         "attempts#reconcile" => "attempt.reconcile",
         "worktree_reservations#show" => "worktree.get",
-        "artifacts#index" => "artifact.list"
+        "artifacts#index" => "artifact.list",
+        "workflow_steps#complete" => "step.complete"
       }.freeze
 
       before_action :set_request_context
@@ -119,13 +120,15 @@ module Api
         render_malformed_input
       end
 
-      def execute_mutation(body, status:, serialize:, &operation)
+      def execute_mutation(body, status:, serialize:, prepare: nil, &operation)
         key = request.headers["Idempotency-Key"].to_s
         return render_malformed_input unless key.match?(IdempotencyRecord::KEY_FORMAT)
 
         result = Idempotency::Execute.call(command: @command, key: key, body: body,
           status: Rack::Utils.status_code(status), serialize: serialize, repository: @repository,
-          error_status: ->(error) { schema_registry.error_status(error.code) }) { operation.call(key) }
+          error_status: ->(error) { schema_registry.error_status(error.code) }, prepare:) do |prepared|
+            operation.call(key, prepared)
+          end
         render_success(result.data, status: result.status)
       end
 
