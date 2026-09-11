@@ -1,0 +1,5 @@
+#!/usr/bin/env ruby
+
+require_relative "../lib/kos/repository"
+
+exit Kos::Repository::Application.new(ARGV).run

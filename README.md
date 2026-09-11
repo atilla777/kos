@@ -85,6 +85,16 @@ bin/kos worktree release --repository UUID --input observation.json --idempotenc
 
 KOS reserves and fences state but does not create or remove a Git worktree. Confirmation and observations must come from the owning orchestrator after `kos-repository` verifies the persisted allocation. Cleanup first records a matching clean worktree as `release_pending`, then records its absence after external removal; dirty or mismatched worktrees remain reserved for explicit resolution.
 
+The local repository adapter reads a closed version 1 request from a file or stdin and emits exactly one JSON result. Its request contains the registered repository snapshot, current reservation snapshot, and expected base or worktree HEAD:
+
+```sh
+bin/kos-repository materialize --input materialize.json --json
+bin/kos-repository observe --input observation.json --json
+bin/kos-repository remove --input removal.json --json
+```
+
+`materialize` accepts only a `reserved` reservation and creates its exact task branch and path from the expected base commit. `remove` accepts only `release_pending` and never removes a dirty, mismatched, or unproven worktree. The complete machine documents are defined by `schemas/repository/v1/adapter.json`; runtime skills and orchestration are installed separately.
+
 The CLI writes one versioned JSON result to stdout and diagnostics to stderr.
 
 ## Checks

@@ -45,6 +45,8 @@ The minimum capability includes catalog reads, task creation, attempt claim/rene
 
 The runtime adapter must support synchronous typed repository-effect request/results within one workflow-step session so the generic executor can finalize evidence against observed Git state without invoking Git itself.
 
+The local `kos-repository` executable has a separate closed JSON adapter contract under `schemas/repository/v1/`. It performs technical repository operations but does not call the state API or make workflow decisions. Runtime skills validate current KOS state and construct those adapter requests; installation and runtime-specific invocation remain governed by the target adapter contract.
+
 When retrospective is enabled installation-wide, the runtime adapter must support graceful end invocation, a bounded timeout, recursion suppression, private self-dialogue access, preservation of the primary result, and a second sanitized result delivery after the primary result is acknowledged. Lack of a graceful end hook or abrupt process loss may skip retrospective but cannot weaken workflow recovery.
 
 Detailed runtime adapter behavior and installation UX belong to later runtime-integration work.

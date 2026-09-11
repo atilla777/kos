@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kos.local/schemas/repository/v1/adapter.json",
+  "$defs": {
+    "schema_version": { "const": "1" },
+    "uuid": { "type": "string", "format": "uuid" },
+    "git_oid": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "absolute_path": { "type": "string", "minLength": 1, "pattern": "^/", "x-canonical-path": true },
+    "branch": { "type": "string", "pattern": "^kos/task-[A-Z][A-Z0-9]{1,9}-[0-9]{6}$" },
+    "repository": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "git_common_dir": { "$ref": "#/$defs/absolute_path" },
+        "base_ref": { "type": "string", "pattern": "^refs/heads/[^ ]+$" }
+      },
+      "required": ["id", "git_common_dir", "base_ref"],
+      "additionalProperties": false
+    },
+    "reservation": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "repository_id": { "$ref": "#/$defs/uuid" },
+        "state": { "enum": ["reserved", "confirmed", "release_pending"] },
+        "path": { "$ref": "#/$defs/absolute_path" },
+        "branch": { "$ref": "#/$defs/branch" },
+        "fencing_token": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["id", "repository_id", "state", "path", "branch", "fencing_token"],
+      "additionalProperties": false
+    },
+    "request_base": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/schema_version" },
+        "operation": { "enum": ["materialize", "observe", "remove"] },
+        "repository": { "$ref": "#/$defs/repository" },
+        "reservation": { "$ref": "#/$defs/reservation" },
+        "expected_head_sha": { "$ref": "#/$defs/git_oid" }
+      },
+      "required": ["schema_version", "operation", "repository", "reservation", "expected_head_sha"],
+      "additionalProperties": false
+    },
+    "materialize_request": {
+      "allOf": [
+        { "$ref": "#/$defs/request_base" },
+        { "properties": { "operation": { "const": "materialize" }, "reservation": { "properties": { "state": { "const": "reserved" } } } } }
+      ]
+    },
+    "observe_request": {
+      "allOf": [
+        { "$ref": "#/$defs/request_base" },
+        { "properties": { "operation": { "const": "observe" } } }
+      ]
+    },
+    "remove_request": {
+      "allOf": [
+        { "$ref": "#/$defs/request_base" },
+        { "properties": { "operation": { "const": "remove" }, "reservation": { "properties": { "state": { "const": "release_pending" } } } } }
+      ]
+    },
+    "request": { "oneOf": [{ "$ref": "#/$defs/materialize_request" }, { "$ref": "#/$defs/observe_request" }, { "$ref": "#/$defs/remove_request" }] },
+    "observation": {
+      "type": "object",
+      "properties": {
+        "state": { "enum": ["absent", "clean", "dirty", "mismatched"] },
+        "head_sha": { "$ref": "#/$defs/git_oid" },
+        "git_common_dir_digest": { "$ref": "#/$defs/digest" },
+        "evidence_digest": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["state", "evidence_digest"],
+      "allOf": [
+        { "if": { "properties": { "state": { "enum": ["clean", "dirty"] } }, "required": ["state"] }, "then": { "required": ["head_sha", "git_common_dir_digest"] } },
+        { "if": { "properties": { "state": { "const": "absent" } }, "required": ["state"] }, "then": { "not": { "anyOf": [{ "required": ["head_sha"] }, { "required": ["git_common_dir_digest"] }] } } }
+      ],
+      "additionalProperties": false
+    },
+    "success": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/schema_version" },
+        "operation": { "enum": ["materialize", "observe", "remove"] },
+        "outcome": { "const": "succeeded" },
+        "repository_id": { "$ref": "#/$defs/uuid" },
+        "reservation_id": { "$ref": "#/$defs/uuid" },
+        "fencing_token": { "type": "integer", "minimum": 1 },
+        "observation": { "$ref": "#/$defs/observation" }
+      },
+      "required": ["schema_version", "operation", "outcome", "repository_id", "reservation_id", "fencing_token", "observation"],
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "category": { "enum": ["validation", "conflict", "transient", "internal"] },
+        "code": { "enum": [
+          "malformed_input", "repository_mismatch", "repository_invalid", "repository_ref_invalid",
+          "repository_format_unsupported", "repository_lock_invalid", "worktree_path_invalid",
+          "base_ref_moved", "branch_exists", "worktree_mismatched", "worktree_materialization_failed",
+          "worktree_unlock_failed", "worktree_removal_failed", "git_timeout", "internal_error",
+          "worktree_verification_failed", "worktree_metadata_invalid", "worktree_marker_conflict",
+          "worktree_removal_unverified", "worktree_lock_invalid"
+        ] },
+        "message": { "type": "string", "minLength": 1 },
+        "retryable": { "type": "boolean" }
+      },
+      "required": ["category", "code", "message", "retryable"],
+      "oneOf": [
+        { "properties": { "category": { "const": "validation" }, "code": { "enum": ["malformed_input", "repository_mismatch", "repository_invalid", "repository_ref_invalid", "repository_format_unsupported", "repository_lock_invalid", "worktree_path_invalid"] }, "retryable": { "const": false } } },
+        { "properties": { "category": { "const": "conflict" }, "code": { "enum": ["base_ref_moved", "branch_exists", "worktree_mismatched", "worktree_materialization_failed", "worktree_unlock_failed", "worktree_removal_failed"] }, "retryable": { "const": false } } },
+        { "properties": { "category": { "const": "transient" }, "code": { "const": "git_timeout" }, "retryable": { "const": true } } },
+        { "properties": { "category": { "const": "internal" }, "code": { "enum": ["internal_error", "worktree_verification_failed", "worktree_metadata_invalid", "worktree_marker_conflict", "worktree_removal_unverified", "worktree_lock_invalid"] }, "retryable": { "const": false } } }
+      ],
+      "additionalProperties": false
+    },
+    "failure": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/schema_version" },
+        "operation": { "enum": ["materialize", "observe", "remove", "unknown"] },
+        "outcome": { "const": "failed" },
+        "error": { "$ref": "#/$defs/error" }
+      },
+      "required": ["schema_version", "operation", "outcome", "error"],
+      "additionalProperties": false
+    }
+  }
+}
