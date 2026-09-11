@@ -91,6 +91,8 @@
     { "code": "base_moved", "category": "conflict", "http_status": 409, "cli_exit": 6, "retryable": false },
     { "code": "context_unavailable", "category": "conflict", "http_status": 409, "cli_exit": 6, "retryable": false },
     { "code": "workflow_version_conflict", "category": "conflict", "http_status": 409, "cli_exit": 6, "retryable": false },
+    { "code": "task_number_exhausted", "category": "conflict", "http_status": 409, "cli_exit": 6, "retryable": false },
+    { "code": "task_type_unavailable", "category": "conflict", "http_status": 409, "cli_exit": 6, "retryable": false },
     { "code": "repository_registration_conflict", "category": "conflict", "http_status": 409, "cli_exit": 6, "retryable": false },
     { "code": "lease_expired", "category": "lease_lost", "http_status": 409, "cli_exit": 7, "retryable": false },
     { "code": "fencing_token_stale", "category": "lease_lost", "http_status": 409, "cli_exit": 7, "retryable": false },

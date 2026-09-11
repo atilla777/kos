@@ -13,6 +13,7 @@ module Api
         "workflow_drafts#validation" => "workflow_draft.validate",
         "workflow_drafts#publication" => "workflow.publish",
         "task_types#current_workflow" => "workflow.activate",
+        "tasks#create" => "task.create",
         "tasks#show" => "task.get",
         "attempts#show" => "attempt.get",
         "worktree_reservations#show" => "worktree.get",
@@ -26,7 +27,7 @@ module Api
       rescue_from StandardError, with: :render_internal_error
       rescue_from ActionDispatch::Http::Parameters::ParseError, with: :render_malformed_input
       rescue_from Api::V1::Cursor::Invalid, with: :render_malformed_input
-      rescue_from WorkflowCatalog::Error, with: :render_catalog_error
+      rescue_from OperationError, with: :render_operation_error
 
       private
 
@@ -105,7 +106,8 @@ module Api
           return
         end
         return render_malformed_input unless request.query_parameters.empty? &&
-          schema_registry.valid?("commands.json", "request", document) && document["command"] == @command
+          schema_registry.valid?("commands.json", "request", document) && document["command"] == @command &&
+          (!@repository || document["repository_id"] == @repository.id)
 
         document.fetch("body")
       rescue JSON::ParserError
@@ -117,11 +119,12 @@ module Api
         return render_malformed_input unless key.match?(IdempotencyRecord::KEY_FORMAT)
 
         result = Idempotency::Execute.call(command: @command, key: key, body: body,
-          status: Rack::Utils.status_code(status), serialize: serialize, &operation)
+          status: Rack::Utils.status_code(status), serialize: serialize, repository: @repository,
+          error_status: ->(error) { schema_registry.error_status(error.code) }, &operation)
         render_success(result.data, status: result.status)
       end
 
-      def render_catalog_error(error)
+      def render_operation_error(error)
         category, status = case error.code
         when "workflow_not_found", "workflow_draft_not_found", "workflow_version_not_found"
           [ "not_found", :not_found ]

@@ -20,7 +20,7 @@ Rails.application.routes.draw do
       end
 
       scope "repositories/:repository_id" do
-        resources :tasks, only: :show, param: :task_number do
+        resources :tasks, only: %i[create show], param: :task_number do
           resources :artifacts, only: :index
         end
         resources :attempts, only: :show

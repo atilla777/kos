@@ -2,56 +2,84 @@ require "digest"
 
 module Idempotency
   class Execute
-    Result = Data.define(:data, :status, :replayed)
+    Result = Data.define(:data, :status, :replayed, :error)
 
-    def self.call(command:, key:, body:, status:, serialize:)
+    def self.call(command:, key:, body:, status:, serialize:, repository: nil, error_status: ->(_error) { 409 })
       attempts = 0
       begin
-        execute(command: command, key: key, body: body, status: status, serialize: serialize) { yield }
+        result = execute(command: command, key: key, body: body, status: status, serialize: serialize,
+          repository: repository, error_status: error_status) { yield }
+        raise result.error if result.error
+
+        result
       rescue ActiveRecord::StatementInvalid => error
         raise unless sqlite_busy?(error)
 
         attempts += 1
         retry if attempts < 3
 
-        raise WorkflowCatalog::Error.new("request_timeout", "Catalog mutation timed out waiting for state")
+        raise OperationError.new("request_timeout", "Mutation timed out waiting for state")
       end
     end
 
-    def self.execute(command:, key:, body:, status:, serialize:)
-      fingerprint = fingerprint(command, body)
-      existing = IdempotencyRecord.find_by(repository_id: nil, command: command, idempotency_key: key)
+    def self.execute(command:, key:, body:, status:, serialize:, repository:, error_status:)
+      fingerprint = fingerprint(command, body, repository)
+      identity = { repository: repository, command: command, idempotency_key: key }
+      existing = IdempotencyRecord.find_by(identity)
       return replay(existing, fingerprint) if existing
 
       result = nil
       ActiveRecord::Base.transaction do
-        existing = IdempotencyRecord.lock.find_by(repository_id: nil, command: command, idempotency_key: key)
+        existing = IdempotencyRecord.lock.find_by(identity)
         return replay(existing, fingerprint) if existing
 
-        data = serialize.call(yield)
-        IdempotencyRecord.create!(command: command, idempotency_key: key, request_fingerprint: fingerprint,
-          state: "completed", response_status: status, response_data: data, completed_at: Time.current)
-        result = Result.new(data, status, false)
+        operation_result = capture(status, serialize, error_status) { yield }
+        IdempotencyRecord.create!(identity.merge(request_fingerprint: fingerprint,
+          state: "completed", response_status: operation_result.status,
+          response_data: stored_data(operation_result), completed_at: Time.current))
+        result = operation_result
       end
       result
     rescue ActiveRecord::RecordNotUnique
-      replay(IdempotencyRecord.find_by!(repository_id: nil, command: command, idempotency_key: key), fingerprint)
+      replay(IdempotencyRecord.find_by!(identity), fingerprint)
     end
     private_class_method :execute
 
-    def self.fingerprint(command, body)
-      value = [ command, "global", WorkflowCatalog::CanonicalDefinition.canonical_json(body) ].join("\n")
+    def self.capture(status, serialize, error_status)
+      ActiveRecord::Base.transaction(requires_new: true) do
+        Result.new(serialize.call(yield), status, false, nil)
+      end
+    rescue OperationError => error
+      Result.new(nil, error_status.call(error), false, error)
+    end
+    private_class_method :capture
+
+    def self.stored_data(result)
+      return result.data unless result.error
+
+      { "_operation_error" => { "code" => result.error.code, "message" => result.error.message,
+        "details" => result.error.details }.compact }
+    end
+    private_class_method :stored_data
+
+    def self.fingerprint(command, body, repository)
+      scope = repository&.id || "global"
+      value = [ command, scope, WorkflowCatalog::CanonicalDefinition.canonical_json(body) ].join("\n")
       "sha256:#{Digest::SHA256.hexdigest(value)}"
     end
     private_class_method :fingerprint
 
     def self.replay(record, fingerprint)
-      raise WorkflowCatalog::Error.new("idempotency_conflict", "Idempotency key was reused") unless
+      raise OperationError.new("idempotency_conflict", "Idempotency key was reused") unless
         record.request_fingerprint == fingerprint
-      raise WorkflowCatalog::Error.new("idempotency_in_progress", "Idempotent operation is in progress") unless
+      raise OperationError.new("idempotency_in_progress", "Idempotent operation is in progress") unless
         record.state == "completed"
 
-      Result.new(record.response_data, record.response_status, true)
+      error = record.response_data["_operation_error"]
+      return Result.new(record.response_data, record.response_status, true, nil) unless error
+
+      Result.new(nil, record.response_status, true,
+        OperationError.new(error.fetch("code"), error.fetch("message"), details: error["details"]))
     end
     private_class_method :replay
 

@@ -810,6 +810,13 @@ RSpec.describe CliV1Contract do
     expect(described_class.definition("commands.json", "request")).not_to be_valid(request)
   end
 
+  it "requires a task title with a non-whitespace character" do
+    request = described_class.request("task.create")
+    request.fetch("body")["title"] = " \t\n"
+
+    expect(described_class.definition("commands.json", "request")).not_to be_valid(request)
+  end
+
   it "pins tasks by workflow version identifier without a bundle digest" do
     expect(described_class.task_pinning_contract).to eq([ true, described_class::WORKFLOW_VERSION_ID, [] ])
   end

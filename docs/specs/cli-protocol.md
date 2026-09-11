@@ -133,6 +133,8 @@ Workflow draft import accepts a top-level workflow identity, the matching comple
 
 Task creation accepts only the title and `quick-fix` task type. In its transaction, the server resolves the task type's current published version and stores its immutable `workflow_version_id` and initial state on the task. A client cannot select or assert a workflow version. Later activation changes do not affect that task.
 
+A task title must contain at least one non-whitespace character. Creation returns `task_type_unavailable` without allocating a number when the task type has no active published workflow version. After sequence `999999`, creation returns `task_number_exhausted` without widening, wrapping, or changing the exhausted sequence. Both failures are nonretryable conflicts.
+
 After claim and confirmation of any required worktree, `step.context` constructs the complete executable context from the task, active attempt, current status, and pinned workflow version. A publication attempt first prepares or adopts its durable publication resource. In one transaction `step.context` stores the immutable context and its digest on the attempt and returns the exact UTF-8 Markdown instruction, optional inline artifact templates, artifact requirements, allowed typed repository effects, installation retrospective setting, and prepared publication parameters when applicable. Each required artifact contains its type, cardinality (`one` or `many`), subject (`task` or `candidate`), and nonempty allowed-state set. Requirements are unique by type. An instruction is at most 128 KiB, each template is at most 1 MiB, and one state's instruction and templates total at most 4 MiB, measured over UTF-8 bytes.
 
 `input_context_digest` is SHA-256 over the RFC 8785 canonical JSON serialization of the complete `workflow.json#/$defs/context` object with only `input_context_digest` omitted. This binds instruction and template content, allowed effects, retrospective setting, artifact requirements, worktree, and all other context fields to the result manifest without separate member digests or a circular digest input.
@@ -192,7 +194,7 @@ The stable leaf-code mapping is:
 | `validation` | `malformed_input` (`400`), `unsupported_schema_version` (`400`), `unknown_command` (`400`), `invalid_artifact` (`422`), `repository_registration_invalid` (`422`), `workflow_definition_invalid` (`422`) |
 | `authentication` | `authentication_required`, `invalid_token` |
 | `authorization` | `forbidden`, `repository_access_denied` |
-| `conflict` | `stale_lock_version`, `invalid_transition`, `idempotency_conflict`, `idempotency_in_progress`, `dependency_unsatisfied`, `base_moved`, `context_unavailable`, `workflow_version_conflict`, `repository_registration_conflict` |
+| `conflict` | `stale_lock_version`, `invalid_transition`, `idempotency_conflict`, `idempotency_in_progress`, `dependency_unsatisfied`, `base_moved`, `context_unavailable`, `workflow_version_conflict`, `task_number_exhausted`, `task_type_unavailable`, `repository_registration_conflict` |
 | `lease_lost` | `lease_expired`, `fencing_token_stale` |
 | `not_found` | `task_not_found`, `workflow_not_found`, `workflow_draft_not_found`, `workflow_version_not_found`, `attempt_not_found`, `reservation_not_found`, `effect_not_found`, `artifact_not_found`, `publication_not_found` |
 | `transient` | `transport_unavailable` (`503`), `request_timeout` (`504`) |

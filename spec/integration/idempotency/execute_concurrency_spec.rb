@@ -176,7 +176,7 @@ RSpec.describe Idempotency::Execute, :aggregate_failures do
 
   it "allows only one concurrent first import with different keys" do
     results_for(contenders(%w[first-import-key second-import-key])) do |results, state|
-      expect(result_summary(results, state)).to eq([ [ 0, 6 ], [ "stale_lock_version" ], 1, [ 1, 0, 1, 1, 0 ] ])
+      expect(result_summary(results, state)).to eq([ [ 0, 6 ], [ "stale_lock_version" ], 1, [ 1, 0, 2, 1, 0 ] ])
     end
   end
 
@@ -189,13 +189,13 @@ RSpec.describe Idempotency::Execute, :aggregate_failures do
 
   it "allows only one concurrent draft replacement from the same lock version" do
     results_for(replacement_contenders, setup: method(:import_initial_draft)) do |results, state|
-      expect(result_summary(results, state)).to eq([ [ 0, 6 ], [ "stale_lock_version" ], 1, [ 1, 0, 1, 2, 0 ] ])
+      expect(result_summary(results, state)).to eq([ [ 0, 6 ], [ "stale_lock_version" ], 1, [ 1, 0, 2, 2, 0 ] ])
     end
   end
 
   it "allows only one concurrent activation from the same lock version" do
     results_for(method(:activation_contenders), setup: method(:prepare_versions)) do |results, state, version_ids|
-      expect(result_summary(results, state)).to eq([ [ 0, 6 ], [ "stale_lock_version" ], 1, [ 1, 2, 1, 2, 1 ] ])
+      expect(result_summary(results, state)).to eq([ [ 0, 6 ], [ "stale_lock_version" ], 1, [ 1, 2, 2, 2, 1 ] ])
       expect(version_ids).to include(state.last)
     end
   end

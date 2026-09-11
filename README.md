@@ -53,6 +53,12 @@ bin/kos workflow export --workflow-version UUID --json
 
 The import body contains `workflow_id`, the complete `definition`, and `expected_lock_version`. Publish contains `workflow_id` and `expected_lock_version`; activate contains `task_type`, `workflow_version_id`, and `expected_lock_version`. Use `--input -` to read the body from stdin.
 
+Create a task from an input body containing `title` and `task_type: quick-fix`:
+
+```sh
+bin/kos task create --repository UUID --input task.json --idempotency-key task-create-1 --json
+```
+
 The CLI writes one versioned JSON result to stdout and diagnostics to stderr.
 
 ## Checks

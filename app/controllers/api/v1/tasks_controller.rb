@@ -1,6 +1,16 @@
 module Api
   module V1
     class TasksController < BaseController
+      def create
+        body = mutation_body
+        return if performed?
+
+        execute_mutation(body, status: :created, serialize: Serializer.method(:task)) do
+          TaskCreation::Create.call(repository: repository, title: body.fetch("title"),
+            task_type_name: body.fetch("task_type"))
+        end
+      end
+
       def show
         return render_malformed_input if request.query_parameters.any?
 

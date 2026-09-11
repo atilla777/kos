@@ -193,7 +193,7 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
     end
   end
 
-  it "retries a catalog mutation with the same key and body" do
+  it "retries a repository mutation with the same key and body" do
     expect_mutation_retry
   end
 
@@ -219,7 +219,10 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
       [ %w[workflow publish], "workflow.publish", "/api/v1/workflow-drafts/quick-fix/publication",
         { "workflow_id" => "quick-fix", "expected_lock_version" => 0 } ],
       [ %w[workflow activate], "workflow.activate", "/api/v1/task-types/quick-fix/current-workflow",
-        { "task_type" => "quick-fix", "workflow_version_id" => resource_id, "expected_lock_version" => 0 } ]
+        { "task_type" => "quick-fix", "workflow_version_id" => resource_id, "expected_lock_version" => 0 } ],
+      [ [ "task", "create", "--repository", repository_id ], "task.create",
+        "/api/v1/repositories/#{repository_id}/tasks",
+        { "title" => "Repair timeout", "task_type" => "quick-fix" } ]
     ]
   end
 
@@ -230,6 +233,7 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
       stdout, _stderr, status = run_cli(url, *arguments, "--input", "-", "--idempotency-key", "catalog-key-1",
         "--json", stdin_data: JSON.generate(body))
       expected = { "schema_version" => "1", "command" => command, "body" => body }
+      expected["repository_id"] = repository_id if command == "task.create"
       expect([ status.exitstatus, requests.first.first, JSON.parse(bodies.first), JSON.parse(stdout) ])
         .to eq([ 6, "POST #{path} HTTP/1.1\r\n", expected, response ])
       expect(requests.first.join).to include("Content-Type: application/json", "Idempotency-Key: catalog-key-1")
@@ -237,16 +241,16 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
   end
 
   def expect_mutation_retry
-    body = { "workflow_id" => "quick-fix", "expected_lock_version" => 0 }
-    final = failure("workflow.publish", category: "conflict", code: "stale_lock_version")
+    body = { "title" => "Repair timeout", "task_type" => "quick-fix" }
+    final = failure("task.create", category: "conflict", code: "task_type_unavailable")
     bodies = []
-    with_server([ [ "503 Service Unavailable", transient("workflow.publish") ],
-      [ "503 Service Unavailable", transient("workflow.publish") ], [ "409 Conflict", final ] ],
+    with_server([ [ "503 Service Unavailable", transient("task.create") ],
+      [ "503 Service Unavailable", transient("task.create") ], [ "409 Conflict", final ] ],
       request_bodies: bodies) do |url, requests|
-      _stdout, _stderr, status = run_cli(url, "workflow", "publish", "--input", "-", "--idempotency-key",
-        "publish-key-1", "--json", stdin_data: JSON.generate(body))
+      _stdout, _stderr, status = run_cli(url, "task", "create", "--repository", repository_id,
+        "--input", "-", "--idempotency-key", "task-create-key-1", "--json", stdin_data: JSON.generate(body))
       expect([ status.exitstatus, requests.length, bodies.uniq.length,
-        requests.map { |lines| lines.join.scan(/Idempotency-Key: publish-key-1/).length } ])
+        requests.map { |lines| lines.join.scan(/Idempotency-Key: task-create-key-1/).length } ])
         .to eq([ 6, 3, 1, [ 1, 1, 1 ] ])
     end
   end
