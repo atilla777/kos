@@ -261,7 +261,8 @@ RSpec.describe WorkflowSteps::Complete, :aggregate_failures do
     bad_manifest = manifest(attempt, [ document ]).merge("input_context_digest" => "sha256:#{'b' * 64}")
     bad_context = operation_error_code do
       described_class.call(repository:, task_number: task.number, to_status: "development", attempt_id: attempt.id,
-        fencing_token: 1, expected_lock_version: 1, manifest: bad_manifest)
+        fencing_token: 1, expected_lock_version: 1, manifest: bad_manifest,
+        now: Time.utc(2026, 9, 11, 12, 1))
     end
     expired = operation_error_code do
       described_class.call(repository:, task_number: task.number, to_status: "development", attempt_id: attempt.id,
