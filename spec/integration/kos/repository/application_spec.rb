@@ -274,6 +274,68 @@ RSpec.describe Kos::Repository::Application do
     expect(non_repository_lock_observation).to eq([ 2, "repository_invalid", false ])
   end
 
+  it "rebases the exact task commit suffix onto verified fetched base evidence", :aggregate_failures do
+    expect(successful_rebase_observation).to eq(
+      [ true, true, true, [ "KOS-000123" ], "", true, true, true ]
+    )
+  end
+
+  it "returns the existing HEAD when the task branch already uses the fetched base" do
+    input, task_head = prepared_rebase_request(advance: false)
+
+    result = invoke(input)
+
+    expect(result.fetch("head_sha")).to eq(task_head)
+  end
+
+  it "aborts a content conflict and proves restoration before returning failure", :aggregate_failures do
+    expect(conflicting_rebase_observation).to eq(
+      [ 6, "rebase_conflict", false, true, "", true, true, true ]
+    )
+  end
+
+  it "rejects changed fetch evidence and target before rewriting the task branch" do
+    expect(rebase_provenance_mismatch_observation).to eq(
+      [ [ 2, "fetch_evidence_mismatch" ], [ 2, "rebase_target_mismatch" ], true ]
+    )
+  end
+
+  it "rejects a dirty worktree and executable rebase configuration before rebase" do
+    expect(rebase_precondition_observation).to eq(
+      [ "worktree_mismatched", "rebase_configuration_invalid", "rebase_configuration_invalid", true ]
+    )
+  end
+
+  it "rejects staged, unfinished, and non-task history before rebase" do
+    expect(rebase_state_rejection_observation).to eq(
+      %w[index_not_clean unfinished_operation rebase_history_invalid]
+    )
+  end
+
+  it "returns uncertain when conflict abort cannot restore the repository" do
+    expect(unrestored_rebase_observation).to eq([ "transient", "rebase_state_uncertain", true ])
+  end
+
+  it "returns uncertain when post-effect observation raises unexpectedly" do
+    expect(exceptional_rebase_observation).to eq([ "transient", "rebase_state_uncertain", true ])
+  end
+
+  it "returns uncertain when timeout recovery observation raises unexpectedly" do
+    expect(exceptional_timeout_recovery_observation).to eq([ "transient", "rebase_state_uncertain", true ])
+  end
+
+  it "uses the same hardened configuration for rebase and conflict abort" do
+    expect(rebase_configuration_observation).to eq([ true, true, true, true, true ])
+  end
+
+  it "rejects a fetched base that diverged from the task base" do
+    expect(divergent_rebase_observation).to eq([ "rebase_base_moved", true ])
+  end
+
+  it "waits for the common adapter lock before rebasing" do
+    expect(rebase_lock_observation).to eq([ true, true ])
+  end
+
   it "commits exactly the requested files with one authoritative trailer", :aggregate_failures do
     result = commit_two_of_three_changes
 
@@ -571,6 +633,199 @@ RSpec.describe Kos::Repository::Application do
       "effect" => { "operation" => "fetch", "remote" => "origin", "ref" => "refs/heads/main" } }
   end
 
+  def prepared_rebase_request(advance: true, conflict: false)
+    task_commit = invoke(changed_readme_request).fetch("commit_sha")
+    prepare_remote
+    onto = if advance
+      conflict ? advance_remote_readme : advance_remote
+    else
+      head_sha
+    end
+    fetch_input = fetch_request
+    fetch_result = invoke(fetch_input)
+    raise "unexpected fetch target" unless fetch_result.fetch("observed_oid") == onto
+
+    [ build_rebase_request(task_commit, onto, fetch_input, fetch_result), task_commit, onto ]
+  end
+
+  def build_rebase_request(task_commit, onto, fetch_input, fetch_result)
+    durable = { "schema_version" => "1", "attempt_id" => "88888888-8888-4888-8888-888888888888",
+      "input_context_digest" => "sha256:#{'c' * 64}",
+      "effect" => { "operation" => "rebase", "reservation_id" => reservation_id,
+        "expected_head_sha" => task_commit, "onto_sha" => onto } }
+    { "schema_version" => "1", "operation" => "rebase", "repository" => fetch_input.fetch("repository"),
+      "reservation" => request("observe", "confirmed").fetch("reservation").merge("fencing_token" => 9),
+      "effect" => { "id" => "99999999-9999-4999-8999-999999999999", "repository_id" => repository_id,
+        "current_owner_attempt_id" => "77777777-7777-4777-8777-777777777777", "fencing_token" => 9,
+        "request_digest" => digest(canonical_json(durable)), "request" => durable },
+      "fetch" => { "request" => fetch_input, "result" => fetch_result } }
+  end
+
+  def successful_rebase_observation
+    input, task_head, onto = prepared_rebase_request
+    main_before = primary_worktree_state
+    result = invoke(input)
+    resulting_head = result.fetch("head_sha")
+    evidence = { "schema_version" => "1", "repository" => input.fetch("repository"),
+      "reservation" => input.fetch("reservation"), "effect" => input.fetch("effect"),
+      "fetch" => input.fetch("fetch"), "original_base_sha" => head_sha, "expected_head_sha" => task_head,
+      "onto_sha" => onto, "head_sha" => resulting_head }
+    [ resulting_head == head_sha_for(worktree_path), resulting_head != task_head,
+      git(worktree_path, "merge-base", "--is-ancestor", onto, resulting_head).empty?, task_trailers(resulting_head),
+      git(worktree_path, "status", "--porcelain=v2", "--untracked-files=all", "--ignored=matching"),
+      result.fetch("evidence_digest") == digest(canonical_json(evidence)), primary_worktree_state == main_before,
+      rebase_metadata_paths.none? { |path| File.exist?(path) } ]
+  end
+
+  def conflicting_rebase_observation
+    input, task_head = prepared_rebase_request(conflict: true)
+    refs_before = git(repository_path, "for-each-ref", "--format=%(refname) %(objectname)")
+    index_before = git(worktree_path, "ls-files", "--stage", "-z")
+    document, status = run(input)
+    [ status, document.dig("error", "code"), document.dig("error", "retryable"),
+      head_sha_for(worktree_path) == task_head,
+      git(worktree_path, "status", "--porcelain=v2", "--untracked-files=all", "--ignored=matching"),
+      rebase_metadata_paths.none? { |path| File.exist?(path) },
+      git(repository_path, "for-each-ref", "--format=%(refname) %(objectname)") == refs_before,
+      git(worktree_path, "ls-files", "--stage", "-z") == index_before ]
+  end
+
+  def rebase_provenance_mismatch_observation
+    input, task_head = prepared_rebase_request
+    changed_evidence = Marshal.load(Marshal.dump(input))
+    changed_evidence.dig("fetch", "result")["evidence_digest"] = "sha256:#{'0' * 64}"
+    changed_target = Marshal.load(Marshal.dump(input))
+    changed_target.dig("effect", "request", "effect")["onto_sha"] = head_sha
+    changed_target.fetch("effect")["request_digest"] = digest(canonical_json(changed_target.dig("effect", "request")))
+    results = [ changed_evidence, changed_target ].map do |value|
+      run(value).then { |document, status| [ status, document.dig("error", "code") ] }
+    end
+    results << (head_sha_for(worktree_path) == task_head)
+  end
+
+  def rebase_precondition_observation
+    input, task_head = prepared_rebase_request
+    File.write(File.join(worktree_path, "untracked.txt"), "dirty\n")
+    dirty = run(input).first
+    File.unlink(File.join(worktree_path, "untracked.txt"))
+    git(repository_path, "config", "merge.kos.driver", File.join(directory, "unsafe-driver"))
+    configured = run(input).first
+    git(repository_path, "config", "--unset-all", "merge.kos.driver")
+    git(repository_path, "config", "rebase.strategy", "ours")
+    strategy = run(input).first
+    [ dirty.dig("error", "code"), configured.dig("error", "code"), strategy.dig("error", "code"),
+      head_sha_for(worktree_path) == task_head ]
+  end
+
+  def rebase_state_rejection_observation
+    input, = prepared_rebase_request
+    File.write(File.join(worktree_path, "staged.txt"), "staged\n")
+    git(worktree_path, "add", "staged.txt")
+    staged = run(input).first.dig("error", "code")
+    git(worktree_path, "reset", "--hard", input.dig("effect", "request", "effect", "expected_head_sha"))
+    operation_path = rebase_metadata_paths.first
+    File.write(operation_path, "unfinished\n")
+    unfinished = run(input).first.dig("error", "code")
+    File.unlink(operation_path)
+    git(worktree_path, "commit", "--allow-empty", "-m", "Foreign commit")
+    change_rebase_expected_head!(input, head_sha_for(worktree_path))
+    [ staged, unfinished, run(input).first.dig("error", "code") ]
+  end
+
+  def change_rebase_expected_head!(input, head)
+    input.dig("effect", "request", "effect")["expected_head_sha"] = head
+    input.fetch("effect")["request_digest"] = digest(canonical_json(input.dig("effect", "request")))
+  end
+
+  def unrestored_rebase_observation
+    input, = prepared_rebase_request(conflict: true)
+    adapter = Kos::Repository::Git.new
+    allow(adapter).to receive(:call).and_wrap_original do |original, *arguments, **options|
+      if arguments.each_cons(2).include?([ "rebase", "--abort" ])
+        Kos::Repository::Git::Result.new("", false)
+      else
+        original.call(*arguments, **options)
+      end
+    end
+    error = capture_operation_error(Kos::Repository::Rebase.new(input, git: adapter))
+    [ error.category, error.code, error.retryable ]
+  end
+
+  def exceptional_timeout_recovery_observation
+    input, = prepared_rebase_request
+    adapter = Kos::Repository::Git.new
+    timed_out = false
+    allow(adapter).to receive(:call).and_wrap_original do |original, *arguments, **options|
+      raise Errno::EIO if timed_out
+
+      result = original.call(*arguments, **options)
+      if arguments.include?("--onto")
+        timed_out = true
+        raise Kos::Repository::Error.new("transient", "git_timeout", "Git operation timed out", retryable: true)
+      end
+      result
+    end
+    error = capture_operation_error(Kos::Repository::Rebase.new(input, git: adapter))
+    [ error.category, error.code, error.retryable ]
+  end
+
+  def exceptional_rebase_observation
+    input, = prepared_rebase_request
+    adapter = Kos::Repository::Git.new
+    refs_calls = 0
+    allow(adapter).to receive(:call).and_wrap_original do |original, *arguments, **options|
+      refs_calls += 1 if arguments.include?("for-each-ref")
+      raise Errno::EIO if refs_calls == 2
+
+      original.call(*arguments, **options)
+    end
+    error = capture_operation_error(Kos::Repository::Rebase.new(input, git: adapter))
+    [ error.category, error.code, error.retryable ]
+  end
+
+  def rebase_configuration_observation
+    input, = prepared_rebase_request(conflict: true)
+    adapter, calls = recording_git
+    capture_operation_error(Kos::Repository::Rebase.new(input, git: adapter))
+    rebase_calls = calls.select { |arguments| arguments.include?("rebase") }
+    normal = rebase_calls.find { |arguments| arguments.include?("--onto") }
+    abort = rebase_calls.find { |arguments| arguments.include?("--abort") }
+    expected = Kos::Repository::Rebase::REBASE_CONFIGURATION
+    [ expected.each_cons(2).all? { |pair| normal.each_cons(2).include?(pair) },
+      expected.each_cons(2).all? { |pair| abort.each_cons(2).include?(pair) }, normal.include?("--no-fork-point"),
+      normal.include?("--strategy=ort"), normal.include?("--no-update-refs") ]
+  end
+
+  def rebase_lock_observation
+    input, = prepared_rebase_request
+    lock = File.open(File.join(common_dir, "kos-repository.lock"), File::RDWR | File::CREAT, 0o600)
+    lock.flock(File::LOCK_EX)
+    worker = Thread.new { Kos::Repository::Rebase.new(input).call }
+    sleep 0.05
+    blocked = worker.alive?
+    lock.flock(File::LOCK_UN)
+    [ blocked, worker.value.fetch("head_sha") == head_sha_for(worktree_path) ]
+  ensure
+    lock&.close
+  end
+
+  def divergent_rebase_observation
+    prepare_remote
+    add_base_file("local-base.txt", "local base\n")
+    task_commit = invoke(changed_readme_request).fetch("commit_sha")
+    onto = advance_remote
+    fetch_input = fetch_request
+    input = build_rebase_request(task_commit, onto, fetch_input, invoke(fetch_input))
+    document = run(input).first
+    [ document.dig("error", "code"), head_sha_for(worktree_path) == task_commit ]
+  end
+
+  def primary_worktree_state
+    { head: head_sha_for(repository_path), index: File.binread(File.join(common_dir, "index")),
+      status: git(repository_path, "status", "--porcelain=v2", "--untracked-files=all", "--ignored=matching"),
+      readme: File.binread(File.join(repository_path, "README.md")) }
+  end
+
   def successful_fetch_observation
     remote_oid = advance_remote
     input = fetch_request
@@ -786,6 +1041,25 @@ RSpec.describe Kos::Repository::Application do
     git(publisher, "tag", "remote-only-tag")
     git(publisher, "push", "origin", "refs/heads/main:refs/heads/main", "refs/tags/remote-only-tag")
     head_sha_for(publisher)
+  end
+
+  def advance_remote_readme
+    prepare_remote
+    publisher = File.join(directory, "conflicting-publisher")
+    git(directory, "clone", remote_url, publisher)
+    git(publisher, "config", "user.name", "KOS Remote Test")
+    git(publisher, "config", "user.email", "remote@example.test")
+    File.write(File.join(publisher, "README.md"), "remote conflict\n")
+    git(publisher, "add", "README.md")
+    git(publisher, "commit", "-m", "Conflict remotely")
+    git(publisher, "push", "origin", "refs/heads/main:refs/heads/main")
+    head_sha_for(publisher)
+  end
+
+  def rebase_metadata_paths
+    Kos::Repository::Worktree::OPERATION_PATHS.map do |name|
+      git(worktree_path, "rev-parse", "--git-path", name).strip
+    end
   end
 
   def remote_url

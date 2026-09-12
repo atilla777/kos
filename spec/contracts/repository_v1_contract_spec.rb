@@ -43,6 +43,20 @@ RSpec.describe RepositoryV1Contract do
         "request" => durable_request } }
   end
 
+  def rebase_request
+    durable_request = { "schema_version" => "1", "attempt_id" => attempt_id,
+      "input_context_digest" => "sha256:#{'c' * 64}",
+      "effect" => { "operation" => "rebase", "reservation_id" => reservation_id,
+        "expected_head_sha" => sha, "onto_sha" => "2" * 40 } }
+    { "schema_version" => "1", "operation" => "rebase", "repository" => fetch_request.fetch("repository"),
+      "reservation" => request.fetch("reservation").merge("state" => "confirmed", "fencing_token" => 9),
+      "effect" => { "id" => "99999999-9999-4999-8999-999999999999", "repository_id" => repository_id,
+        "current_owner_attempt_id" => attempt_id, "fencing_token" => 9,
+        "request_digest" => "sha256:#{Digest::SHA256.hexdigest(canonical_json(durable_request))}",
+        "request" => durable_request },
+      "fetch" => { "request" => fetch_request, "result" => fetch_success } }
+  end
+
   it "accepts a materialize request" do
     expect(schema.ref("#/$defs/request")).to be_valid(request)
   end
@@ -67,6 +81,14 @@ RSpec.describe RepositoryV1Contract do
     expect(schema.ref("#/$defs/request")).not_to be_valid(fetch_request.merge("remote" => "origin"))
     expect(schema.ref("#/$defs/request")).not_to be_valid(fetch_request.merge(
       "effect" => fetch_request.fetch("effect").except("fencing_token")))
+  end
+
+  it "accepts only a closed rebase request with confirmed reservation and fetch evidence", :aggregate_failures do
+    expect(schema.ref("#/$defs/request")).to be_valid(rebase_request)
+    expect(schema.ref("#/$defs/request")).not_to be_valid(rebase_request.merge("onto_sha" => "2" * 40))
+    expect(schema.ref("#/$defs/request")).not_to be_valid(rebase_request.merge(
+      "reservation" => rebase_request.fetch("reservation").merge("state" => "reserved")))
+    expect(schema.ref("#/$defs/request")).not_to be_valid(rebase_request.merge("fetch" => {}))
   end
 
   it "accepts only registered fetch URL schemes without raw passwords, queries, or fragments" do
@@ -126,6 +148,11 @@ RSpec.describe RepositoryV1Contract do
     expect(schema.ref("#/$defs/success")).not_to be_valid(fetch_success.merge("stderr" => "unsafe"))
   end
 
+  it "accepts only the closed effect-bound rebase success", :aggregate_failures do
+    expect(schema.ref("#/$defs/success")).to be_valid(rebase_success)
+    expect(schema.ref("#/$defs/success")).not_to be_valid(rebase_success.merge("onto_sha" => "2" * 40))
+  end
+
   it "requires identity evidence for a present worktree" do
     observation = schema.ref("#/$defs/observation")
 
@@ -165,6 +192,10 @@ RSpec.describe RepositoryV1Contract do
     expect(schema.ref("#/$defs/failure")).not_to be_valid(fetch_failure.merge("error" => commit_only_error))
   end
 
+  it "accepts only rebase failures with fixed recovery semantics", :aggregate_failures do
+    expect(rebase_failure_contract_results).to eq([ true, true, false ])
+  end
+
   it "rejects a worktree-only failure for commit" do
     base = { "schema_version" => "1", "outcome" => "failed", "operation" => "commit" }
     worktree_error = { "category" => "conflict", "code" => "branch_exists", "message" => "Conflict",
@@ -190,6 +221,22 @@ RSpec.describe RepositoryV1Contract do
       "repository_id" => repository_id, "effect_id" => effect_id, "current_owner_attempt_id" => attempt_id,
       "fencing_token" => 9, "effect_request_digest" => fetch_request.dig("effect", "request_digest"), "remote" => "origin",
       "ref" => "refs/heads/main", "observed_oid" => sha, "evidence_digest" => "sha256:#{'d' * 64}" }
+  end
+
+  def rebase_success
+    { "schema_version" => "1", "operation" => "rebase", "outcome" => "succeeded",
+      "repository_id" => repository_id, "reservation_id" => reservation_id,
+      "effect_id" => rebase_request.dig("effect", "id"), "current_owner_attempt_id" => attempt_id,
+      "fencing_token" => 9, "effect_request_digest" => rebase_request.dig("effect", "request_digest"),
+      "head_sha" => "2" * 40, "evidence_digest" => "sha256:#{'d' * 64}" }
+  end
+
+  def rebase_failure_contract_results
+    contract = schema.ref("#/$defs/failure")
+    conflict = failure("rebase", "rebase_conflict")
+    uncertain = conflict.merge("error" => { "category" => "transient", "code" => "rebase_state_uncertain",
+      "message" => "Uncertain", "retryable" => true })
+    [ contract.valid?(conflict), contract.valid?(uncertain), contract.valid?(conflict.merge("error" => commit_only_error)) ]
   end
 
   def fetch_request_with_url(url)

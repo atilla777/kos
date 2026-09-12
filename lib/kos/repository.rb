@@ -183,7 +183,7 @@ module Kos
       def initialize(request, git: Git.new)
         super
         @reservation = request.fetch("reservation")
-        @expected_head = request.fetch("expected_head_sha")
+        @expected_head = request["expected_head_sha"] || request.dig("effect", "request", "effect", "expected_head_sha")
       end
 
       def call
@@ -247,7 +247,7 @@ module Kos
         evidence("mismatched")
       end
 
-      def inspect_identity
+      def inspect_identity(expected_head = @expected_head)
         path = reservation.fetch("path")
         return unless canonical_existing(path) == path
 
@@ -257,7 +257,7 @@ module Kos
         return unless common.success && branch.success && head.success
         return unless canonical_existing(common.stdout.strip) == repository.fetch("git_common_dir")
         return unless branch.stdout.strip == "refs/heads/#{reservation.fetch('branch')}"
-        return unless head.stdout.strip == @expected_head
+        return unless head.stdout.strip == expected_head
         return unless marker_matches?(path)
 
         head.stdout.strip
@@ -380,8 +380,8 @@ module Kos
         git_common("show-ref", "--verify", "--quiet", "refs/heads/#{reservation.fetch('branch')}").success
       end
 
-      def git_worktree(path, *arguments)
-        @git.call("-C", path, *arguments)
+      def git_worktree(path, *arguments, environment: {}, stdin: File::NULL)
+        @git.call("-C", path, *arguments, environment: environment, stdin: stdin)
       end
 
       def common_dir_digest
@@ -950,6 +950,281 @@ module Kos
       end
     end
 
+    class Rebase < Worktree
+      EXECUTABLE_CONFIG = [ /\Afilter\..*\.(?:clean|smudge|process)\z/i, /\Amerge\..*\.driver\z/i,
+        /\Arebase\.(?:strategy|strategyoption)\z/i, /\Asubmodule\..*\.update\z/i ].freeze
+      REBASE_ENVIRONMENT = { "GIT_EDITOR" => "/bin/true", "GIT_SEQUENCE_EDITOR" => "/bin/true" }.freeze
+      REBASE_CONFIGURATION = [ "-c", "rebase.autoStash=false", "-c", "rebase.updateRefs=false", "-c",
+        "rebase.rebaseMerges=false", "-c", "rerere.enabled=false", "-c", "merge.renormalize=false", "-c",
+        "merge.renames=true", "-c", "merge.directoryRenames=conflict", "-c", "merge.renameLimit=0", "-c",
+        "submodule.recurse=false", "-c", "notes.rewrite.rebase=false", "-c", "gc.auto=0", "-c",
+        "maintenance.auto=0" ].freeze
+
+      def call
+        validate_identity!
+        with_lock do
+          validate_identity!
+          validate_effect!
+          validate_fetch_evidence!
+          verify_worktree!
+          verify_clean_state!
+          verify_configuration!
+          @refs_before = refs
+          @original_base, @commit_count = task_history
+          verify_target!
+          return success(@expected_head) if @original_base == onto_sha
+
+          execute
+        end
+      end
+
+      private
+
+      def validate_effect!
+        observed = digest(canonical_json(effect_request))
+        validation!("effect_request_mismatch", "Effect request digest does not match") unless
+          observed == effect_snapshot.fetch("request_digest")
+        validation!("repository_mismatch", "Repository effect does not belong to the repository") unless
+          effect_snapshot.fetch("repository_id") == repository.fetch("id") &&
+          reservation.fetch("repository_id") == repository.fetch("id")
+        validation!("effect_request_mismatch", "Effect request does not match the reservation") unless
+          requested_effect.fetch("reservation_id") == reservation.fetch("id") &&
+          requested_effect.fetch("expected_head_sha") == @expected_head &&
+          effect_snapshot.fetch("fencing_token") == reservation.fetch("fencing_token")
+      end
+
+      def validate_fetch_evidence!
+        fetch_request = request.dig("fetch", "request")
+        fetch_result = request.dig("fetch", "result")
+        fetch_effect = fetch_request.fetch("effect")
+        fetched_repository = fetch_request.fetch("repository")
+        fetched_request = fetch_effect.fetch("request")
+        fetched_operation = fetched_request.fetch("effect")
+
+        validation!("fetch_evidence_mismatch", "Fetch evidence does not match the repository") unless
+          fetched_repository == repository && fetch_effect.fetch("repository_id") == repository.fetch("id")
+        validation!("fetch_evidence_mismatch", "Fetch request digest does not match") unless
+          digest(canonical_json(fetched_request)) == fetch_effect.fetch("request_digest")
+        expected_result = { "repository_id" => repository.fetch("id"), "effect_id" => fetch_effect.fetch("id"),
+          "current_owner_attempt_id" => fetch_effect.fetch("current_owner_attempt_id"),
+          "fencing_token" => fetch_effect.fetch("fencing_token"),
+          "effect_request_digest" => fetch_effect.fetch("request_digest"),
+          "remote" => fetched_operation.fetch("remote"), "ref" => fetched_operation.fetch("ref") }
+        validation!("fetch_evidence_mismatch", "Fetch result identity does not match") unless
+          fetch_result.slice(*expected_result.keys) == expected_result
+        validation!("fetch_evidence_mismatch", "Fetch evidence digest does not match") unless
+          fetch_result.fetch("evidence_digest") == fetch_evidence_digest(fetch_request, fetch_result)
+        validation!("rebase_target_mismatch", "Rebase target does not match verified fetch") unless
+          fetched_operation.fetch("remote") == repository.fetch("trusted_remote") &&
+          fetched_operation.fetch("ref") == repository.fetch("base_ref") &&
+          fetch_result.fetch("observed_oid") == onto_sha
+      end
+
+      def fetch_evidence_digest(fetch_request, fetch_result)
+        document = { "schema_version" => "1", "repository" => fetch_request.fetch("repository"),
+          "effect" => fetch_request.fetch("effect"), "remote" => fetch_result.fetch("remote"),
+          "ref" => fetch_result.fetch("ref"), "observed_oid" => fetch_result.fetch("observed_oid") }
+        digest(canonical_json(document))
+      end
+
+      def verify_worktree!
+        conflict!("worktree_mismatched", "Confirmed worktree identity does not match") unless inspect_identity
+      end
+
+      def verify_clean_state!
+        index = git_worktree(reservation.fetch("path"), "diff", "--cached", "--quiet", "--no-ext-diff",
+          "--no-textconv", @expected_head, "--")
+        conflict!("index_not_clean", "Worktree index does not match expected HEAD") unless index.success
+        conflict!("unfinished_operation", "Worktree has an unfinished Git operation") if unfinished_operation?
+        conflict!("worktree_mismatched", "Confirmed worktree is not clean") if dirty?
+      end
+
+      def verify_configuration!
+        names = git_worktree(reservation.fetch("path"), "config", "--name-only", "--null", "--list")
+        conflict!("rebase_configuration_invalid", "Repository configuration could not be verified") unless names.success
+        configured = names.stdout.split("\0").any? do |name|
+          EXECUTABLE_CONFIG.any? { |pattern| pattern.match?(name) }
+        end
+        conflict!("rebase_configuration_invalid", "Repository configuration can execute rebase helpers") if configured
+      end
+
+      def task_history
+        current = @expected_head
+        count = 0
+        loop do
+          trailers = task_trailers(current)
+          break unless trailers == [ task_number ]
+
+          parents = commit_parents(current)
+          conflict!("rebase_history_invalid", "Task rebase history must be linear") unless parents.length == 1
+          current = parents.first
+          count += 1
+        end
+        conflict!("rebase_history_invalid", "Task branch has no authoritative task commit suffix") if count.zero?
+
+        [ current, count ]
+      end
+
+      def task_trailers(commit)
+        result = git_worktree(reservation.fetch("path"), "show", "-s",
+          "--format=%(trailers:key=KOS-Task,valueonly,separator=%x00)", commit)
+        conflict!("rebase_history_invalid", "Task commit trailers could not be verified") unless result.success
+        value = result.stdout.delete_suffix("\n")
+        value.empty? ? [] : value.split("\0", -1)
+      end
+
+      def commit_parents(commit)
+        result = git_worktree(reservation.fetch("path"), "rev-list", "--parents", "-n", "1", commit)
+        conflict!("rebase_history_invalid", "Task commit history could not be verified") unless result.success
+        values = result.stdout.split
+        conflict!("rebase_history_invalid", "Task commit history could not be verified") unless values.shift == commit
+        values
+      end
+
+      def verify_target!
+        object = git_common("cat-file", "-t", onto_sha)
+        validation!("rebase_target_mismatch", "Verified rebase target is not a local commit") unless
+          object.success && object.stdout == "commit\n"
+        ancestor = git_common("merge-base", "--is-ancestor", @original_base, onto_sha)
+        conflict!("rebase_base_moved", "Fetched base does not descend from the task base") unless ancestor.success
+      end
+
+      def execute
+        result = git_worktree(reservation.fetch("path"), *REBASE_CONFIGURATION, "rebase", "--no-autostash",
+          "--no-update-refs", "--no-rebase-merges", "--no-rerere-autoupdate", "--no-fork-point",
+          "--reapply-cherry-picks", "--empty=keep", "--strategy=ort", "--onto", onto_sha, @original_base,
+          environment: REBASE_ENVIRONMENT)
+        return verified_success if result.success
+
+        recover_failure(unfinished_operation? ? "rebase_conflict" : "rebase_failed")
+      rescue Error => error
+        recover_timeout(error) if error.code == "git_timeout"
+        raise if %w[rebase_conflict rebase_failed rebase_state_uncertain].include?(error.code)
+
+        transient!("rebase_state_uncertain", "Rebase state could not be verified")
+      rescue StandardError
+        transient!("rebase_state_uncertain", "Rebase state could not be verified")
+      end
+
+      def verified_success
+        success(current_head!)
+      rescue Error => error
+        raise if error.code == "rebase_state_uncertain"
+
+        transient!("rebase_state_uncertain", "Rebase result could not be verified")
+      rescue StandardError
+        transient!("rebase_state_uncertain", "Rebase result could not be verified")
+      end
+
+      def recover_timeout(error)
+        begin
+          abort_rebase if unfinished_operation?
+        rescue StandardError
+          transient!("rebase_state_uncertain", "Rebase state could not be verified after timeout")
+        end
+
+        restored = begin
+          restored?
+        rescue StandardError
+          false
+        end
+        raise error if restored
+
+        transient!("rebase_state_uncertain", "Rebase state could not be verified after timeout")
+      end
+
+      def recover_failure(code)
+        abort_rebase if unfinished_operation?
+        transient!("rebase_state_uncertain", "Rebase failure could not be restored") unless restored?
+        conflict!(code, code == "rebase_conflict" ? "Rebase conflicted and was aborted" : "Git rejected the rebase")
+      rescue Error => error
+        raise if error.code == code || error.code == "rebase_state_uncertain"
+
+        transient!("rebase_state_uncertain", "Rebase failure could not be restored")
+      end
+
+      def abort_rebase
+        result = git_worktree(reservation.fetch("path"), *REBASE_CONFIGURATION, "rebase", "--abort",
+          environment: REBASE_ENVIRONMENT)
+        transient!("rebase_state_uncertain", "Rebase conflict could not be aborted") unless result.success
+      end
+
+      def restored?
+        inspect_identity(@expected_head) && !dirty? && !unfinished_operation? && refs == @refs_before
+      rescue Error, SystemCallError
+        false
+      end
+
+      def success(head)
+        verify_success!(head)
+        document = { "schema_version" => "1", "repository" => repository, "reservation" => reservation,
+          "effect" => effect_snapshot, "fetch" => request.fetch("fetch"), "original_base_sha" => @original_base,
+          "expected_head_sha" => @expected_head, "onto_sha" => onto_sha, "head_sha" => head }
+        { "head_sha" => head, "evidence_digest" => digest(canonical_json(document)) }
+      end
+
+      def verify_success!(head)
+        transient!("rebase_state_uncertain", "Rebase changed an unrelated ref") unless
+          refs.reject { |name, _| name == task_ref } == @refs_before.reject { |name, _| name == task_ref }
+        transient!("rebase_state_uncertain", "Rebase result identity could not be verified") unless
+          inspect_identity(head) && !dirty? && !unfinished_operation?
+        transient!("rebase_state_uncertain", "Rebase result is not based on the verified target") unless
+          git_common("merge-base", "--is-ancestor", onto_sha, head).success
+        commits = git_common("rev-list", "--first-parent", "#{onto_sha}..#{head}")
+        valid = commits.success && commits.stdout.lines.map(&:strip).length == @commit_count &&
+          commits.stdout.lines.all? { |line| task_trailers(line.strip) == [ task_number ] }
+        transient!("rebase_state_uncertain", "Rebased task commits could not be verified") unless valid
+      end
+
+      def unfinished_operation?
+        OPERATION_PATHS.any? do |name|
+          result = git_worktree(reservation.fetch("path"), "rev-parse", "--git-path", name)
+          !result.success || path_exists?(result.stdout.strip)
+        end
+      end
+
+      def refs
+        result = git_common("for-each-ref", "--format=%(refname) %(objectname)")
+        transient!("rebase_state_uncertain", "Repository refs could not be observed") unless result.success
+        result.stdout.lines.to_h { |line| line.chomp.split(" ", 2) }
+      end
+
+      def current_head!
+        result = git_worktree(reservation.fetch("path"), "rev-parse", "--verify", "HEAD^{commit}")
+        transient!("rebase_state_uncertain", "Rebase result HEAD could not be observed") unless
+          result.success && result.stdout.strip.match?(/\A[0-9a-f]{40}\z/)
+        result.stdout.strip
+      end
+
+      def effect_snapshot
+        request.fetch("effect")
+      end
+
+      def effect_request
+        effect_snapshot.fetch("request")
+      end
+
+      def requested_effect
+        effect_request.fetch("effect")
+      end
+
+      def onto_sha
+        requested_effect.fetch("onto_sha")
+      end
+
+      def task_number
+        reservation.fetch("branch").delete_prefix("kos/task-")
+      end
+
+      def task_ref
+        "refs/heads/#{reservation.fetch('branch')}"
+      end
+
+      def digest(bytes)
+        "sha256:#{Digest::SHA256.hexdigest(bytes)}"
+      end
+    end
+
     class Application
       EXIT_BY_CATEGORY = { "internal" => 1, "validation" => 2, "conflict" => 6, "transient" => 8 }.freeze
 
@@ -977,6 +1252,7 @@ module Kos
         case request.fetch("operation")
         when "commit" then Commit.new(request)
         when "fetch" then Fetch.new(request)
+        when "rebase" then Rebase.new(request)
         else Worktree.new(request)
         end
       end
@@ -984,12 +1260,14 @@ module Kos
       def success_document(request, result)
         document = { "schema_version" => "1", "operation" => request.fetch("operation"), "outcome" => "succeeded",
           "repository_id" => request.dig("repository", "id") }
-        if request.fetch("operation") == "fetch"
+        if %w[fetch rebase].include?(request.fetch("operation"))
           effect = request.fetch("effect")
           document.merge(result).merge("effect_id" => effect.fetch("id"),
             "current_owner_attempt_id" => effect.fetch("current_owner_attempt_id"),
             "fencing_token" => effect.fetch("fencing_token"),
-            "effect_request_digest" => effect.fetch("request_digest"))
+            "effect_request_digest" => effect.fetch("request_digest")).tap do |success|
+              success["reservation_id"] = request.dig("reservation", "id") if request.fetch("operation") == "rebase"
+            end
         else
           reservation = request.fetch("reservation")
           document.merge("reservation_id" => reservation.fetch("id"),
@@ -1008,10 +1286,10 @@ module Kos
 
       def parse
         operation, input_flag, path, json_flag = @arguments
-        unless %w[materialize observe remove commit fetch].include?(operation) && input_flag == "--input" && path &&
+        unless %w[materialize observe remove commit fetch rebase].include?(operation) && input_flag == "--input" && path &&
             json_flag == "--json" && @arguments.length == 4
           raise Error.new("validation", "malformed_input",
-            "Usage: kos-repository <materialize|observe|remove|commit|fetch> --input <path|-> --json")
+            "Usage: kos-repository <materialize|observe|remove|commit|fetch|rebase> --input <path|-> --json")
         end
         content = path == "-" ? @input.read : File.binread(path)
         request = Kos::JsonParser.parse(content)
@@ -1025,7 +1303,7 @@ module Kos
       end
 
       def known_operation
-        %w[materialize observe remove commit fetch].include?(@arguments.first) ? @arguments.first : "unknown"
+        %w[materialize observe remove commit fetch rebase].include?(@arguments.first) ? @arguments.first : "unknown"
       end
 
       def write(document)
