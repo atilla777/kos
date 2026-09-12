@@ -6,6 +6,7 @@ require "pathname"
 require "tempfile"
 require "timeout"
 require "tmpdir"
+require "uri"
 
 require_relative "json_parser"
 
@@ -86,17 +87,103 @@ module Kos
       end
     end
 
-    class Worktree
+    class Operation
+      def initialize(request, git: Git.new)
+        @request = request
+        @repository = request.fetch("repository")
+        @git = git
+      end
+
+      private
+
+      attr_reader :repository, :request
+
+      def validate_repository!
+        common = repository.fetch("git_common_dir")
+        validation!("repository_invalid", "Git common directory is not canonical") unless
+          canonical_existing(common) == common && File.directory?(common)
+        observed_common = git_common("rev-parse", "--path-format=absolute", "--git-common-dir")
+        validation!("repository_invalid", "Git common directory identity does not match") unless
+          observed_common.success && canonical_existing(observed_common.stdout.strip) == common &&
+          observed_common.stdout.strip == common
+        validation!("repository_ref_invalid", "Repository refs are invalid") unless valid_ref?(repository.fetch("base_ref"))
+        validation!("repository_format_unsupported", "Repository does not use SHA-1 object IDs") unless
+          git_common("rev-parse", "--show-object-format").then { |result| result.success && result.stdout.strip == "sha1" }
+      end
+
+      def valid_ref?(ref)
+        @git.call("check-ref-format", ref).success
+      end
+
+      def with_lock
+        path = File.join(repository.fetch("git_common_dir"), "kos-repository.lock")
+        validation!("repository_lock_invalid", "Repository adapter lock is not a regular file") if
+          path_exists?(path) && (File.symlink?(path) || !File.file?(path))
+        flags = File::RDWR | File::CREAT
+        flags |= File::NOFOLLOW if defined?(File::NOFOLLOW)
+        File.open(path, flags, 0o600) do |lock|
+          lock.flock(File::LOCK_EX)
+          yield
+        end
+      rescue Errno::ELOOP, Errno::EACCES
+        validation!("repository_lock_invalid", "Repository adapter lock is unavailable")
+      end
+
+      def git_common(*arguments)
+        @git.call("--git-dir=#{repository.fetch('git_common_dir')}", *arguments)
+      end
+
+      def canonical_existing(path)
+        pathname = Pathname.new(path)
+        return unless pathname.absolute? && pathname.cleanpath.to_s == path && !path.include?("\0")
+
+        pathname.realpath.to_s
+      rescue Errno::EACCES, Errno::ENOENT, Errno::ENOTDIR, Errno::ELOOP
+        nil
+      end
+
+      def path_exists?(path)
+        File.lstat(path)
+        true
+      rescue Errno::ENOENT, Errno::ENOTDIR
+        false
+      end
+
+      def canonical_json(value)
+        case value
+        when Hash
+          "{#{value.keys.sort.map { |key| "#{JSON.generate(key)}:#{canonical_json(value.fetch(key))}" }.join(',')}}"
+        when Array then "[#{value.map { |item| canonical_json(item) }.join(',')}]"
+        else JSON.generate(value)
+        end
+      end
+
+      def validation!(code, message)
+        raise Error.new("validation", code, message)
+      end
+
+      def conflict!(code, message)
+        raise Error.new("conflict", code, message)
+      end
+
+      def transient!(code, message)
+        raise Error.new("transient", code, message, retryable: true)
+      end
+
+      def internal!(code, message)
+        raise Error.new("internal", code, message)
+      end
+    end
+
+    class Worktree < Operation
       MARKER_NAME = "kos-reservation.json"
       OPERATION_PATHS = %w[MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD REBASE_HEAD rebase-apply rebase-merge sequencer
         BISECT_LOG].freeze
 
       def initialize(request, git: Git.new)
-        @request = request
-        @repository = request.fetch("repository")
+        super
         @reservation = request.fetch("reservation")
         @expected_head = request.fetch("expected_head_sha")
-        @git = git
       end
 
       def call
@@ -261,26 +348,14 @@ module Kos
       def validate_identity!
         validation!("repository_mismatch", "Reservation does not belong to the repository") unless
           reservation.fetch("repository_id") == repository.fetch("id")
-        common = repository.fetch("git_common_dir")
-        validation!("repository_invalid", "Git common directory is not canonical") unless
-          canonical_existing(common) == common && File.directory?(common)
-        observed_common = git_common("rev-parse", "--path-format=absolute", "--git-common-dir")
-        validation!("repository_invalid", "Git common directory identity does not match") unless
-          observed_common.success && canonical_existing(observed_common.stdout.strip) == common &&
-          observed_common.stdout.strip == common
+        validate_repository!
         parent = File.dirname(reservation.fetch("path"))
         validation!("worktree_path_invalid", "Worktree path is not canonical") unless
           Pathname.new(reservation.fetch("path")).cleanpath.to_s == reservation.fetch("path")
         validation!("worktree_path_invalid", "Worktree parent is not canonical") unless
           canonical_existing(parent) == parent && File.directory?(parent)
         validation!("repository_ref_invalid", "Repository refs are invalid") unless
-          valid_ref?(repository.fetch("base_ref")) && valid_ref?("refs/heads/#{reservation.fetch('branch')}")
-        validation!("repository_format_unsupported", "Repository does not use SHA-1 object IDs") unless
-          git_common("rev-parse", "--show-object-format").then { |result| result.success && result.stdout.strip == "sha1" }
-      end
-
-      def valid_ref?(ref)
-        @git.call("check-ref-format", ref).success
+          valid_ref?("refs/heads/#{reservation.fetch('branch')}")
       end
 
       def unlock_if_needed!
@@ -305,42 +380,8 @@ module Kos
         git_common("show-ref", "--verify", "--quiet", "refs/heads/#{reservation.fetch('branch')}").success
       end
 
-      def with_lock
-        path = File.join(repository.fetch("git_common_dir"), "kos-repository.lock")
-        validation!("repository_lock_invalid", "Repository adapter lock is not a regular file") if
-          path_exists?(path) && (File.symlink?(path) || !File.file?(path))
-        flags = File::RDWR | File::CREAT
-        flags |= File::NOFOLLOW if defined?(File::NOFOLLOW)
-        File.open(path, flags, 0o600) do |lock|
-          lock.flock(File::LOCK_EX)
-          yield
-        end
-      rescue Errno::ELOOP, Errno::EACCES
-        validation!("repository_lock_invalid", "Repository adapter lock is unavailable")
-      end
-
-      def git_common(*arguments)
-        @git.call("--git-dir=#{repository.fetch('git_common_dir')}", *arguments)
-      end
-
       def git_worktree(path, *arguments)
         @git.call("-C", path, *arguments)
-      end
-
-      def canonical_existing(path)
-        pathname = Pathname.new(path)
-        return unless pathname.absolute? && pathname.cleanpath.to_s == path && !path.include?("\0")
-
-        pathname.realpath.to_s
-      rescue Errno::EACCES, Errno::ENOENT, Errno::ENOTDIR, Errno::ELOOP
-        nil
-      end
-
-      def path_exists?(path)
-        File.lstat(path)
-        true
-      rescue Errno::ENOENT, Errno::ENOTDIR
-        false
       end
 
       def common_dir_digest
@@ -354,30 +395,9 @@ module Kos
         fields.merge("state" => state, "evidence_digest" => "sha256:#{Digest::SHA256.hexdigest(canonical_json(document))}")
       end
 
-      def canonical_json(value)
-        case value
-        when Hash
-          "{#{value.keys.sort.map { |key| "#{JSON.generate(key)}:#{canonical_json(value.fetch(key))}" }.join(',')}}"
-        when Array then "[#{value.map { |item| canonical_json(item) }.join(',')}]"
-        else JSON.generate(value)
-        end
-      end
-
       def git_failure!(code, result)
         category = result.success ? "internal" : "conflict"
         raise Error.new(category, code, "Git rejected the worktree operation")
-      end
-
-      def validation!(code, message)
-        raise Error.new("validation", code, message)
-      end
-
-      def conflict!(code, message)
-        raise Error.new("conflict", code, message)
-      end
-
-      def internal!(code, message)
-        raise Error.new("internal", code, message)
       end
     end
 
@@ -767,10 +787,6 @@ module Kos
         { "commit_sha" => commit_sha, "evidence_digest" => digest(canonical_json(document)) }
       end
 
-      def request
-        @request
-      end
-
       def paths
         request.fetch("paths")
       end
@@ -783,10 +799,6 @@ module Kos
         "sha256:#{Digest::SHA256.hexdigest(bytes)}"
       end
 
-      def transient!(code, message)
-        raise Error.new("transient", code, message, retryable: true)
-      end
-
       def git_worktree(*arguments, environment: {}, stdin: File::NULL)
         arguments.shift if arguments.first == reservation.fetch("path")
         @git.call("-C", reservation.fetch("path"), *arguments, environment: environment, stdin: stdin)
@@ -795,6 +807,146 @@ module Kos
       def git_worktree_literal(*arguments, environment: {}, stdin: File::NULL)
         @git.call("--literal-pathspecs", "-C", reservation.fetch("path"), *arguments,
           environment: environment, stdin: stdin)
+      end
+    end
+
+    class Fetch < Operation
+      FETCH_HEAD_LIMIT = 16 * 1024
+      FORBIDDEN_CONFIG = [ /\Aurl\..*\.(?:insteadof|pushinsteadof)\z/i,
+        /\Aremote\..*\.(?:vcs|uploadpack|proxy|promisor|partialclonefilter)\z/i,
+        /\Acore\.(?:gitproxy|sshcommand|alternaterefscommand|askpass)\z/i,
+        /\A(?:fetch|transfer)\.bundleuri\z/i, /\Abundle\..*\.uri\z/i,
+        /\Ahttp(?:\..+)?\.(?:proxy|curloptresolve|followredirects)\z/i,
+        /\Apromisor\.acceptfromserver\z/i, /\Aextensions\.partialclone\z/i ].freeze
+      TRUSTED_SCHEMES = %w[https ssh git file].freeze
+
+      def call
+        validate_repository!
+        with_lock do
+          validate_repository!
+          validate_request_digest!
+          validate_trusted_url!
+          validate_authority!
+          validate_remote_configuration!
+          validate_fetch_head!
+          fetch
+        end
+      end
+
+      private
+
+      def validate_request_digest!
+        observed = "sha256:#{Digest::SHA256.hexdigest(canonical_json(effect_request))}"
+        validation!("effect_request_mismatch", "Effect request digest does not match") unless
+          observed == request.dig("effect", "request_digest")
+      end
+
+      def validate_trusted_url!
+        uri = URI.parse(repository.fetch("trusted_remote_url"))
+        userinfo = uri.userinfo && URI::DEFAULT_PARSER.unescape(uri.userinfo)
+        valid_userinfo = userinfo.nil? || (uri.scheme == "ssh" && !userinfo.empty? &&
+          !userinfo.match?(/[:\/@?#\x00-\x1f\x7f]/))
+        valid = uri.absolute? && !uri.opaque && TRUSTED_SCHEMES.include?(uri.scheme) &&
+          uri.query.nil? && uri.fragment.nil? && valid_userinfo
+        if uri.scheme == "file"
+          valid &&= !uri.path.to_s.empty? && uri.path.start_with?("/")
+        else
+          valid &&= !uri.host.to_s.empty?
+        end
+        validation!("fetch_configuration_invalid", "Trusted remote URL is invalid") unless valid
+      rescue URI::Error
+        validation!("fetch_configuration_invalid", "Trusted remote URL is invalid")
+      end
+
+      def validate_authority!
+        validation!("repository_mismatch", "Repository effect does not belong to the repository") unless
+          request.dig("effect", "repository_id") == repository.fetch("id")
+        validation!("fetch_remote_mismatch", "Fetch remote does not match registered trust") unless
+          remote == repository.fetch("trusted_remote")
+        validation!("fetch_ref_mismatch", "Fetch ref does not match the registered base ref") unless
+          ref == repository.fetch("base_ref")
+      end
+
+      def validate_remote_configuration!
+        configured = git_common("config", "--null", "--get-all", "remote.#{remote}.url")
+        urls = nul_values(configured)
+        validation!("fetch_configuration_invalid", "Trusted remote configuration does not match") unless
+          configured.success && urls == [ repository.fetch("trusted_remote_url") ]
+
+        names = git_common("config", "--name-only", "--null", "--list")
+        validation!("fetch_configuration_invalid", "Repository configuration could not be verified") unless names.success
+        validation!("fetch_configuration_invalid", "Repository configuration contains a fetch override") if
+          nul_values(names).any? { |name| FORBIDDEN_CONFIG.any? { |pattern| pattern.match?(name) } }
+      end
+
+      def fetch
+        result = git_common("-c", "credential.helper=", "-c", "http.followRedirects=false",
+          "-c", "promisor.acceptFromServer=none",
+          "fetch", "--no-append", "--no-tags", "--no-prune",
+          "--no-prune-tags", "--no-recurse-submodules", "--no-auto-maintenance", "--no-write-commit-graph",
+          "--no-update-shallow", "--refmap=", "--upload-pack=git-upload-pack",
+          repository.fetch("trusted_remote_url"), ref)
+        transient!("fetch_failed", "Trusted fetch failed") unless result.success
+
+        observed_oid = observed_fetch_oid
+        document = { "schema_version" => "1", "repository" => repository, "effect" => request.fetch("effect"),
+          "remote" => remote, "ref" => ref, "observed_oid" => observed_oid }
+        { "remote" => remote, "ref" => ref, "observed_oid" => observed_oid,
+          "evidence_digest" => "sha256:#{Digest::SHA256.hexdigest(canonical_json(document))}" }
+      end
+
+      def observed_fetch_oid
+        validate_fetch_head!
+        content = File.binread(fetch_head_path, FETCH_HEAD_LIMIT + 1)
+        internal!("fetch_result_invalid", "Fetch result could not be verified") if content.bytesize > FETCH_HEAD_LIMIT
+        match = content.match(/\A([0-9a-f]{40})\t\t([^\0\r\n]+)(?:\n)?\z/)
+        internal!("fetch_result_invalid", "Fetch result could not be verified") unless match
+        expected_description = "branch '#{ref.delete_prefix('refs/heads/')}' of "
+        internal!("fetch_result_invalid", "Fetch result does not match the requested ref") unless
+          match[2].start_with?(expected_description)
+
+        oid = match[1]
+        object = git_common("cat-file", "-t", oid)
+        internal!("fetch_result_invalid", "Fetched commit could not be verified") unless
+          object.success && object.stdout == "commit\n"
+
+        oid
+      rescue SystemCallError
+        internal!("fetch_result_invalid", "Fetch result could not be verified")
+      end
+
+      def validate_fetch_head!
+        return unless path_exists?(fetch_head_path)
+
+        valid = File.file?(fetch_head_path) && !File.symlink?(fetch_head_path) &&
+          canonical_existing(fetch_head_path) == fetch_head_path
+        validation!("fetch_configuration_invalid", "Fetch observation path is invalid") unless valid
+      end
+
+      def fetch_head_path
+        File.join(repository.fetch("git_common_dir"), "FETCH_HEAD")
+      end
+
+      def effect_request
+        request.dig("effect", "request")
+      end
+
+      def requested_effect
+        effect_request.fetch("effect")
+      end
+
+      def remote
+        requested_effect.fetch("remote")
+      end
+
+      def ref
+        requested_effect.fetch("ref")
+      end
+
+      def nul_values(result)
+        values = result.stdout.split("\0", -1)
+        values.pop if values.last == ""
+        values
       end
     end
 
@@ -811,11 +963,8 @@ module Kos
 
       def run
         request = parse
-        result = request.fetch("operation") == "commit" ? Commit.new(request).call : Worktree.new(request).call
-        document = { "schema_version" => "1", "operation" => request.fetch("operation"), "outcome" => "succeeded",
-          "repository_id" => request.dig("repository", "id"), "reservation_id" => request.dig("reservation", "id"),
-          "fencing_token" => request.dig("reservation", "fencing_token") }
-        write(document.merge(request.fetch("operation") == "commit" ? result : { "observation" => result }))
+        result = operation(request).call
+        write(success_document(request, result))
       rescue Error => error
         write_error(error)
       rescue StandardError
@@ -823,6 +972,32 @@ module Kos
       end
 
       private
+
+      def operation(request)
+        case request.fetch("operation")
+        when "commit" then Commit.new(request)
+        when "fetch" then Fetch.new(request)
+        else Worktree.new(request)
+        end
+      end
+
+      def success_document(request, result)
+        document = { "schema_version" => "1", "operation" => request.fetch("operation"), "outcome" => "succeeded",
+          "repository_id" => request.dig("repository", "id") }
+        if request.fetch("operation") == "fetch"
+          effect = request.fetch("effect")
+          document.merge(result).merge("effect_id" => effect.fetch("id"),
+            "current_owner_attempt_id" => effect.fetch("current_owner_attempt_id"),
+            "fencing_token" => effect.fetch("fencing_token"),
+            "effect_request_digest" => effect.fetch("request_digest"))
+        else
+          reservation = request.fetch("reservation")
+          document.merge("reservation_id" => reservation.fetch("id"),
+            "fencing_token" => reservation.fetch("fencing_token")).merge(
+              request.fetch("operation") == "commit" ? result : { "observation" => result }
+            )
+        end
+      end
 
       def write_error(error)
         @stderr.puts(error.message)
@@ -833,10 +1008,10 @@ module Kos
 
       def parse
         operation, input_flag, path, json_flag = @arguments
-        unless %w[materialize observe remove commit].include?(operation) && input_flag == "--input" && path &&
+        unless %w[materialize observe remove commit fetch].include?(operation) && input_flag == "--input" && path &&
             json_flag == "--json" && @arguments.length == 4
           raise Error.new("validation", "malformed_input",
-            "Usage: kos-repository <materialize|observe|remove|commit> --input <path|-> --json")
+            "Usage: kos-repository <materialize|observe|remove|commit|fetch> --input <path|-> --json")
         end
         content = path == "-" ? @input.read : File.binread(path)
         request = Kos::JsonParser.parse(content)
@@ -850,7 +1025,7 @@ module Kos
       end
 
       def known_operation
-        %w[materialize observe remove commit].include?(@arguments.first) ? @arguments.first : "unknown"
+        %w[materialize observe remove commit fetch].include?(@arguments.first) ? @arguments.first : "unknown"
       end
 
       def write(document)

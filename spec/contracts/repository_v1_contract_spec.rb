@@ -29,6 +29,20 @@ RSpec.describe RepositoryV1Contract do
       "paths" => [ "README.md" ], "message" => "Implement exact commit", "task_number" => "KOS-000123")
   end
 
+  def fetch_request
+    durable_request = { "schema_version" => "1", "attempt_id" => attempt_id,
+      "input_context_digest" => "sha256:#{'a' * 64}",
+      "effect" => { "operation" => "fetch", "remote" => "origin", "ref" => "refs/heads/main" } }
+    { "schema_version" => "1", "operation" => "fetch",
+      "repository" => { "id" => repository_id, "git_common_dir" => "/srv/project/.git",
+        "trusted_remote" => "origin", "trusted_remote_url" => "file:///srv/remote.git",
+        "base_ref" => "refs/heads/main" },
+      "effect" => { "id" => effect_id, "repository_id" => repository_id,
+        "current_owner_attempt_id" => attempt_id, "fencing_token" => 9,
+        "request_digest" => "sha256:#{Digest::SHA256.hexdigest(canonical_json(durable_request))}",
+        "request" => durable_request } }
+  end
+
   it "accepts a materialize request" do
     expect(schema.ref("#/$defs/request")).to be_valid(request)
   end
@@ -45,6 +59,18 @@ RSpec.describe RepositoryV1Contract do
   it "accepts a closed confirmed commit request", :aggregate_failures do
     expect(schema.ref("#/$defs/request")).to be_valid(commit_request)
     expect(schema.ref("#/$defs/request")).not_to be_valid(commit_request.merge("stderr" => "unsafe"))
+  end
+
+  it "accepts only a closed effect-bound fetch request", :aggregate_failures do
+    expect(schema.ref("#/$defs/request")).to be_valid(fetch_request)
+    expect(schema.ref("#/$defs/request")).not_to be_valid(fetch_request.merge("destination" => "refs/heads/main"))
+    expect(schema.ref("#/$defs/request")).not_to be_valid(fetch_request.merge("remote" => "origin"))
+    expect(schema.ref("#/$defs/request")).not_to be_valid(fetch_request.merge(
+      "effect" => fetch_request.fetch("effect").except("fencing_token")))
+  end
+
+  it "accepts only registered fetch URL schemes without raw passwords, queries, or fragments" do
+    expect(fetch_url_contract_results).to eq([ true, true, true, true, false, false, false, false, false ])
   end
 
   it "rejects a commit for any other reservation lifecycle" do
@@ -95,6 +121,11 @@ RSpec.describe RepositoryV1Contract do
     expect(schema.ref("#/$defs/success")).not_to be_valid(success.merge("observation" => { "state" => "clean" }))
   end
 
+  it "accepts only the closed effect-bound fetch success", :aggregate_failures do
+    expect(schema.ref("#/$defs/success")).to be_valid(fetch_success)
+    expect(schema.ref("#/$defs/success")).not_to be_valid(fetch_success.merge("stderr" => "unsafe"))
+  end
+
   it "requires identity evidence for a present worktree" do
     observation = schema.ref("#/$defs/observation")
 
@@ -128,6 +159,12 @@ RSpec.describe RepositoryV1Contract do
     expect(schema.ref("#/$defs/failure")).to be_valid(base.merge("error" => commit_error))
   end
 
+  it "accepts only closed fetch failures with fixed retry semantics", :aggregate_failures do
+    expect(schema.ref("#/$defs/failure")).to be_valid(fetch_failure)
+    expect(schema.ref("#/$defs/failure")).not_to be_valid(fetch_failure.tap { |value| value["error"]["retryable"] = false })
+    expect(schema.ref("#/$defs/failure")).not_to be_valid(fetch_failure.merge("error" => commit_only_error))
+  end
+
   it "rejects a worktree-only failure for commit" do
     base = { "schema_version" => "1", "outcome" => "failed", "operation" => "commit" }
     worktree_error = { "category" => "conflict", "code" => "branch_exists", "message" => "Conflict",
@@ -146,5 +183,52 @@ RSpec.describe RepositoryV1Contract do
     category = code == "internal_error" ? "internal" : "conflict"
     { "schema_version" => "1", "operation" => operation, "outcome" => "failed",
       "error" => { "category" => category, "code" => code, "message" => "Failed", "retryable" => false } }
+  end
+
+  def fetch_success
+    { "schema_version" => "1", "operation" => "fetch", "outcome" => "succeeded",
+      "repository_id" => repository_id, "effect_id" => effect_id, "current_owner_attempt_id" => attempt_id,
+      "fencing_token" => 9, "effect_request_digest" => fetch_request.dig("effect", "request_digest"), "remote" => "origin",
+      "ref" => "refs/heads/main", "observed_oid" => sha, "evidence_digest" => "sha256:#{'d' * 64}" }
+  end
+
+  def fetch_request_with_url(url)
+    fetch_request.merge("repository" => fetch_request.fetch("repository").merge("trusted_remote_url" => url))
+  end
+
+  def fetch_url_contract_results
+    valid = [ "file:///srv/remote.git", "file://mirror.example.test/srv/remote.git",
+      "https://example.test/repo.git", "ssh://git@example.test/repo.git" ]
+    invalid = [ "http://example.test/repo.git", "https://user:secret@example.test/repo.git",
+      "https://example.test/repo.git?mirror=other", "git://example.test/repo.git#other",
+      "file://mirror.example.test" ]
+    (valid + invalid).map { |url| schema.ref("#/$defs/request").valid?(fetch_request_with_url(url)) }
+  end
+
+  def fetch_failure
+    { "schema_version" => "1", "outcome" => "failed", "operation" => "fetch",
+      "error" => { "category" => "transient", "code" => "fetch_failed", "message" => "Fetch failed",
+        "retryable" => true } }
+  end
+
+  def commit_only_error
+    { "category" => "conflict", "code" => "index_mismatch", "message" => "Mismatch", "retryable" => false }
+  end
+
+  def canonical_json(value)
+    case value
+    when Hash
+      "{#{value.keys.sort.map { |key| "#{JSON.generate(key)}:#{canonical_json(value.fetch(key))}" }.join(',')}}"
+    when Array then "[#{value.map { |item| canonical_json(item) }.join(',')}]"
+    else JSON.generate(value)
+    end
+  end
+
+  def effect_id
+    "66666666-6666-4666-8666-666666666666"
+  end
+
+  def attempt_id
+    "77777777-7777-4777-8777-777777777777"
   end
 end

@@ -10,6 +10,7 @@ require_relative "../../../../lib/kos/repository"
 RSpec.describe Kos::Repository::Application do
   let(:directory) { File.realpath(Dir.mktmpdir("kos-repository-spec")) }
   let(:repository_path) { File.join(directory, "project") }
+  let(:remote_path) { File.join(directory, "trusted.git") }
   let(:worktrees_path) { File.join(directory, "worktrees") }
 
   before do
@@ -185,6 +186,92 @@ RSpec.describe Kos::Repository::Application do
     expect(first.fetch("observation").fetch("evidence_digest")).to eq(
       second.fetch("observation").fetch("evidence_digest")
     )
+  end
+
+  it "fetches only the trusted base ref with effect-bound evidence", :aggregate_failures do
+    expect(successful_fetch_observation).to eq(successful_fetch_expectation)
+  end
+
+  it "fetches objects without changing refs, tags, worktrees, the index, or worktree files", :aggregate_failures do
+    expect(fetch_side_effect_observation).to eq([ true, "commit\n", "" ])
+  end
+
+  it "rejects repository, remote, ref, and URL mismatches before fetch" do
+    expect(fetch_mismatch_results).to eq(%w[repository_mismatch fetch_remote_mismatch fetch_ref_mismatch
+      fetch_configuration_invalid].map { |code| [ 2, code ] } + [ false ])
+  end
+
+  it "rejects every durable fetch request digest mismatch before transport" do
+    expect(fetch_digest_mismatch_results).to eq(Array.new(4, [ 2, "effect_request_mismatch" ]) + [ false, "" ])
+  end
+
+  it "rejects multiple configured remote URLs before fetch" do
+    input = fetch_request
+    git(repository_path, "config", "--add", "remote.origin.url", remote_url)
+
+    document, status = run(input)
+
+    expect([ status, document.dig("error", "code"), File.exist?(File.join(common_dir, "FETCH_HEAD")) ])
+      .to eq([ 2, "fetch_configuration_invalid", false ])
+  end
+
+  it "rejects fetch.bundleURI before transport" do
+    expect(bundle_uri_rejection).to eq([ "fetch_configuration_invalid", false, false ])
+  end
+
+  it "rejects related HTTP alternate-endpoint configuration before transport" do
+    expect(http_endpoint_override_results).to eq(Array.new(3, "fetch_configuration_invalid") + [ false ])
+  end
+
+  it "rejects promisor and partial-clone object authority before fetch" do
+    expect(promisor_configuration_results).to eq(Array.new(4, "fetch_configuration_invalid") + [ false ])
+  end
+
+  it "rejects configured URL and executable transport overrides without running them", :aggregate_failures do
+    expect(configured_override_observation).to eq(Array.new(8, "fetch_configuration_invalid") + [ false, false ])
+  end
+
+  it "returns a retryable closed failure without paths, URLs, credentials, or Git diagnostics", :aggregate_failures do
+    expect(closed_fetch_failure).to eq([ 8, "fetch_failed", true, false, false, false ])
+  end
+
+  it "supplies disabled HTTP redirects, credentials, and server promisors to Git fetch" do
+    expect(fetch_process_overrides).to eq([ true, true, true ])
+  end
+
+  it "rejects encoded password separators and userinfo tricks before transport" do
+    expect(invalid_trusted_url_results).to eq(Array.new(3, "fetch_configuration_invalid") + [ false ])
+  end
+
+  it "allows an SSH username in registered trust without making a real network request" do
+    expect(ssh_username_result).to eq([ "fetch_failed", true ])
+  end
+
+  it "rejects a file URL authority without an absolute nonempty path before transport" do
+    expect(invalid_file_url_result).to eq([ "fetch_configuration_invalid", false ])
+  end
+
+  it "rejects an ambiguous FETCH_HEAD observation" do
+    input = fetch_request
+    adapter = git_writing_ambiguous_fetch_head
+
+    error = capture_operation_error(Kos::Repository::Fetch.new(input, git: adapter))
+
+    expect([ error.category, error.code ]).to eq([ "internal", "fetch_result_invalid" ])
+  end
+
+  it "rejects a FETCH_HEAD observation for another source ref" do
+    error = capture_operation_error(Kos::Repository::Fetch.new(fetch_request, git: git_rewriting_fetch_head_ref))
+
+    expect([ error.category, error.code ]).to eq([ "internal", "fetch_result_invalid" ])
+  end
+
+  it "waits for the common adapter lock before validating and fetching", :aggregate_failures do
+    expect(fetch_lock_observation).to eq([ true, "", true ])
+  end
+
+  it "does not create an adapter lock before proving Git repository identity" do
+    expect(non_repository_lock_observation).to eq([ 2, "repository_invalid", false ])
   end
 
   it "commits exactly the requested files with one authoritative trailer", :aggregate_failures do
@@ -465,6 +552,328 @@ RSpec.describe Kos::Repository::Application do
     request("commit", "confirmed").merge("expected_diff_digest" => "sha256:#{'0' * 64}",
       "expected_index_digest" => "sha256:#{'0' * 64}", "paths" => paths,
       "message" => "Implement exact commit", "task_number" => "KOS-000123")
+  end
+
+  def fetch_request
+    prepare_remote
+    durable_request = durable_fetch_request
+    { "schema_version" => "1", "operation" => "fetch",
+      "repository" => { "id" => repository_id, "git_common_dir" => common_dir,
+        "trusted_remote" => "origin", "trusted_remote_url" => remote_url, "base_ref" => "refs/heads/main" },
+      "effect" => { "id" => "66666666-6666-4666-8666-666666666666", "repository_id" => repository_id,
+        "current_owner_attempt_id" => "77777777-7777-4777-8777-777777777777", "fencing_token" => 9,
+        "request_digest" => digest(canonical_json(durable_request)), "request" => durable_request } }
+  end
+
+  def durable_fetch_request
+    { "schema_version" => "1", "attempt_id" => "88888888-8888-4888-8888-888888888888",
+      "input_context_digest" => "sha256:#{'a' * 64}",
+      "effect" => { "operation" => "fetch", "remote" => "origin", "ref" => "refs/heads/main" } }
+  end
+
+  def successful_fetch_observation
+    remote_oid = advance_remote
+    input = fetch_request
+    result = invoke(input)
+    evidence = { "schema_version" => "1", "repository" => input.fetch("repository"),
+      "effect" => input.fetch("effect"), "remote" => "origin", "ref" => "refs/heads/main",
+      "observed_oid" => remote_oid }
+    [ result.slice("remote", "ref", "observed_oid"), result.fetch("evidence_digest") ]
+      .zip([ { "remote" => "origin", "ref" => "refs/heads/main", "observed_oid" => remote_oid },
+        digest(canonical_json(evidence)) ]).map { |actual, expected| actual == expected }
+  end
+
+  def successful_fetch_expectation
+    [ true, true ]
+  end
+
+  def fetch_side_effect_observation
+    remote_oid = advance_remote
+    configure_fetch_side_effect_traps
+    before = repository_state
+    invoke(fetch_request)
+    [ repository_state == before, git(repository_path, "cat-file", "-t", remote_oid),
+      git(repository_path, "show-ref", "--verify", "--quiet", "refs/heads/hijacked/main", allow_failure: true) ]
+  end
+
+  def fetch_mismatch_results
+    base = fetch_request
+    inputs = [ base.merge("effect" => base.fetch("effect").merge("repository_id" => reservation_id)),
+      fetch_request_with("remote" => "upstream"), fetch_request_with("ref" => "refs/heads/other"),
+      base.merge("repository" => base.fetch("repository").merge(
+        "trusted_remote_url" => "file:///not-the-configured-remote.git")) ]
+    inputs.map do |input|
+      document, status = run(input)
+      [ status, document.dig("error", "code") ]
+    end + [ File.exist?(File.join(common_dir, "FETCH_HEAD")) ]
+  end
+
+  def fetch_request_with(effect_fields)
+    input = fetch_request
+    durable = input.dig("effect", "request")
+    durable["effect"] = durable.fetch("effect").merge(effect_fields)
+    input.fetch("effect")["request_digest"] = digest(canonical_json(durable))
+    input
+  end
+
+  def fetch_digest_mismatch_results
+    remote_oid = advance_remote
+    base = fetch_request
+    durable = base.dig("effect", "request")
+    requests = [ durable.merge("attempt_id" => reservation_id),
+      durable.merge("input_context_digest" => "sha256:#{'b' * 64}"),
+      durable.merge("effect" => durable.fetch("effect").merge("remote" => "upstream")),
+      durable.merge("effect" => durable.fetch("effect").merge("ref" => "refs/heads/other")) ]
+    results = requests.map do |changed|
+      document, status = run(base.merge("effect" => base.fetch("effect").merge("request" => changed)))
+      [ status, document.dig("error", "code") ]
+    end
+    results + [ File.exist?(File.join(common_dir, "FETCH_HEAD")),
+      git(repository_path, "cat-file", "-t", remote_oid, allow_failure: true) ]
+  end
+
+  def closed_fetch_failure
+    input = fetch_request
+    missing_url = "file://#{File.join(directory, 'missing-secret-remote.git')}"
+    git(repository_path, "config", "--replace-all", "remote.origin.url", missing_url)
+    input.fetch("repository")["trusted_remote_url"] = missing_url
+    document, status = run(input)
+    serialized = JSON.generate(document)
+    [ status, document.dig("error", "code"), document.dig("error", "retryable"),
+      serialized.include?(directory), serialized.include?(missing_url), serialized.include?("fatal:") ]
+  end
+
+  def bundle_uri_rejection
+    input = fetch_request
+    trap_uri = "file://#{File.join(directory, 'untrusted-bundle-list')}"
+    git(repository_path, "config", "fetch.bundleURI", trap_uri)
+    adapter, calls = recording_git
+    error = capture_operation_error(Kos::Repository::Fetch.new(input, git: adapter))
+    [ error.code, fetch_called?(calls), File.exist?(File.join(common_dir, "FETCH_HEAD")) ]
+  end
+
+  def http_endpoint_override_results
+    input = fetch_request
+    adapter, calls = recording_git
+    values = { "http.proxy" => "file:///untrusted-proxy", "http.curloptResolve" => "host:443:127.0.0.2",
+      "http.followRedirects" => "true" }
+    results = values.map do |key, value|
+      git(repository_path, "config", key, value)
+      error = capture_operation_error(Kos::Repository::Fetch.new(input, git: adapter))
+      git(repository_path, "config", "--unset-all", key)
+      error.code
+    end
+    results + [ fetch_called?(calls) ]
+  end
+
+  def promisor_configuration_results
+    input = fetch_request
+    adapter, calls = recording_git
+    values = { "promisor.acceptFromServer" => "all", "remote.origin.promisor" => "true",
+      "remote.origin.partialCloneFilter" => "blob:none", "extensions.partialClone" => "origin" }
+    results = values.map do |key, value|
+      git(repository_path, "config", "core.repositoryFormatVersion", "1") if key == "extensions.partialClone"
+      git(repository_path, "config", key, value)
+      error = capture_operation_error(Kos::Repository::Fetch.new(input, git: adapter))
+      git(repository_path, "config", "--unset-all", key)
+      error.code
+    end
+    results + [ fetch_called?(calls) ]
+  end
+
+  def fetch_process_overrides
+    advance_remote
+    adapter, calls = recording_git
+    Kos::Repository::Fetch.new(fetch_request, git: adapter).call
+    arguments = calls.find { |call| call.include?("fetch") }
+    [ arguments.each_cons(2).include?([ "-c", "http.followRedirects=false" ]),
+      arguments.each_cons(2).include?([ "-c", "credential.helper=" ]),
+      arguments.each_cons(2).include?([ "-c", "promisor.acceptFromServer=none" ]) ]
+  end
+
+  def invalid_trusted_url_results
+    urls = [ "ssh://user%3Asecret@example.test/repo.git", "ssh://user%40other@example.test/repo.git",
+      "https://user@example.test/repo.git" ]
+    adapter, calls = recording_git
+    results = urls.map do |url|
+      input = fetch_request
+      git(repository_path, "config", "--replace-all", "remote.origin.url", url)
+      input.fetch("repository")["trusted_remote_url"] = url
+      capture_operation_error(Kos::Repository::Fetch.new(input, git: adapter)).code
+    end
+    results + [ fetch_called?(calls) ]
+  end
+
+  def ssh_username_result
+    url = "ssh://git@example.test/repo.git"
+    input = fetch_request
+    git(repository_path, "config", "--replace-all", "remote.origin.url", url)
+    input.fetch("repository")["trusted_remote_url"] = url
+    adapter, calls = recording_git(fetch_success: false)
+    error = capture_operation_error(Kos::Repository::Fetch.new(input, git: adapter))
+    [ error.code, fetch_called?(calls) ]
+  end
+
+  def invalid_file_url_result
+    input = fetch_request
+    url = "file://mirror.example.test"
+    git(repository_path, "config", "--replace-all", "remote.origin.url", url)
+    input.fetch("repository")["trusted_remote_url"] = url
+    adapter, calls = recording_git
+    error = capture_operation_error(Kos::Repository::Fetch.new(input, git: adapter))
+    [ error.code, fetch_called?(calls) ]
+  end
+
+  def non_repository_lock_observation
+    path = File.join(directory, "not-a-git-repository")
+    FileUtils.mkdir_p(path)
+    input = fetch_request
+    input.fetch("repository")["git_common_dir"] = path
+    document, status = run(input)
+    [ status, document.dig("error", "code"), File.exist?(File.join(path, "kos-repository.lock")) ]
+  end
+
+  def recording_git(fetch_success: nil)
+    adapter = Kos::Repository::Git.new
+    calls = []
+    allow(adapter).to receive(:call).and_wrap_original do |original, *arguments, **options|
+      calls << arguments
+      if !fetch_success.nil? && arguments.include?("fetch")
+        Kos::Repository::Git::Result.new("", fetch_success)
+      else
+        original.call(*arguments, **options)
+      end
+    end
+    [ adapter, calls ]
+  end
+
+  def fetch_called?(calls)
+    calls.any? { |arguments| arguments.include?("fetch") }
+  end
+
+  def fetch_lock_observation
+    remote_oid = advance_remote
+    lock = File.open(File.join(common_dir, "kos-repository.lock"), File::RDWR | File::CREAT, 0o600)
+    lock.flock(File::LOCK_EX)
+    worker = Thread.new { Kos::Repository::Fetch.new(fetch_request).call }
+    sleep 0.05
+    blocked = worker.alive?
+    object_before_unlock = git(repository_path, "cat-file", "-t", remote_oid, allow_failure: true)
+    lock.flock(File::LOCK_UN)
+    [ blocked, object_before_unlock, worker.value.fetch("observed_oid") == remote_oid ]
+  ensure
+    lock&.close
+  end
+
+  def prepare_remote
+    return if File.directory?(remote_path)
+
+    FileUtils.mkdir_p(remote_path)
+    git(remote_path, "init", "--bare", "--initial-branch=main")
+    git(repository_path, "remote", "add", "origin", remote_url)
+    git(repository_path, "push", "origin", "refs/heads/main:refs/heads/main")
+  end
+
+  def advance_remote
+    prepare_remote
+    publisher = File.join(directory, "publisher")
+    git(directory, "clone", remote_url, publisher)
+    git(publisher, "config", "user.name", "KOS Remote Test")
+    git(publisher, "config", "user.email", "remote@example.test")
+    File.write(File.join(publisher, "remote.txt"), "remote change\n")
+    git(publisher, "add", "remote.txt")
+    git(publisher, "commit", "-m", "Advance remote")
+    git(publisher, "tag", "remote-only-tag")
+    git(publisher, "push", "origin", "refs/heads/main:refs/heads/main", "refs/tags/remote-only-tag")
+    head_sha_for(publisher)
+  end
+
+  def remote_url
+    "file://#{remote_path}"
+  end
+
+  def configure_fetch_side_effect_traps
+    git(repository_path, "config", "--replace-all", "remote.origin.fetch",
+      "+refs/heads/*:refs/heads/hijacked/*")
+    git(repository_path, "config", "remote.origin.tagOpt", "--tags")
+    git(repository_path, "config", "fetch.prune", "true")
+    git(repository_path, "config", "fetch.pruneTags", "true")
+    git(repository_path, "config", "fetch.recurseSubmodules", "true")
+    git(repository_path, "config", "maintenance.auto", "1")
+  end
+
+  def repository_state
+    { refs: git(repository_path, "for-each-ref", "--format=%(refname) %(objectname)"),
+      worktrees: git(repository_path, "worktree", "list", "--porcelain"),
+      index: File.binread(File.join(common_dir, "index")),
+      status: git(repository_path, "status", "--porcelain=v2", "--untracked-files=all", "--ignored=matching"),
+      readme: File.binread(File.join(repository_path, "README.md")) }
+  end
+
+  def configured_override_observation
+    input = fetch_request
+    git(repository_path, "config", "url.file:///redirected/.insteadOf", remote_url)
+    redirected = run(input).first
+    git(repository_path, "config", "--unset-all", "url.file:///redirected/.insteadOf")
+    executable_results = executable_fetch_override_results(input)
+    [ redirected.dig("error", "code"), *executable_results,
+      File.exist?(File.join(common_dir, "FETCH_HEAD")) ]
+  end
+
+  def executable_fetch_override_results(input)
+    trigger = executable_fetch_trap
+    keys = %w[remote.origin.uploadpack remote.origin.vcs core.gitProxy core.sshCommand remote.origin.proxy
+      core.alternateRefsCommand core.askPass]
+    results = keys.map do |key|
+      git(repository_path, "config", key, trigger.fetch("script"))
+      document = run(input).first
+      git(repository_path, "config", "--unset-all", key)
+      document.dig("error", "code")
+    end
+    results + [ File.exist?(trigger.fetch("path")) ]
+  end
+
+  def executable_fetch_trap
+    path = File.join(directory, "transport-override-ran")
+    script = File.join(directory, "transport-override")
+    File.write(script, "#!/bin/sh\ntouch '#{path}'\nexit 1\n")
+    File.chmod(0o700, script)
+    { "path" => path, "script" => script }
+  end
+
+  def git_writing_ambiguous_fetch_head
+    adapter = Kos::Repository::Git.new
+    allow(adapter).to receive(:call).and_wrap_original do |original, *arguments, **options|
+      result = original.call(*arguments, **options)
+      if arguments.include?("fetch") && result.success
+        fetch_head = File.join(common_dir, "FETCH_HEAD")
+        File.binwrite(fetch_head, File.binread(fetch_head) * 2)
+      end
+      result
+    end
+    adapter
+  end
+
+  def git_rewriting_fetch_head_ref
+    adapter = Kos::Repository::Git.new
+    allow(adapter).to receive(:call).and_wrap_original do |original, *arguments, **options|
+      result = original.call(*arguments, **options)
+      if arguments.include?("fetch") && result.success
+        oid = File.binread(File.join(common_dir, "FETCH_HEAD")).split("\t", 2).first
+        File.binwrite(File.join(common_dir, "FETCH_HEAD"), "#{oid}\t\tbranch 'other' of hidden\n")
+      end
+      result
+    end
+    adapter
+  end
+
+  def canonical_json(value)
+    case value
+    when Hash
+      "{#{value.keys.sort.map { |key| "#{JSON.generate(key)}:#{canonical_json(value.fetch(key))}" }.join(',')}}"
+    when Array then "[#{value.map { |item| canonical_json(item) }.join(',')}]"
+    else JSON.generate(value)
+    end
   end
 
   def prepared_commit_request(paths)
@@ -1015,9 +1424,9 @@ RSpec.describe Kos::Repository::Application do
     [ JSON.parse(stdout.string), status ]
   end
 
-  def git(path, *arguments)
+  def git(path, *arguments, allow_failure: false)
     stdout, stderr, status = Open3.capture3("git", "-C", path, *arguments)
-    raise stderr unless status.success?
+    raise stderr unless status.success? || allow_failure
 
     stdout
   end
