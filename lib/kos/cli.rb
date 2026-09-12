@@ -50,6 +50,9 @@ module Kos
         %w[effect get] => [ "effect.get", "repository", { "effect_id" => "--effect" } ],
         %w[effect prepare] => [ "effect.prepare", "repository", {}, true ],
         %w[effect reconcile] => [ "effect.reconcile", "repository", {}, true ],
+        %w[publication get] => [ "publication.get", "repository", { "publication_id" => "--publication" } ],
+        %w[publication prepare] => [ "publication.prepare", "repository", {}, true ],
+        %w[publication reconcile] => [ "publication.reconcile", "repository", {}, true ],
         %w[artifact list] => [ "artifact.list", "repository",
           { "task_number" => "--task", "limit" => "--limit", "cursor" => "--cursor" } ]
       }.freeze
@@ -178,6 +181,9 @@ module Kos
         "effect.get" => "/api/v1/repositories/%<repository_id>s/repository-effects/%<effect_id>s",
         "effect.prepare" => "/api/v1/repositories/%<repository_id>s/tasks/%<task_number>s/repository-effects",
         "effect.reconcile" => "/api/v1/repositories/%<repository_id>s/repository-effects/%<effect_id>s/reconcile",
+        "publication.get" => "/api/v1/repositories/%<repository_id>s/publications/%<publication_id>s",
+        "publication.prepare" => "/api/v1/repositories/%<repository_id>s/tasks/%<task_number>s/publications",
+        "publication.reconcile" => "/api/v1/repositories/%<repository_id>s/publications/%<publication_id>s/reconcile",
         "artifact.list" => "/api/v1/repositories/%<repository_id>s/tasks/%<task_number>s/artifacts"
       }.freeze
 

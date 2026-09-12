@@ -1,0 +1,2 @@
+class CommittedOperationError < OperationError
+end

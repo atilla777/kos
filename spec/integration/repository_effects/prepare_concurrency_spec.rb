@@ -45,6 +45,12 @@ RSpec.describe RepositoryEffects::Prepare, :aggregate_failures do
           attempt_id: attempt.id, fencing_token: attempt.fencing_token,
           expected_lock_version: task.reload.lock_version)
       end
+      if #{with_effect}
+        publication = task.publications.create!(repository: repository, prepared_attempt: attempt,
+          current_owner_attempt: attempt, candidate_sha: "c" * 40, remote: "origin",
+          base_ref: "refs/heads/main", expected_remote_oid: "d" * 40, prepared_at: Time.current)
+        task.update!(active_publication: publication)
+      end
       puts JSON.generate({ "repository_id" => repository.id, "task_number" => task.number,
         "task_lock" => task.reload.lock_version, "attempt_id" => attempt.id,
         "fencing_token" => attempt.fencing_token, "digest" => digest, "effect_id" => effect&.id,
@@ -177,7 +183,8 @@ RSpec.describe RepositoryEffects::Prepare, :aggregate_failures do
       persisted = run_script(env, <<~'RUBY')
         task = Task.first
         puts JSON.generate([WorkflowAttempt.count, task.active_attempt_id,
-          RepositoryEffect.first.current_owner_attempt_id])
+          RepositoryEffect.first.current_owner_attempt_id, task.active_publication_id,
+          Publication.first.current_owner_attempt_id])
       RUBY
       winner = results.filter_map { _1.first["id"] }.first
       [ results.map { _1.first["error"] }.compact, persisted, winner ]
@@ -197,6 +204,7 @@ RSpec.describe RepositoryEffects::Prepare, :aggregate_failures do
   it "atomically gives every unresolved effect to the winning replacement claim" do
     summary = concurrent_claim_summary
     expect(summary.first).to eq([ "stale_lock_version" ])
-    expect(summary.fetch(1)).to eq([ 2, summary.last, summary.last ])
+    expect(summary.fetch(1).values_at(0, 1, 2, 4)).to eq([ 2, summary.last, summary.last, summary.last ])
+    expect(summary.fetch(1).fetch(3)).to be_present
   end
 end

@@ -80,7 +80,7 @@ RSpec.describe CreateRepositoryEffects, :aggregate_failures do
         end
         puts JSON.generate([RepositoryEffect.count, effect.state, guarded, Task.count, WorkflowAttempt.count])
       RUBY
-      command!(env, "ActiveRecord::Base.connection_pool.migration_context.rollback(1)")
+      command!(env, "ActiveRecord::Base.connection_pool.migration_context.rollback(2)")
       rolled_back = runner!(env, <<~'RUBY')
         tables = ActiveRecord::Base.connection.tables
         puts JSON.generate([tables.include?("repository_effects"), Task.count, WorkflowAttempt.count])

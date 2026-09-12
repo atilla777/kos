@@ -25,6 +25,7 @@ module WorkflowAttempts
           attributes[:result] = result if result
           effect.update!(attributes)
         end
+        task.publications.unresolved.lock.each { _1.update!(current_owner_attempt: attempt) }
         attempt
       end
     end

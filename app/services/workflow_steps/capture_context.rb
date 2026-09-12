@@ -10,8 +10,6 @@ module WorkflowSteps
         check_lock!(task, expected_lock_version)
         check_lease!(attempt, task, fencing_token, now)
         check_task_state!(task, attempt)
-        unavailable!("Publication context requires a prepared publication") if task.workflow_state.identifier == "publication"
-
         return validated_frozen_context!(repository, task, attempt) if attempt.input_context
 
         context = build_context(repository, task, attempt)
@@ -55,6 +53,7 @@ module WorkflowSteps
       add_worktree!(context, task, status)
       candidate = CurrentCandidate.call(task)
       context["candidate_sha"] = candidate.metadata.fetch("candidate_sha") if candidate
+      add_publication!(context, task, attempt) if task.workflow_state.identifier == "publication"
       JSON.parse(JSON.generate(context))
     end
     private_class_method :build_context
@@ -87,6 +86,24 @@ module WorkflowSteps
       }
     end
     private_class_method :add_worktree!
+
+    def self.add_publication!(context, task, attempt)
+      publication = task.active_publication
+      valid = publication&.state.in?(Publication::UNRESOLVED_STATES) &&
+        publication.current_owner_attempt_id == attempt.id && publication.task_id == task.id &&
+        publication.repository_id == task.repository_id && context["candidate_sha"] == publication.candidate_sha &&
+        task.worktree_reservation&.head_sha == publication.candidate_sha
+      unavailable!("Publication context requires an owned publication") unless valid
+
+      context["publication"] = {
+        "publication_id" => publication.id,
+        "candidate_sha" => publication.candidate_sha,
+        "remote" => publication.remote,
+        "base_ref" => publication.base_ref,
+        "expected_remote_oid" => publication.expected_remote_oid
+      }
+    end
+    private_class_method :add_publication!
 
     def self.validated_frozen_context!(repository, task, attempt)
       context = attempt.input_context

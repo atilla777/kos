@@ -45,9 +45,12 @@ module WorkflowAttempts
     end
 
     def self.check_no_unresolved_effects!(attempt)
-      return unless attempt.owned_repository_effects.unresolved.exists?
+      if attempt.owned_repository_effects.unresolved.exists?
+        raise OperationError.new("invalid_transition", "Attempt has an unresolved repository effect")
+      end
+      return unless attempt.owned_publications.unresolved.exists?
 
-      raise OperationError.new("invalid_transition", "Attempt has an unresolved repository effect")
+      raise OperationError.new("invalid_transition", "Attempt has an unresolved publication")
     end
   end
 end

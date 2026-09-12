@@ -56,6 +56,7 @@ module Api
             "lock_version" => record.lock_version,
             "active_attempt_id" => record.active_attempt_id,
             "worktree_reservation_id" => record.worktree_reservation_id,
+            "active_publication_id" => record.active_publication_id,
             "branch" => reservation&.branch,
             "worktree_path" => reservation&.path,
             "created_at" => timestamp(record.created_at),
@@ -113,6 +114,30 @@ module Api
             "result" => record.result,
             "prepared_at" => timestamp(record.prepared_at),
             "reconciled_at" => optional_timestamp(record.reconciled_at),
+            "updated_at" => timestamp(record.updated_at)
+          })
+        end
+
+        def publication(record)
+          optional({
+            "schema_version" => "1",
+            "id" => record.id,
+            "repository_id" => record.repository_id,
+            "task_id" => record.task_id,
+            "prepared_attempt_id" => record.prepared_attempt_id,
+            "current_owner_attempt_id" => record.current_owner_attempt_id,
+            "candidate_sha" => record.candidate_sha,
+            "remote" => record.remote,
+            "base_ref" => record.base_ref,
+            "expected_remote_oid" => record.expected_remote_oid,
+            "state" => record.state,
+            "observed_remote_tip" => record.observed_remote_tip,
+            "candidate_reachable" => record.candidate_reachable,
+            "observation_digest" => record.observation_digest,
+            "observed_at" => optional_timestamp(record.observed_at),
+            "prepared_at" => timestamp(record.prepared_at),
+            "reconciled_at" => optional_timestamp(record.reconciled_at),
+            "completed_at" => optional_timestamp(record.completed_at),
             "updated_at" => timestamp(record.updated_at)
           })
         end

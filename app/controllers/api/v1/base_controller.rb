@@ -30,6 +30,9 @@ module Api
         "repository_effects#show" => "effect.get",
         "repository_effects#prepare" => "effect.prepare",
         "repository_effects#reconcile" => "effect.reconcile",
+        "publications#show" => "publication.get",
+        "publications#prepare" => "publication.prepare",
+        "publications#reconcile" => "publication.reconcile",
         "artifacts#index" => "artifact.list",
         "workflow_steps#complete" => "step.complete"
       }.freeze

@@ -62,9 +62,13 @@ module Idempotency
 
     def self.capture(status, serialize, error_status, preparation_error)
       ActiveRecord::Base.transaction(requires_new: true) do
-        raise preparation_error if preparation_error
+        begin
+          raise preparation_error if preparation_error
 
-        Result.new(serialize.call(yield), status, false, nil)
+          Result.new(serialize.call(yield), status, false, nil)
+        rescue CommittedOperationError => error
+          Result.new(nil, error_status.call(error), false, error)
+        end
       end
     rescue OperationError => error
       Result.new(nil, error_status.call(error), false, error)

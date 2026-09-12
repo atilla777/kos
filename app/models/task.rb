@@ -7,11 +7,13 @@ class Task < ApplicationRecord
   belongs_to :workflow_state
   belongs_to :active_attempt, class_name: "WorkflowAttempt", optional: true
   belongs_to :worktree_reservation, optional: true
+  belongs_to :active_publication, class_name: "Publication", optional: true
 
   has_many :workflow_attempts, dependent: :restrict_with_exception
   has_many :task_artifacts, dependent: :restrict_with_exception
   has_many :worktree_reservations, dependent: :restrict_with_exception
   has_many :repository_effects, dependent: :restrict_with_exception
+  has_many :publications, dependent: :restrict_with_exception
 
   validates :title, presence: true
   validates :sequence, inclusion: { in: 1..999_999 }, uniqueness: { scope: :repository_id }

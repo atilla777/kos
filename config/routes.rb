@@ -26,6 +26,7 @@ Rails.application.routes.draw do
           post "steps/complete", to: "workflow_steps#complete", on: :member
           post "worktree-reservations", to: "worktree_reservations#reserve", on: :member
           post "repository-effects", to: "repository_effects#prepare", on: :member
+          post "publications", to: "publications#prepare", on: :member
         end
         resources :attempts, only: :show do
           post :step_context, path: "step-context", on: :member
@@ -40,6 +41,9 @@ Rails.application.routes.draw do
           post :release, on: :member
         end
         resources :repository_effects, only: :show, path: "repository-effects" do
+          post :reconcile, on: :member
+        end
+        resources :publications, only: :show do
           post :reconcile, on: :member
         end
       end

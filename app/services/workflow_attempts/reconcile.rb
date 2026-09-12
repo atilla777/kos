@@ -40,10 +40,15 @@ module WorkflowAttempts
     private_class_method :reconcile_interrupted!
 
     def self.validate_effect_observation!(attempt, observed_state)
-      pending = attempt.owned_repository_effects.unresolved.exists?
-      return if pending == (observed_state == "repository_effect_pending")
+      if attempt.owned_repository_effects.unresolved.exists?
+        return if observed_state == "repository_effect_pending"
+      elsif attempt.owned_publications.unresolved.exists?
+        return if observed_state == "publication_unknown"
+      elsif !%w[repository_effect_pending publication_unknown].include?(observed_state)
+        return
+      end
 
-      raise OperationError.new("invalid_transition", "Attempt observation does not match repository effects")
+      raise OperationError.new("invalid_transition", "Attempt observation does not match unresolved effects")
     end
     private_class_method :validate_effect_observation!
   end
