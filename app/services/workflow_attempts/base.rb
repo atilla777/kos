@@ -43,5 +43,11 @@ module WorkflowAttempts
 
       raise OperationError.new("context_unavailable", "Attempt context is unavailable")
     end
+
+    def self.check_no_unresolved_effects!(attempt)
+      return unless attempt.owned_repository_effects.unresolved.exists?
+
+      raise OperationError.new("invalid_transition", "Attempt has an unresolved repository effect")
+    end
   end
 end

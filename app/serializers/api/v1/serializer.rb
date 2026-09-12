@@ -99,6 +99,24 @@ module Api
           }
         end
 
+        def repository_effect(record)
+          optional({
+            "schema_version" => "1",
+            "id" => record.id,
+            "repository_id" => record.repository_id,
+            "task_id" => record.task_id,
+            "prepared_attempt_id" => record.prepared_attempt_id,
+            "current_owner_attempt_id" => record.current_owner_attempt_id,
+            "request_digest" => record.request_digest,
+            "request" => record.request,
+            "state" => record.state,
+            "result" => record.result,
+            "prepared_at" => timestamp(record.prepared_at),
+            "reconciled_at" => optional_timestamp(record.reconciled_at),
+            "updated_at" => timestamp(record.updated_at)
+          })
+        end
+
         def artifact(record)
           {
             "schema_version" => "1",

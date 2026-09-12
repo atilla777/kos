@@ -13,6 +13,10 @@ class WorkflowAttempt < ApplicationRecord
 
   has_many :task_artifacts, dependent: :restrict_with_exception
   has_many :worktree_reservations, dependent: :restrict_with_exception
+  has_many :prepared_repository_effects, class_name: "RepositoryEffect", foreign_key: :prepared_attempt_id,
+    inverse_of: :prepared_attempt, dependent: :restrict_with_exception
+  has_many :owned_repository_effects, class_name: "RepositoryEffect", foreign_key: :current_owner_attempt_id,
+    inverse_of: :current_owner_attempt, dependent: :restrict_with_exception
 
   validates :owner_id, :idempotency_key, :started_at, presence: true
   validates :owner_id, format: { with: IDENTIFIER_FORMAT }

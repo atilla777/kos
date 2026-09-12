@@ -47,6 +47,9 @@ module Kos
         %w[worktree confirm] => [ "worktree.confirm", "repository", {}, true ],
         %w[worktree reconcile] => [ "worktree.reconcile", "repository", {}, true ],
         %w[worktree release] => [ "worktree.release", "repository", {}, true ],
+        %w[effect get] => [ "effect.get", "repository", { "effect_id" => "--effect" } ],
+        %w[effect prepare] => [ "effect.prepare", "repository", {}, true ],
+        %w[effect reconcile] => [ "effect.reconcile", "repository", {}, true ],
         %w[artifact list] => [ "artifact.list", "repository",
           { "task_number" => "--task", "limit" => "--limit", "cursor" => "--cursor" } ]
       }.freeze
@@ -172,6 +175,9 @@ module Kos
         "worktree.confirm" => "/api/v1/repositories/%<repository_id>s/worktree-reservations/%<reservation_id>s/confirm",
         "worktree.reconcile" => "/api/v1/repositories/%<repository_id>s/worktree-reservations/%<reservation_id>s/reconcile",
         "worktree.release" => "/api/v1/repositories/%<repository_id>s/worktree-reservations/%<reservation_id>s/release",
+        "effect.get" => "/api/v1/repositories/%<repository_id>s/repository-effects/%<effect_id>s",
+        "effect.prepare" => "/api/v1/repositories/%<repository_id>s/tasks/%<task_number>s/repository-effects",
+        "effect.reconcile" => "/api/v1/repositories/%<repository_id>s/repository-effects/%<effect_id>s/reconcile",
         "artifact.list" => "/api/v1/repositories/%<repository_id>s/tasks/%<task_number>s/artifacts"
       }.freeze
 

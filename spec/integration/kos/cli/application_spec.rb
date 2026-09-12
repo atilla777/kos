@@ -102,6 +102,8 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
         "/api/v1/repositories/#{repository_id}/attempts/#{resource_id}" ],
       [ [ "worktree", "get", "--repository", repository_id, "--reservation", resource_id, "--json" ],
         "worktree.get", "/api/v1/repositories/#{repository_id}/worktree-reservations/#{resource_id}" ],
+      [ [ "effect", "get", "--repository", repository_id, "--effect", resource_id, "--json" ],
+        "effect.get", "/api/v1/repositories/#{repository_id}/repository-effects/#{resource_id}" ],
       [ [ "artifact", "list", "--repository", repository_id, "--task", "KOS-000001", "--limit", "1",
         "--json" ], "artifact.list", "/api/v1/repositories/#{repository_id}/tasks/KOS-000001/artifacts?limit=1" ]
     ]
@@ -111,6 +113,7 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
     code = { "workflow.get" => "workflow_version_not_found", "workflow.export" => "workflow_version_not_found",
       "workflow_draft.get" => "workflow_draft_not_found", "workflow_draft.validate" => "workflow_draft_not_found",
       "attempt.get" => "attempt_not_found", "worktree.get" => "reservation_not_found",
+      "effect.get" => "effect_not_found",
       "artifact.list" => "task_not_found" }.fetch(command, "task_not_found")
     with_server([ [ "404 Not Found", failure(command, code:) ] ]) do |url, requests|
       stdout, _stderr, status = run_cli(url, *arguments)
@@ -262,6 +265,24 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
         "/api/v1/repositories/#{repository_id}/worktree-reservations/#{resource_id}/release",
         { "reservation_id" => resource_id, "observed_state" => "absent",
           "evidence_digest" => "sha256:#{'a' * 64}", "preconditions" => preconditions } ],
+      [ [ "effect", "prepare", "--repository", repository_id ], "effect.prepare",
+        "/api/v1/repositories/#{repository_id}/tasks/KOS-000001/repository-effects",
+        { "task_number" => "KOS-000001", "effect_request" => {
+          "schema_version" => "1", "attempt_id" => resource_id,
+          "input_context_digest" => "sha256:#{'a' * 64}",
+          "effect" => { "operation" => "fetch", "remote" => "origin", "ref" => "refs/heads/main" }
+        }, "preconditions" => preconditions } ],
+      [ [ "effect", "reconcile", "--repository", repository_id ], "effect.reconcile",
+        "/api/v1/repositories/#{repository_id}/repository-effects/#{resource_id}/reconcile",
+        { "effect_id" => resource_id, "effect_result" => {
+          "schema_version" => "1", "effect_intent_id" => resource_id,
+          "request_attempt_id" => resource_id, "owner_attempt_id" => resource_id,
+          "input_context_digest" => "sha256:#{'a' * 64}",
+          "effect_request_digest" => "sha256:#{'b' * 64}",
+          "result" => { "outcome" => "unknown", "operation" => "fetch",
+            "error" => { "category" => "transient", "code" => "adapter_unavailable",
+              "message" => "Adapter unavailable", "retryable" => true } }
+        }, "preconditions" => preconditions } ],
       [ [ "step", "complete", "--repository", repository_id ], "step.complete",
         "/api/v1/repositories/#{repository_id}/tasks/KOS-000001/steps/complete",
         { "task_number" => "KOS-000001", "to_status" => "development",

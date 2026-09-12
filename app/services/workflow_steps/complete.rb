@@ -25,6 +25,7 @@ module WorkflowSteps
         check_lock!(task, expected_lock_version)
         check_lease!(attempt, task, fencing_token, now)
         check_context!(attempt, manifest)
+        check_no_unresolved_effects!(attempt)
         transition = transition!(task, attempt, to_status)
         validate_contract!(task, attempt, transition, artifacts)
 

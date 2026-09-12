@@ -13,6 +13,7 @@ module WorkflowAttempts
             task.active_attempt_id == attempt.id
           raise OperationError.new("invalid_transition", "Attempt is not available for reconciliation")
         end
+        validate_effect_observation!(attempt, observed_state)
 
         task.update!(active_attempt: nil)
         attempt.update!(state: "interrupted", lease_expires_at: nil, completed_at: now,
@@ -37,5 +38,13 @@ module WorkflowAttempts
       raise OperationError.new("invalid_transition", "Attempt was reconciled with different evidence")
     end
     private_class_method :reconcile_interrupted!
+
+    def self.validate_effect_observation!(attempt, observed_state)
+      pending = attempt.owned_repository_effects.unresolved.exists?
+      return if pending == (observed_state == "repository_effect_pending")
+
+      raise OperationError.new("invalid_transition", "Attempt observation does not match repository effects")
+    end
+    private_class_method :validate_effect_observation!
   end
 end

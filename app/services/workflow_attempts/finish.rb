@@ -7,6 +7,7 @@ module WorkflowAttempts
         check_lock!(task, expected_lock_version)
         check_lease!(attempt, task, fencing_token, now)
         check_context!(attempt, manifest)
+        check_no_unresolved_effects!(attempt)
 
         task.update!(active_attempt: nil)
         attempt.update!(state:, heartbeat_at: now, lease_expires_at: nil, completed_at: now,

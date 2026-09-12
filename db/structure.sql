@@ -661,7 +661,94 @@ WHEN OLD.state = 'released'
 BEGIN
   SELECT RAISE(ABORT, 'released worktree reservation is immutable');
 END;
+CREATE TABLE "repository_effects" ("id" varchar NOT NULL PRIMARY KEY, "repository_id" varchar NOT NULL, "task_id" varchar NOT NULL, "prepared_attempt_id" varchar NOT NULL, "current_owner_attempt_id" varchar NOT NULL, "request_digest" varchar NOT NULL, "request" text NOT NULL, "state" varchar DEFAULT 'prepared' NOT NULL, "result" text, "prepared_at" datetime(6) NOT NULL, "reconciled_at" datetime(6), "created_at" datetime(6) NOT NULL, "updated_at" datetime(6) NOT NULL, CONSTRAINT "fk_rails_23bf5c8cb2"
+FOREIGN KEY ("prepared_attempt_id", "task_id", "repository_id")
+  REFERENCES "workflow_attempts" ("id", "task_id", "repository_id")
+, CONSTRAINT "fk_rails_992ab68c7e"
+FOREIGN KEY ("repository_id")
+  REFERENCES "repositories" ("id")
+, CONSTRAINT "fk_rails_674a1b8a7c"
+FOREIGN KEY ("task_id", "repository_id")
+  REFERENCES "tasks" ("id", "repository_id")
+, CONSTRAINT "fk_rails_e26b3fe32b"
+FOREIGN KEY ("current_owner_attempt_id", "task_id", "repository_id")
+  REFERENCES "workflow_attempts" ("id", "task_id", "repository_id")
+, CONSTRAINT repository_effects_id_format CHECK (length(id) = 36 AND substr(id, 9, 1) = '-' AND substr(id, 14, 1) = '-' AND substr(id, 19, 1) = '-' AND substr(id, 24, 1) = '-' AND length(replace(id, '-', '')) = 32 AND replace(id, '-', '') NOT GLOB '*[^0-9a-f]*'), CONSTRAINT repository_effects_request_digest_format CHECK (substr(request_digest, 1, 7) = 'sha256:' AND length(request_digest) = 71 AND substr(request_digest, 8) NOT GLOB '*[^0-9a-f]*'), CONSTRAINT repository_effects_request_json CHECK (json_valid(request) AND json_type(request) = 'object'), CONSTRAINT repository_effects_result_json CHECK (result IS NULL OR (json_valid(result) AND json_type(result) = 'object')), CONSTRAINT repository_effects_state_values CHECK (state IN ('prepared', 'succeeded', 'failed', 'unknown')), CONSTRAINT repository_effects_request_shape CHECK (json_extract(request, '$.schema_version') IS '1' AND json_extract(request, '$.attempt_id') IS prepared_attempt_id AND json_type(request, '$.input_context_digest') = 'text' AND substr(json_extract(request, '$.input_context_digest'), 1, 7) = 'sha256:' AND length(json_extract(request, '$.input_context_digest')) = 71 AND json_extract(request, '$.effect.operation') IN ('commit', 'fetch', 'rebase') AND COALESCE(CASE json_extract(request, '$.effect.operation') WHEN 'commit' THEN json_type(request, '$.effect.reservation_id') = 'text' AND json_type(request, '$.effect.expected_head_sha') = 'text' AND json_type(request, '$.effect.expected_diff_digest') = 'text' AND json_type(request, '$.effect.expected_index_digest') = 'text' AND json_type(request, '$.effect.paths') = 'array' AND json_array_length(request, '$.effect.paths') > 0 AND json_type(request, '$.effect.message') = 'text' AND length(json_extract(request, '$.effect.message')) > 0 AND json_type(request, '$.effect.task_number') = 'text' WHEN 'fetch' THEN json_type(request, '$.effect.remote') = 'text' AND length(json_extract(request, '$.effect.remote')) > 0 AND json_type(request, '$.effect.ref') = 'text' AND json_extract(request, '$.effect.ref') LIKE 'refs/%' WHEN 'rebase' THEN json_type(request, '$.effect.reservation_id') = 'text' AND json_type(request, '$.effect.expected_head_sha') = 'text' AND json_type(request, '$.effect.onto_sha') = 'text' ELSE 0 END, 0) = 1), CONSTRAINT repository_effects_lifecycle_shape CHECK ((state = 'prepared' AND result IS NULL AND reconciled_at IS NULL) OR (state IN ('succeeded', 'failed', 'unknown') AND result IS NOT NULL AND reconciled_at IS NOT NULL AND json_extract(result, '$.result.outcome') IS state)), CONSTRAINT repository_effects_result_binding CHECK (result IS NULL OR ( json_extract(result, '$.schema_version') IS '1' AND json_extract(result, '$.effect_intent_id') IS id AND json_extract(result, '$.request_attempt_id') IS prepared_attempt_id AND json_extract(result, '$.owner_attempt_id') IS current_owner_attempt_id AND json_extract(result, '$.input_context_digest') IS json_extract(request, '$.input_context_digest') AND json_extract(result, '$.effect_request_digest') IS request_digest AND json_extract(result, '$.result.operation') IS json_extract(request, '$.effect.operation') AND COALESCE(CASE json_extract(result, '$.result.outcome') WHEN 'succeeded' THEN CASE json_extract(result, '$.result.operation') WHEN 'commit' THEN json_type(result, '$.result.commit_sha') = 'text' AND json_type(result, '$.result.evidence_digest') = 'text' WHEN 'fetch' THEN json_type(result, '$.result.remote') = 'text' AND json_type(result, '$.result.ref') = 'text' AND json_type(result, '$.result.observed_oid') = 'text' AND json_type(result, '$.result.evidence_digest') = 'text' WHEN 'rebase' THEN json_type(result, '$.result.head_sha') = 'text' AND json_type(result, '$.result.evidence_digest') = 'text' ELSE 0 END WHEN 'failed' THEN json_type(result, '$.result.error.category') = 'text' AND json_type(result, '$.result.error.code') = 'text' AND json_type(result, '$.result.error.message') = 'text' AND json_type(result, '$.result.error.retryable') IN ('true', 'false') WHEN 'unknown' THEN json_type(result, '$.result.error.category') = 'text' AND json_type(result, '$.result.error.code') = 'text' AND json_type(result, '$.result.error.message') = 'text' AND json_type(result, '$.result.error.retryable') IN ('true', 'false') ELSE 0 END, 0) = 1 )));
+CREATE INDEX "index_repository_effects_on_repository_id" ON "repository_effects" ("repository_id") /*application='Kos'*/;
+CREATE UNIQUE INDEX "index_repository_effects_on_id_and_repository_id" ON "repository_effects" ("id", "repository_id") /*application='Kos'*/;
+CREATE UNIQUE INDEX "index_repository_effects_on_identity_and_ownership" ON "repository_effects" ("id", "task_id", "repository_id") /*application='Kos'*/;
+CREATE INDEX "index_repository_effects_on_task_and_state" ON "repository_effects" ("repository_id", "task_id", "state") /*application='Kos'*/;
+CREATE INDEX "index_repository_effects_on_owner_and_state" ON "repository_effects" ("current_owner_attempt_id", "state") /*application='Kos'*/;
+CREATE TRIGGER repository_effects_primary_key_immutable
+BEFORE UPDATE OF id ON repository_effects
+BEGIN
+  SELECT RAISE(ABORT, 'primary key is immutable');
+END;
+CREATE TRIGGER repository_effects_immutable_intent
+BEFORE UPDATE OF repository_id, task_id, prepared_attempt_id, request_digest, request, prepared_at, created_at
+  ON repository_effects
+BEGIN
+  SELECT RAISE(ABORT, 'repository effect intent is immutable');
+END;
+CREATE TRIGGER repository_effects_active_owner_insert
+BEFORE INSERT ON repository_effects
+WHEN NOT EXISTS (
+  SELECT 1 FROM workflow_attempts JOIN tasks
+    ON tasks.id = workflow_attempts.task_id AND tasks.repository_id = workflow_attempts.repository_id
+  WHERE workflow_attempts.id = NEW.current_owner_attempt_id
+    AND workflow_attempts.id = NEW.prepared_attempt_id
+    AND workflow_attempts.task_id = NEW.task_id AND workflow_attempts.repository_id = NEW.repository_id
+    AND workflow_attempts.state = 'started' AND workflow_attempts.lease_expires_at > CURRENT_TIMESTAMP
+    AND tasks.active_attempt_id = workflow_attempts.id
+)
+BEGIN
+  SELECT RAISE(ABORT, 'repository effect owner must be the preparing active attempt');
+END;
+CREATE TRIGGER repository_effects_active_owner_update
+BEFORE UPDATE OF current_owner_attempt_id ON repository_effects
+WHEN OLD.state NOT IN ('prepared', 'unknown') OR NOT EXISTS (
+  SELECT 1 FROM workflow_attempts JOIN tasks
+    ON tasks.id = workflow_attempts.task_id AND tasks.repository_id = workflow_attempts.repository_id
+  WHERE workflow_attempts.id = NEW.current_owner_attempt_id AND workflow_attempts.task_id = NEW.task_id
+    AND workflow_attempts.repository_id = NEW.repository_id AND workflow_attempts.state = 'started'
+    AND workflow_attempts.lease_expires_at > CURRENT_TIMESTAMP
+    AND tasks.active_attempt_id = workflow_attempts.id
+)
+BEGIN
+  SELECT RAISE(ABORT, 'repository effect owner must be an active replacement attempt');
+END;
+CREATE TRIGGER repository_effects_lifecycle
+BEFORE UPDATE OF state ON repository_effects
+WHEN NOT (
+  (OLD.state = 'prepared' AND NEW.state IN ('prepared', 'succeeded', 'failed', 'unknown'))
+  OR (OLD.state = 'unknown' AND NEW.state IN ('succeeded', 'failed', 'unknown'))
+  OR (OLD.state IN ('succeeded', 'failed') AND NEW.state = OLD.state)
+)
+BEGIN
+  SELECT RAISE(ABORT, 'invalid repository effect lifecycle transition');
+END;
+CREATE TRIGGER repository_effects_terminal_immutable
+BEFORE UPDATE ON repository_effects
+WHEN OLD.state IN ('succeeded', 'failed')
+BEGIN
+  SELECT RAISE(ABORT, 'terminal repository effect is immutable');
+END;
+CREATE TRIGGER repository_effects_no_delete
+BEFORE DELETE ON repository_effects
+BEGIN
+  SELECT RAISE(ABORT, 'repository effect cannot be deleted');
+END;
+CREATE TRIGGER workflow_attempts_unresolved_effect_guard
+BEFORE UPDATE OF state ON workflow_attempts
+WHEN NEW.state IN ('succeeded', 'failed', 'needs_human') AND EXISTS (
+  SELECT 1 FROM repository_effects
+  WHERE current_owner_attempt_id = OLD.id AND state IN ('prepared', 'unknown')
+)
+BEGIN
+  SELECT RAISE(ABORT, 'attempt cannot finish with an unresolved repository effect');
+END;
 INSERT INTO "schema_migrations" (version) VALUES
+('20260912000000'),
 ('20260911030000'),
 ('20260911020000'),
 ('20260911010000'),

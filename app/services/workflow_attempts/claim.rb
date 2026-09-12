@@ -18,6 +18,13 @@ module WorkflowAttempts
         if reservation && reservation.state != "released"
           reservation.update!(workflow_attempt: attempt, fencing_token: token)
         end
+        task.repository_effects.unresolved.lock.each do |effect|
+          result = effect.result
+          result["owner_attempt_id"] = attempt.id if result
+          attributes = { current_owner_attempt: attempt }
+          attributes[:result] = result if result
+          effect.update!(attributes)
+        end
         attempt
       end
     end

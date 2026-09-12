@@ -85,6 +85,16 @@ bin/kos worktree release --repository UUID --input observation.json --idempotenc
 
 KOS reserves and fences state but does not create or remove a Git worktree. Confirmation and observations must come from the owning orchestrator after `kos-repository` verifies the persisted allocation. Cleanup first records a matching clean worktree as `release_pending`, then records its absence after external removal; dirty or mismatched worktrees remain reserved for explicit resolution.
 
+Prepare, inspect, and reconcile generic repository effects without executing Git through Rails:
+
+```sh
+bin/kos effect prepare --repository UUID --input effect.json --idempotency-key effect-prepare-1 --json
+bin/kos effect get --repository UUID --effect UUID --json
+bin/kos effect reconcile --repository UUID --input result.json --idempotency-key effect-reconcile-1 --json
+```
+
+Generic effects cover `commit`, `fetch`, and `rebase`. Preparation binds the request to the active attempt, its frozen context, lease, fencing token, and task lock before an external adapter call. A typed adapter outcome is then recorded as `succeeded`, `failed`, or `unknown`. Prepared and unknown effects survive interruption, transfer to the replacement attempt after recovery, and must be reconciled before that attempt can finish. These commands persist and validate intent only; they never execute Git.
+
 The local repository adapter reads a closed version 1 request from a file or stdin and emits exactly one JSON result. Its request contains the registered repository snapshot, current reservation snapshot, and expected base or worktree HEAD:
 
 ```sh

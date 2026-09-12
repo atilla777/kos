@@ -130,6 +130,70 @@ RSpec.describe WorkflowAttempt, :aggregate_failures, type: :model do
     )
   end
 
+  def create_repository_effect(attempt, state: "prepared")
+    attempt.task.update!(active_attempt: attempt) unless attempt.task.active_attempt_id
+    request = { "schema_version" => "1", "attempt_id" => attempt.id,
+      "input_context_digest" => digest,
+      "effect" => { "operation" => "fetch", "remote" => "origin", "ref" => "refs/heads/main" } }
+    effect = RepositoryEffect.create!(repository: attempt.repository, task: attempt.task,
+      prepared_attempt: attempt, current_owner_attempt: attempt, request_digest: digest,
+      request:, prepared_at: Time.current)
+    return effect if state == "prepared"
+
+    result = { "schema_version" => "1", "effect_intent_id" => effect.id,
+      "request_attempt_id" => attempt.id, "owner_attempt_id" => attempt.id,
+      "input_context_digest" => digest, "effect_request_digest" => digest,
+      "result" => { "outcome" => state, "operation" => "fetch",
+        "error" => { "category" => "transient", "code" => "adapter_unavailable",
+          "message" => "Adapter unavailable", "retryable" => true } } }
+    effect.update!(state:, result:, reconciled_at: Time.current)
+    effect
+  end
+
+  def unresolved_completion_error
+    attempt = attempt_with_context
+    create_repository_effect(attempt)
+    attempt.update_columns(state: "failed", lease_expires_at: nil, completed_at: Time.current,
+      result_manifest: { "schema_version" => "1", "attempt_id" => attempt.id,
+        "input_context_digest" => digest, "outcome" => "failed", "artifacts" => [] }.to_json)
+  end
+
+  def invalid_effect_requests
+    attempt = attempt_with_context
+    incomplete = { "schema_version" => "1", "attempt_id" => attempt.id,
+      "input_context_digest" => digest, "effect" => { "operation" => "fetch" } }
+    attributes = { repository: attempt.repository, task: attempt.task, prepared_attempt: attempt,
+      current_owner_attempt: attempt, request_digest: digest, request: incomplete, prepared_at: Time.current }
+    attempt.task.update!(active_attempt: attempt)
+    incomplete_error = capture_statement_error { RepositoryEffect.create!(attributes) }
+    attempt.task.update!(active_attempt: nil)
+    valid = incomplete.deep_dup
+    valid.fetch("effect").merge!("remote" => "origin", "ref" => "refs/heads/main")
+    inactive_error = capture_statement_error { RepositoryEffect.create!(attributes.merge(request: valid)) }
+    [ incomplete_error, inactive_error ]
+  end
+
+  def mismatched_result_owner_error
+    attempt = attempt_with_context
+    effect = create_repository_effect(attempt)
+    result = { "schema_version" => "1", "effect_intent_id" => effect.id,
+      "request_attempt_id" => attempt.id, "owner_attempt_id" => SecureRandom.uuid,
+      "input_context_digest" => digest, "effect_request_digest" => digest,
+      "result" => { "outcome" => "unknown", "operation" => "fetch",
+        "error" => { "category" => "transient", "code" => "adapter_unavailable",
+          "message" => "Adapter unavailable", "retryable" => true } } }
+    capture_statement_error do
+      effect.update_columns(state: "unknown", result: result.to_json, reconciled_at: Time.current)
+    end
+  end
+
+  def capture_statement_error
+    yield
+    nil
+  rescue ActiveRecord::StatementInvalid => error
+    error.message
+  end
+
   def attempt_with_context
     attempt = create_attempt(task: create_task)
     attempt.update!(input_context: { "schema_version" => "1" }, input_context_digest: digest)
@@ -463,6 +527,36 @@ RSpec.describe WorkflowAttempt, :aggregate_failures, type: :model do
 
     expect { reservation.update!(workflow_attempt: second, fencing_token: second.fencing_token) }
       .to change(reservation, :workflow_attempt).to(second)
+  end
+
+  it "protects repository effect intent identity and retained history" do
+    effect = create_repository_effect(attempt_with_context)
+
+    expect { effect.update_column(:request_digest, "sha256:#{'b' * 64}") }
+      .to raise_error(ActiveRecord::StatementInvalid, /intent is immutable/)
+    expect { effect.delete }
+      .to raise_error(ActiveRecord::StatementInvalid, /effect cannot be deleted/)
+  end
+
+  it "keeps terminal repository effects immutable" do
+    effect = create_repository_effect(attempt_with_context, state: "failed")
+
+    expect { effect.touch }
+      .to raise_error(ActiveRecord::StatementInvalid, /terminal repository effect is immutable/)
+  end
+
+  it "enforces unresolved effect completion guards in SQLite" do
+    expect { unresolved_completion_error }
+      .to raise_error(ActiveRecord::StatementInvalid, /unresolved repository effect/)
+  end
+
+  it "rejects incomplete effect requests and owners that are not the active attempt" do
+    expect(invalid_effect_requests)
+      .to contain_exactly(include("request_shape"), include("preparing active attempt"))
+  end
+
+  it "binds persisted result ownership in SQLite" do
+    expect(mismatched_result_owner_error).to include("result_binding")
   end
 
   it "rejects reservation ownership from another task" do

@@ -27,6 +27,9 @@ module Api
         "worktree_reservations#confirm" => "worktree.confirm",
         "worktree_reservations#reconcile" => "worktree.reconcile",
         "worktree_reservations#release" => "worktree.release",
+        "repository_effects#show" => "effect.get",
+        "repository_effects#prepare" => "effect.prepare",
+        "repository_effects#reconcile" => "effect.reconcile",
         "artifacts#index" => "artifact.list",
         "workflow_steps#complete" => "step.complete"
       }.freeze

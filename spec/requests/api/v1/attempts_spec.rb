@@ -113,7 +113,7 @@ RSpec.describe "API v1 workflow attempts", :aggregate_failures, type: :request d
 
   def reconciliation_summary
     attempt = WorkflowAttempt.find(claim.dig("data", "id"))
-    body = { "attempt_id" => attempt.id, "observed_state" => "repository_effect_pending",
+    body = { "attempt_id" => attempt.id, "observed_state" => "no_effect",
       "evidence_digest" => digest, "expected_lock_version" => task.reload.lock_version }
     result = travel_to(6.minutes.from_now) { post_attempt(attempt, "reconcile", body) }
     [ response.status, result.dig("data", "state"), result.dig("data", "reconciliation_state"),
@@ -220,7 +220,7 @@ RSpec.describe "API v1 workflow attempts", :aggregate_failures, type: :request d
   end
 
   it "reconciles an expired attempt and returns its durable observation" do
-    expect(reconciliation_summary).to eq([ 200, "interrupted", "repository_effect_pending", digest, true ])
+    expect(reconciliation_summary).to eq([ 200, "interrupted", "no_effect", digest, true ])
   end
 
   it "does not disclose an attempt from another repository" do
