@@ -5,6 +5,7 @@ require "open3"
 require "pathname"
 require "tempfile"
 require "timeout"
+require "tmpdir"
 
 require_relative "json_parser"
 
@@ -48,13 +49,14 @@ module Kos
         "GIT_NO_LAZY_FETCH" => "1"
       }.freeze
       BASE_ARGUMENTS = [ "git", "--no-replace-objects", "-c", "color.ui=false", "-c",
-        "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false" ].freeze
+        "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.splitIndex=false", "-c",
+        "commit.gpgSign=false" ].freeze
 
-      def call(*arguments, timeout: TIMEOUT_SECONDS)
+      def call(*arguments, timeout: TIMEOUT_SECONDS, environment: {}, stdin: File::NULL)
         stdout = Tempfile.new("kos-repository-out")
         stderr = Tempfile.new("kos-repository-err")
-        pid = Process.spawn(ENVIRONMENT, *BASE_ARGUMENTS, *arguments, out: stdout, err: stderr,
-          unsetenv_others: true, pgroup: true, rlimit_fsize: OUTPUT_LIMIT)
+        pid = Process.spawn(ENVIRONMENT.merge(environment), *BASE_ARGUMENTS, *arguments, out: stdout, err: stderr,
+          in: stdin, unsetenv_others: true, pgroup: true, rlimit_fsize: OUTPUT_LIMIT)
         status = wait(pid, timeout)
         stdout.rewind
         output = stdout.read(OUTPUT_LIMIT) || +""
@@ -379,6 +381,423 @@ module Kos
       end
     end
 
+    class Commit < Worktree
+      DIRECTORY_FLAG = 0o200000
+
+      def call
+        with_lock do
+          validate_identity!
+          validate_commit_identity!
+          verify_worktree!
+          validate_paths!
+          validate_message!
+          verify_index_clean!
+          verify_no_unfinished_operation!
+          verify_no_filters!
+          verify_diff!
+          create_commit
+        end
+      end
+
+      private
+
+      def validate_commit_identity!
+        validation!("task_mismatch", "Task number does not match the reserved branch") unless
+          reservation.fetch("branch") == "kos/task-#{request.fetch('task_number')}"
+      end
+
+      def validate_paths!
+        validation!("commit_path_invalid", "Commit paths must be unique canonical files") unless
+          paths.uniq.length == paths.length
+
+        paths.each do |path|
+          valid = !path.start_with?(":") && !Pathname.new(path).absolute? && Pathname.new(path).cleanpath.to_s == path &&
+            path != "." && !path.include?("\0") && exact_file?(path)
+          validation!("commit_path_invalid", "Commit paths must be unique canonical files") unless valid
+        end
+        paths.combination(2).each do |first, second|
+          overlap = first.start_with?("#{second}/") || second.start_with?("#{first}/")
+          validation!("commit_path_invalid", "Commit paths cannot overlap") if overlap
+        end
+      end
+
+      def exact_file?(path)
+        absolute = File.join(reservation.fetch("path"), path)
+        if path_exists?(absolute)
+          return false unless File.file?(absolute) && !File.symlink?(absolute)
+
+          canonical_existing(absolute) == absolute && [ nil, "100644", "100755" ].include?(expected_tree_mode(path))
+        else
+          canonical_existing_prefix?(absolute) && tree_file?(path)
+        end
+      rescue Errno::EACCES, Errno::ENOENT, Errno::ENOTDIR
+        false
+      end
+
+      def tree_file?(path)
+        [ "100644", "100755" ].include?(expected_tree_mode(path))
+      end
+
+      def expected_tree_mode(path)
+        result = git_worktree_literal("ls-tree", "-z", @expected_head, "--", path)
+        return false unless result.success
+        return if result.stdout.empty?
+
+        entry, terminator = result.stdout.split("\0", -1)
+        match = entry&.match(/\A([0-7]{6}) \S+ [0-9a-f]{40}\t#{Regexp.escape(path)}\z/)
+        terminator == "" && match ? match[1] : false
+      end
+
+      def canonical_existing_prefix?(absolute)
+        current = File.dirname(absolute)
+        current = File.dirname(current) until path_exists?(current) || current == reservation.fetch("path")
+        contained = current == reservation.fetch("path") || current.start_with?("#{reservation.fetch('path')}/")
+        contained && File.directory?(current) &&
+          !File.symlink?(current) && canonical_existing(current) == current
+      end
+
+      def validate_message!
+        file = Tempfile.new("kos-commit-message")
+        file.binmode
+        file.write(request.fetch("message"))
+        file.flush
+        result = git_worktree(reservation.fetch("path"), "interpret-trailers", "--parse", "--no-divider", file.path)
+        internal!("commit_message_parse_failed", "Commit message validation failed") unless result.success
+        validation!("commit_message_invalid", "Commit message already contains a KOS-Task trailer") if
+          result.stdout.lines.any? { |line| line.split(":", 2).first&.casecmp?("KOS-Task") }
+      ensure
+        file&.close!
+      end
+
+      def verify_worktree!
+        conflict!("worktree_mismatched", "Confirmed worktree identity does not match") unless inspect_identity
+      end
+
+      def verify_index_clean!
+        result = git_worktree(reservation.fetch("path"), "diff", "--cached", "--quiet", "--no-ext-diff",
+          "--no-textconv", @expected_head, "--")
+        conflict!("index_not_clean", "Worktree index does not match expected HEAD") unless result.success
+      end
+
+      def verify_no_unfinished_operation!
+        unfinished = OPERATION_PATHS.any? do |name|
+          result = git_worktree(reservation.fetch("path"), "rev-parse", "--git-path", name)
+          !result.success || path_exists?(result.stdout.strip)
+        end
+        conflict!("unfinished_operation", "Worktree has an unfinished Git operation") if unfinished
+      end
+
+      def verify_diff!
+        verify_no_filters!
+        result = git_worktree_literal("diff", "--binary", "--full-index", "--no-ext-diff", "--no-textconv",
+          @expected_head, "--", *sorted_paths)
+        conflict!("diff_unavailable", "Expected worktree diff could not be read") unless result.success
+        conflict!("diff_mismatch", "Worktree diff does not match the request") unless
+          digest(result.stdout) == request.fetch("expected_diff_digest")
+      end
+
+      def create_commit
+        with_temporary_index do |environment|
+          seed_temporary_index!(environment)
+          stage_requested_paths!(environment)
+          verify_no_filters!
+          verify_temporary_index!(environment)
+          tree_sha = write_tree!(environment)
+          verify_exact_tree!(tree_sha)
+          commit_sha = create_commit_object!(tree_sha)
+          verify_commit_object!(commit_sha, tree_sha)
+          advance_branch!(commit_sha)
+          reconcile_real_index(commit_sha)
+          commit_evidence(commit_sha, tree_sha)
+        end
+      end
+
+      def with_temporary_index
+        directory = Dir.mktmpdir("kos-index")
+        path = File.join(directory, "index")
+        yield("GIT_INDEX_FILE" => path)
+      ensure
+        remove_temporary_index(directory, path)
+      end
+
+      def remove_temporary_index(directory, path)
+        candidates = path ? [ path, "#{path}.lock" ] : []
+        candidates.each { |candidate| File.unlink(candidate) if path_exists?(candidate) }
+        Dir.rmdir(directory) if directory && File.directory?(directory)
+      rescue SystemCallError
+        nil
+      end
+
+      def seed_temporary_index!(environment)
+        result = git_worktree("read-tree", @expected_head, environment: environment)
+        internal!("index_invalid", "Temporary index could not be initialized") unless result.success
+      end
+
+      def stage_requested_paths!(environment)
+        sorted_paths.each do |path|
+          absolute = File.join(reservation.fetch("path"), path)
+          path_exists?(absolute) ? stage_file!(path, environment) : stage_deletion!(path, environment)
+        end
+      end
+
+      def stage_file!(path, environment)
+        with_staging_file(path) do |file, stat|
+          object = git_worktree("hash-object", "--no-filters", "-w", "--stdin", stdin: file)
+          conflict!("staging_failed", "Requested file could not be stored") unless
+            object.success && object.stdout.strip.match?(/\A[0-9a-f]{40}\z/)
+          update_temporary_index!(path, staged_mode(path, stat), object.stdout.strip, environment)
+        end
+      rescue SystemCallError
+        conflict!("staging_failed", "Requested file changed during staging")
+      end
+
+      def with_staging_file(path)
+        conflict!("staging_failed", "Safe descriptor traversal is unavailable") unless
+          defined?(File::NOFOLLOW) && File.directory?("/proc/self/fd")
+
+        descriptors = []
+        root = File.open(reservation.fetch("path"), File::RDONLY | File::NOFOLLOW | DIRECTORY_FLAG)
+        descriptors << root
+        conflict!("staging_failed", "Reserved worktree descriptor identity changed") unless
+          File.realpath(descriptor_path(root)) == reservation.fetch("path")
+
+        components = path.split("/")
+        components[0...-1].each do |component|
+          parent = descriptors.last
+          descriptors << open_relative_component(parent, component, directory: true)
+        end
+        file = open_relative_component(descriptors.last, components.last, directory: false)
+        descriptors << file
+        stat = file.stat
+        conflict!("staging_failed", "Requested path is not a regular file") unless stat.file?
+
+        yield(file, stat)
+      ensure
+        descriptors&.reverse_each { |descriptor| descriptor.close unless descriptor.closed? }
+      end
+
+      def open_relative_component(parent, component, directory:)
+        flags = File::RDONLY | File::NOFOLLOW
+        flags |= DIRECTORY_FLAG if directory
+        File.open(File.join(descriptor_path(parent), component), flags)
+      end
+
+      def descriptor_path(file)
+        "/proc/self/fd/#{file.fileno}"
+      end
+
+      def stage_deletion!(path, environment)
+        conflict!("staging_failed", "Requested deletion is not a tracked regular file") unless tree_file?(path)
+
+        result = git_worktree_literal("update-index", "--force-remove", "--", path, environment: environment)
+        conflict!("staging_failed", "Requested deletion could not be staged") unless result.success
+      end
+
+      def update_temporary_index!(path, mode, object, environment)
+        result = git_worktree_literal("update-index", "--add", "--cacheinfo", mode, object, path,
+          environment: environment)
+        conflict!("staging_failed", "Requested file could not be staged") unless result.success
+      end
+
+      def staged_mode(path, stat)
+        expected_mode = expected_tree_mode(path)
+        unless core_filemode?
+          return expected_mode if %w[100644 100755].include?(expected_mode)
+
+          return "100644"
+        end
+
+        (stat.mode & 0o100).positive? ? "100755" : "100644"
+      end
+
+      def core_filemode?
+        return @core_filemode unless @core_filemode.nil?
+
+        result = git_worktree("config", "--type=bool", "--get", "core.filemode")
+        @core_filemode = !result.success || result.stdout.strip == "true"
+      end
+
+      def verify_no_filters!
+        result = git_worktree_literal("check-attr", "-z", "filter", "--", *sorted_paths)
+        conflict!("filter_check_failed", "Git attributes could not be verified") unless result.success
+
+        attributes = result.stdout.split("\0", -1)
+        conflict!("filter_check_failed", "Git returned invalid filter attributes") unless
+          attributes.pop == "" && attributes.length == sorted_paths.length * 3
+        attributes.each_slice(3) do |path, attribute, value|
+          valid = sorted_paths.include?(path) && attribute == "filter" && %w[unspecified unset].include?(value)
+          conflict!("commit_filter_unsupported", "Requested paths use unsupported Git filters") unless valid
+        end
+      end
+
+      def verify_temporary_index!(environment)
+        entries = staged_entries(environment)
+        conflict!("index_mismatch", "Staged index does not match the request") unless
+          digest(entries) == request.fetch("expected_index_digest")
+      end
+
+      def staged_entries(environment)
+        result = git_worktree_literal("ls-files", "--stage", "-z", "--", *sorted_paths,
+          environment: environment)
+        conflict!("index_unavailable", "Staged index could not be read") unless result.success
+
+        result.stdout.split("\0", -1).reject(&:empty?).map do |entry|
+          match = entry.match(/\A([0-7]{6}) ([0-9a-f]{40}) 0\t(.+)\z/m)
+          internal!("index_invalid", "Staged index contained an invalid entry") unless match
+          "#{match[1]} #{match[2]}\t#{match[3]}"
+        end.sort_by(&:b).join("\0").then { |entries| entries.empty? ? entries : "#{entries}\0" }
+      end
+
+      def write_tree!(environment)
+        result = git_worktree("write-tree", environment: environment)
+        conflict!("index_unavailable", "Staged tree could not be created") unless result.success
+
+        result.stdout.strip
+      end
+
+      def verify_exact_tree!(tree_sha)
+        result = git_worktree_literal("diff-tree", "--no-commit-id", "--name-only", "--no-ext-diff",
+          "--no-textconv", "-r", "-z", @expected_head, tree_sha, "--")
+        conflict!("index_unavailable", "Staged tree could not be verified") unless result.success
+        changed = result.stdout.split("\0", -1).reject(&:empty?).sort_by(&:b)
+        conflict!("empty_commit", "Requested files contain no staged changes") if changed.empty?
+        conflict!("commit_paths_mismatch", "Staged tree does not exactly match the request") unless changed == sorted_paths
+      end
+
+      def create_commit_object!(tree_sha)
+        message = Tempfile.new("kos-authoritative-message")
+        message.binmode
+        message.write("#{request.fetch('message').sub(/\n*\z/, '')}\n\nKOS-Task: #{request.fetch('task_number')}\n")
+        message.flush
+        result = git_worktree("commit-tree", tree_sha, "-p", @expected_head, "-F", message.path)
+        conflict!("commit_failed", "Git rejected the commit operation") unless result.success
+        result.stdout.strip
+      ensure
+        message&.close!
+      end
+
+      def verify_commit_object!(commit_sha, tree_sha)
+        parent = git_worktree("rev-parse", "#{commit_sha}^")
+        tree = git_worktree("rev-parse", "#{commit_sha}^{tree}")
+        trailers = git_worktree("show", "-s", "--format=%(trailers:key=KOS-Task,valueonly)", commit_sha)
+        parsed_trailers = trailers.stdout.lines.map(&:strip).reject(&:empty?)
+        valid = parent.success && parent.stdout.strip == @expected_head && tree.success && tree.stdout.strip == tree_sha &&
+          trailers.success && parsed_trailers == [ request.fetch("task_number") ]
+        internal!("commit_verification_failed", "Created commit failed verification") unless valid
+      end
+
+      def advance_branch!(commit_sha)
+        result = update_reserved_ref(commit_sha)
+        return if result&.success
+
+        recover_ref_update(commit_sha)
+      end
+
+      def update_reserved_ref(commit_sha)
+        git_common("update-ref", "--no-deref", reserved_ref, commit_sha, @expected_head)
+      rescue Error
+        nil
+      end
+
+      def recover_ref_update(commit_sha)
+        observed = observe_ref_safely
+        return if observed == commit_sha
+        transient!("ref_update_uncertain", "Reserved branch update could not be observed") unless observed
+        conflict!("ref_moved", "Reserved branch moved before commit") unless observed == @expected_head
+        conflict!("ref_update_failed", "Git rejected the branch update")
+      end
+
+      def observe_ref_safely
+        observed_ref
+      rescue Error
+        nil
+      end
+
+      def observed_ref
+        result = git_common("rev-parse", "--verify", "#{reserved_ref}^{commit}")
+        result.stdout.strip if result.success
+      end
+
+      def reserved_ref
+        "refs/heads/#{reservation.fetch('branch')}"
+      end
+
+      def reconcile_real_index(commit_sha)
+        index = git_worktree("rev-parse", "--git-path", "index")
+        return unless index.success
+
+        index_path = index.stdout.strip
+        return unless File.file?(index_path) && !File.symlink?(index_path) && canonical_existing(index_path) == index_path
+
+        update_real_index(index_path, commit_sha)
+      rescue Error, SystemCallError
+        nil
+      end
+
+      def update_real_index(index_path, commit_sha)
+        lock_path = "#{index_path}.lock"
+        owned_lock = false
+        flags = File::WRONLY | File::CREAT | File::EXCL
+        flags |= File::NOFOLLOW if defined?(File::NOFOLLOW)
+        File.open(lock_path, flags, 0o600) do |lock|
+          owned_lock = true
+          File.open(index_path, "rb") { |index| IO.copy_stream(index, lock) }
+          lock.flush
+          lock.fsync
+        end
+        result = git_worktree_literal("reset", commit_sha, "--", *sorted_paths,
+          environment: { "GIT_INDEX_FILE" => lock_path })
+        return File.unlink(lock_path) unless result.success
+
+        File.rename(lock_path, index_path)
+      rescue Error, SystemCallError
+        nil
+      ensure
+        File.unlink(lock_path) if owned_lock && path_exists?(lock_path)
+      end
+
+      def commit_evidence(commit_sha, tree_sha)
+        document = { "schema_version" => "1", "repository_id" => repository.fetch("id"),
+          "reservation_id" => reservation.fetch("id"), "fencing_token" => reservation.fetch("fencing_token"),
+          "path" => reservation.fetch("path"), "branch" => reservation.fetch("branch"),
+          "parent_sha" => @expected_head, "tree_sha" => tree_sha, "commit_sha" => commit_sha,
+          "paths" => sorted_paths, "expected_diff_digest" => request.fetch("expected_diff_digest"),
+          "expected_index_digest" => request.fetch("expected_index_digest"),
+          "task_number" => request.fetch("task_number") }
+        { "commit_sha" => commit_sha, "evidence_digest" => digest(canonical_json(document)) }
+      end
+
+      def request
+        @request
+      end
+
+      def paths
+        request.fetch("paths")
+      end
+
+      def sorted_paths
+        @sorted_paths ||= paths.sort_by(&:b)
+      end
+
+      def digest(bytes)
+        "sha256:#{Digest::SHA256.hexdigest(bytes)}"
+      end
+
+      def transient!(code, message)
+        raise Error.new("transient", code, message, retryable: true)
+      end
+
+      def git_worktree(*arguments, environment: {}, stdin: File::NULL)
+        arguments.shift if arguments.first == reservation.fetch("path")
+        @git.call("-C", reservation.fetch("path"), *arguments, environment: environment, stdin: stdin)
+      end
+
+      def git_worktree_literal(*arguments, environment: {}, stdin: File::NULL)
+        @git.call("--literal-pathspecs", "-C", reservation.fetch("path"), *arguments,
+          environment: environment, stdin: stdin)
+      end
+    end
+
     class Application
       EXIT_BY_CATEGORY = { "internal" => 1, "validation" => 2, "conflict" => 6, "transient" => 8 }.freeze
 
@@ -392,10 +811,11 @@ module Kos
 
       def run
         request = parse
-        observation = Worktree.new(request).call
-        write({ "schema_version" => "1", "operation" => request.fetch("operation"), "outcome" => "succeeded",
+        result = request.fetch("operation") == "commit" ? Commit.new(request).call : Worktree.new(request).call
+        document = { "schema_version" => "1", "operation" => request.fetch("operation"), "outcome" => "succeeded",
           "repository_id" => request.dig("repository", "id"), "reservation_id" => request.dig("reservation", "id"),
-          "fencing_token" => request.dig("reservation", "fencing_token"), "observation" => observation })
+          "fencing_token" => request.dig("reservation", "fencing_token") }
+        write(document.merge(request.fetch("operation") == "commit" ? result : { "observation" => result }))
       rescue Error => error
         write_error(error)
       rescue StandardError
@@ -413,10 +833,10 @@ module Kos
 
       def parse
         operation, input_flag, path, json_flag = @arguments
-        unless %w[materialize observe remove].include?(operation) && input_flag == "--input" && path &&
+        unless %w[materialize observe remove commit].include?(operation) && input_flag == "--input" && path &&
             json_flag == "--json" && @arguments.length == 4
           raise Error.new("validation", "malformed_input",
-            "Usage: kos-repository <materialize|observe|remove> --input <path|-> --json")
+            "Usage: kos-repository <materialize|observe|remove|commit> --input <path|-> --json")
         end
         content = path == "-" ? @input.read : File.binread(path)
         request = Kos::JsonParser.parse(content)
@@ -430,7 +850,7 @@ module Kos
       end
 
       def known_operation
-        %w[materialize observe remove].include?(@arguments.first) ? @arguments.first : "unknown"
+        %w[materialize observe remove commit].include?(@arguments.first) ? @arguments.first : "unknown"
       end
 
       def write(document)

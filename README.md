@@ -91,9 +91,10 @@ The local repository adapter reads a closed version 1 request from a file or std
 bin/kos-repository materialize --input materialize.json --json
 bin/kos-repository observe --input observation.json --json
 bin/kos-repository remove --input removal.json --json
+bin/kos-repository commit --input commit.json --json
 ```
 
-`materialize` accepts only a `reserved` reservation and creates its exact task branch and path from the expected base commit. `remove` accepts only `release_pending` and never removes a dirty, mismatched, or unproven worktree. The complete machine documents are defined by `schemas/repository/v1/adapter.json`; runtime skills and orchestration are installed separately.
+`materialize` accepts only a `reserved` reservation and creates its exact task branch and path from the expected base commit. `remove` accepts only `release_pending` and never removes a dirty, mismatched, or unproven worktree. `commit` accepts only a matching confirmed reservation and initially clean index, rejects requested paths with configured Git filters, hashes present files with filters disabled, populates an isolated index with explicit blobs, modes, paths, and deletions, verifies the protocol-defined diff and index digests, adds the authoritative `KOS-Task` trailer, and compare-and-swap advances only the reserved branch to the verified explicit tree. Concurrent unrelated index entries cannot enter the commit and are preserved when possible during best-effort real-index refresh after success. An occupied index lock is never removed or overwritten, commit success remains definitive, and worktree files are never reset. The complete machine documents are defined by `schemas/repository/v1/adapter.json`; Rails effects, runtime skills, and orchestration are separate integration boundaries.
 
 The CLI writes one versioned JSON result to stdout and diagnostics to stderr.
 

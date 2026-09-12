@@ -8,6 +8,8 @@
     "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "absolute_path": { "type": "string", "minLength": 1, "pattern": "^/", "x-canonical-path": true },
     "branch": { "type": "string", "pattern": "^kos/task-[A-Z][A-Z0-9]{1,9}-[0-9]{6}$" },
+    "task_number": { "type": "string", "pattern": "^[A-Z][A-Z0-9]{1,9}-[0-9]{6}$" },
+    "repository_path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!:)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*\\u0000).+$", "x-canonical-path": true, "x-exact-file": true },
     "repository": {
       "type": "object",
       "properties": {
@@ -61,7 +63,25 @@
         { "properties": { "operation": { "const": "remove" }, "reservation": { "properties": { "state": { "const": "release_pending" } } } } }
       ]
     },
-    "request": { "oneOf": [{ "$ref": "#/$defs/materialize_request" }, { "$ref": "#/$defs/observe_request" }, { "$ref": "#/$defs/remove_request" }] },
+    "commit_request": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/schema_version" },
+        "operation": { "const": "commit" },
+        "repository": { "$ref": "#/$defs/repository" },
+        "reservation": { "allOf": [{ "$ref": "#/$defs/reservation" }, { "properties": { "state": { "const": "confirmed" } } }] },
+        "expected_head_sha": { "$ref": "#/$defs/git_oid" },
+        "expected_diff_digest": { "$ref": "#/$defs/digest" },
+        "expected_index_digest": { "$ref": "#/$defs/digest" },
+        "paths": { "type": "array", "items": { "$ref": "#/$defs/repository_path" }, "minItems": 1, "uniqueItems": true },
+        "message": { "type": "string", "minLength": 1 },
+        "task_number": { "$ref": "#/$defs/task_number" }
+      },
+      "required": ["schema_version", "operation", "repository", "reservation", "expected_head_sha", "expected_diff_digest", "expected_index_digest", "paths", "message", "task_number"],
+      "x-task-number-derives-reservation-branch": true,
+      "additionalProperties": false
+    },
+    "request": { "oneOf": [{ "$ref": "#/$defs/materialize_request" }, { "$ref": "#/$defs/observe_request" }, { "$ref": "#/$defs/remove_request" }, { "$ref": "#/$defs/commit_request" }] },
     "observation": {
       "type": "object",
       "properties": {
@@ -77,7 +97,7 @@
       ],
       "additionalProperties": false
     },
-    "success": {
+    "worktree_success": {
       "type": "object",
       "properties": {
         "schema_version": { "$ref": "#/$defs/schema_version" },
@@ -91,6 +111,22 @@
       "required": ["schema_version", "operation", "outcome", "repository_id", "reservation_id", "fencing_token", "observation"],
       "additionalProperties": false
     },
+    "commit_success": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/schema_version" },
+        "operation": { "const": "commit" },
+        "outcome": { "const": "succeeded" },
+        "repository_id": { "$ref": "#/$defs/uuid" },
+        "reservation_id": { "$ref": "#/$defs/uuid" },
+        "fencing_token": { "type": "integer", "minimum": 1 },
+        "commit_sha": { "$ref": "#/$defs/git_oid" },
+        "evidence_digest": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["schema_version", "operation", "outcome", "repository_id", "reservation_id", "fencing_token", "commit_sha", "evidence_digest"],
+      "additionalProperties": false
+    },
+    "success": { "oneOf": [{ "$ref": "#/$defs/worktree_success" }, { "$ref": "#/$defs/commit_success" }] },
     "error": {
       "type": "object",
       "properties": {
@@ -101,17 +137,22 @@
           "base_ref_moved", "branch_exists", "worktree_mismatched", "worktree_materialization_failed",
           "worktree_unlock_failed", "worktree_removal_failed", "git_timeout", "internal_error",
           "worktree_verification_failed", "worktree_metadata_invalid", "worktree_marker_conflict",
-          "worktree_removal_unverified", "worktree_lock_invalid"
+          "worktree_removal_unverified", "worktree_lock_invalid", "task_mismatch", "commit_path_invalid",
+          "commit_message_invalid", "index_not_clean", "unfinished_operation", "diff_unavailable", "diff_mismatch",
+          "filter_check_failed", "commit_filter_unsupported",
+          "staging_failed", "index_mismatch", "index_unavailable", "empty_commit", "commit_paths_mismatch",
+          "commit_failed", "ref_moved", "ref_update_failed", "ref_update_uncertain",
+          "commit_message_parse_failed", "index_invalid", "commit_verification_failed"
         ] },
         "message": { "type": "string", "minLength": 1 },
         "retryable": { "type": "boolean" }
       },
       "required": ["category", "code", "message", "retryable"],
       "oneOf": [
-        { "properties": { "category": { "const": "validation" }, "code": { "enum": ["malformed_input", "repository_mismatch", "repository_invalid", "repository_ref_invalid", "repository_format_unsupported", "repository_lock_invalid", "worktree_path_invalid"] }, "retryable": { "const": false } } },
-        { "properties": { "category": { "const": "conflict" }, "code": { "enum": ["base_ref_moved", "branch_exists", "worktree_mismatched", "worktree_materialization_failed", "worktree_unlock_failed", "worktree_removal_failed"] }, "retryable": { "const": false } } },
-        { "properties": { "category": { "const": "transient" }, "code": { "const": "git_timeout" }, "retryable": { "const": true } } },
-        { "properties": { "category": { "const": "internal" }, "code": { "enum": ["internal_error", "worktree_verification_failed", "worktree_metadata_invalid", "worktree_marker_conflict", "worktree_removal_unverified", "worktree_lock_invalid"] }, "retryable": { "const": false } } }
+        { "properties": { "category": { "const": "validation" }, "code": { "enum": ["malformed_input", "repository_mismatch", "repository_invalid", "repository_ref_invalid", "repository_format_unsupported", "repository_lock_invalid", "worktree_path_invalid", "task_mismatch", "commit_path_invalid", "commit_message_invalid"] }, "retryable": { "const": false } } },
+        { "properties": { "category": { "const": "conflict" }, "code": { "enum": ["base_ref_moved", "branch_exists", "worktree_mismatched", "worktree_materialization_failed", "worktree_unlock_failed", "worktree_removal_failed", "index_not_clean", "unfinished_operation", "diff_unavailable", "diff_mismatch", "filter_check_failed", "commit_filter_unsupported", "staging_failed", "index_mismatch", "index_unavailable", "empty_commit", "commit_paths_mismatch", "commit_failed", "ref_moved", "ref_update_failed"] }, "retryable": { "const": false } } },
+        { "properties": { "category": { "const": "transient" }, "code": { "enum": ["git_timeout", "ref_update_uncertain"] }, "retryable": { "const": true } } },
+        { "properties": { "category": { "const": "internal" }, "code": { "enum": ["internal_error", "worktree_verification_failed", "worktree_metadata_invalid", "worktree_marker_conflict", "worktree_removal_unverified", "worktree_lock_invalid", "commit_message_parse_failed", "index_invalid", "commit_verification_failed"] }, "retryable": { "const": false } } }
       ],
       "additionalProperties": false
     },
@@ -119,11 +160,18 @@
       "type": "object",
       "properties": {
         "schema_version": { "$ref": "#/$defs/schema_version" },
-        "operation": { "enum": ["materialize", "observe", "remove", "unknown"] },
+        "operation": { "enum": ["materialize", "observe", "remove", "commit", "unknown"] },
         "outcome": { "const": "failed" },
         "error": { "$ref": "#/$defs/error" }
       },
       "required": ["schema_version", "operation", "outcome", "error"],
+      "allOf": [
+        { "if": { "properties": { "operation": { "const": "materialize" } }, "required": ["operation"] }, "then": { "properties": { "error": { "properties": { "code": { "enum": ["malformed_input", "repository_mismatch", "repository_invalid", "repository_ref_invalid", "repository_format_unsupported", "repository_lock_invalid", "worktree_path_invalid", "base_ref_moved", "branch_exists", "worktree_mismatched", "worktree_materialization_failed", "git_timeout", "internal_error", "worktree_verification_failed", "worktree_metadata_invalid", "worktree_marker_conflict"] } } } } } },
+        { "if": { "properties": { "operation": { "const": "observe" } }, "required": ["operation"] }, "then": { "properties": { "error": { "properties": { "code": { "enum": ["malformed_input", "repository_mismatch", "repository_invalid", "repository_ref_invalid", "repository_format_unsupported", "worktree_path_invalid", "git_timeout", "internal_error"] } } } } } },
+        { "if": { "properties": { "operation": { "const": "remove" } }, "required": ["operation"] }, "then": { "properties": { "error": { "properties": { "code": { "enum": ["malformed_input", "repository_mismatch", "repository_invalid", "repository_ref_invalid", "repository_format_unsupported", "repository_lock_invalid", "worktree_path_invalid", "worktree_unlock_failed", "worktree_removal_failed", "git_timeout", "internal_error", "worktree_metadata_invalid", "worktree_removal_unverified", "worktree_lock_invalid"] } } } } } },
+        { "if": { "properties": { "operation": { "const": "commit" } }, "required": ["operation"] }, "then": { "properties": { "error": { "properties": { "code": { "enum": ["malformed_input", "repository_mismatch", "repository_invalid", "repository_ref_invalid", "repository_format_unsupported", "repository_lock_invalid", "worktree_path_invalid", "task_mismatch", "commit_path_invalid", "commit_message_invalid", "worktree_mismatched", "index_not_clean", "unfinished_operation", "diff_unavailable", "diff_mismatch", "filter_check_failed", "commit_filter_unsupported", "staging_failed", "index_mismatch", "index_unavailable", "empty_commit", "commit_paths_mismatch", "commit_failed", "ref_moved", "ref_update_failed", "git_timeout", "ref_update_uncertain", "internal_error", "commit_message_parse_failed", "index_invalid", "commit_verification_failed"] } } } } } },
+        { "if": { "properties": { "operation": { "const": "unknown" } }, "required": ["operation"] }, "then": { "properties": { "error": { "properties": { "code": { "const": "malformed_input" } } } } } }
+      ],
       "additionalProperties": false
     }
   }
