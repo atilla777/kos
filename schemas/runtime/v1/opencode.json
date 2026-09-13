@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kos.local/schemas/runtime/v1/opencode.json",
+  "$defs": {
+    "runtime_session_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "capability_observation": {
+      "type": "object",
+      "properties": {
+        "outcome": { "enum": ["passed", "failed"] },
+        "message": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      },
+      "required": ["outcome", "message"],
+      "additionalProperties": false
+    },
+    "capability_report": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "1" },
+        "runtime": { "const": "opencode" },
+        "runtime_version": { "const": "1.18.26" },
+        "compatible": { "type": "boolean" },
+        "observations": {
+          "type": "object",
+          "properties": {
+            "skill_discovery": { "$ref": "#/$defs/capability_observation" },
+            "non_interactive_json": { "$ref": "#/$defs/capability_observation" },
+            "subagent_launch": { "$ref": "#/$defs/capability_observation" },
+            "worktree_cwd": { "$ref": "#/$defs/capability_observation" },
+            "typed_effect_round_trip": { "$ref": "#/$defs/capability_observation" }
+          },
+          "required": ["skill_discovery", "non_interactive_json", "subagent_launch", "worktree_cwd", "typed_effect_round_trip"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["schema_version", "runtime", "runtime_version", "compatible", "observations"],
+      "allOf": [
+        {
+          "if": { "properties": { "compatible": { "const": true } }, "required": ["compatible"] },
+          "then": {
+            "properties": {
+              "observations": {
+                "properties": {
+                  "skill_discovery": { "properties": { "outcome": { "const": "passed" } } },
+                  "non_interactive_json": { "properties": { "outcome": { "const": "passed" } } },
+                  "subagent_launch": { "properties": { "outcome": { "const": "passed" } } },
+                  "worktree_cwd": { "properties": { "outcome": { "const": "passed" } } },
+                  "typed_effect_round_trip": { "properties": { "outcome": { "const": "passed" } } }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "observations": {
+                "properties": {
+                  "skill_discovery": { "properties": { "outcome": { "const": "passed" } }, "required": ["outcome"] },
+                  "non_interactive_json": { "properties": { "outcome": { "const": "passed" } }, "required": ["outcome"] },
+                  "subagent_launch": { "properties": { "outcome": { "const": "passed" } }, "required": ["outcome"] },
+                  "worktree_cwd": { "properties": { "outcome": { "const": "passed" } }, "required": ["outcome"] },
+                  "typed_effect_round_trip": { "properties": { "outcome": { "const": "passed" } }, "required": ["outcome"] }
+                },
+                "required": ["skill_discovery", "non_interactive_json", "subagent_launch", "worktree_cwd", "typed_effect_round_trip"]
+              }
+            },
+            "required": ["observations"]
+          },
+          "then": { "properties": { "compatible": { "const": true } } }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "workflow_step_turn": {
+      "oneOf": [
+        { "$ref": "../../cli/v1/workflow.json#/$defs/effect_request" },
+        { "$ref": "../../cli/v1/workflow.json#/$defs/result_manifest" }
+      ]
+    },
+    "workflow_step_completion": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "1" },
+        "runtime": { "const": "opencode" },
+        "child_session_id": { "$ref": "#/$defs/runtime_session_id" },
+        "turn": { "$ref": "#/$defs/workflow_step_turn" }
+      },
+      "required": ["schema_version", "runtime", "child_session_id", "turn"],
+      "additionalProperties": false
+    },
+    "effect_delivery": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "1" },
+        "runtime": { "const": "opencode" },
+        "child_session_id": { "$ref": "#/$defs/runtime_session_id" },
+        "effect_result": { "$ref": "../../cli/v1/workflow.json#/$defs/effect_result" }
+      },
+      "required": ["schema_version", "runtime", "child_session_id", "effect_result"],
+      "additionalProperties": false
+    }
+  }
+}

@@ -54,6 +54,46 @@ url = "https://github.com/evilmartians/lefthook/releases/download/v2.1.12/leftho
 url_api = "https://api.github.com/repos/evilmartians/lefthook/releases/assets/533627801"
 provenance = "github-attestations"
 
+[[tools.opencode]]
+version = "1.18.26"
+backend = "aqua:anomalyco/opencode"
+specifiers = ["1.18.26"]
+
+[tools.opencode."platforms.linux-arm64"]
+checksum = "sha256:90b99cc2356fea188d67352418ad7223559841178142f719848ca2c88a689c3e"
+url = "https://github.com/anomalyco/opencode/releases/download/v1.18.26/opencode-linux-arm64.tar.gz"
+url_api = "https://api.github.com/repos/anomalyco/opencode/releases/assets/540146312"
+
+[tools.opencode."platforms.linux-arm64-musl"]
+checksum = "sha256:531d16c8d3a8a1a11d96bcd045640b43c84073625ce0d5ba794095cccea7cfb7"
+url = "https://github.com/anomalyco/opencode/releases/download/v1.18.26/opencode-linux-arm64-musl.tar.gz"
+url_api = "https://api.github.com/repos/anomalyco/opencode/releases/assets/540146302"
+
+[tools.opencode."platforms.linux-x64"]
+checksum = "sha256:7c20c1ffa91bcca0ac903752260bcc36307dff656833baead2f5ef3b224b16c6"
+url = "https://github.com/anomalyco/opencode/releases/download/v1.18.26/opencode-linux-x64.tar.gz"
+url_api = "https://api.github.com/repos/anomalyco/opencode/releases/assets/540146333"
+
+[tools.opencode."platforms.linux-x64-musl"]
+checksum = "sha256:c68b16b907a128974b4677fec9ed4266809995353a79324271c6f5977b3ff4b6"
+url = "https://github.com/anomalyco/opencode/releases/download/v1.18.26/opencode-linux-x64-musl.tar.gz"
+url_api = "https://api.github.com/repos/anomalyco/opencode/releases/assets/540146397"
+
+[tools.opencode."platforms.macos-arm64"]
+checksum = "sha256:b05d383149a5a417140e8edebd83064142fa36e74fdfcd5f791919dcb12fd33a"
+url = "https://github.com/anomalyco/opencode/releases/download/v1.18.26/opencode-darwin-arm64.zip"
+url_api = "https://api.github.com/repos/anomalyco/opencode/releases/assets/540146149"
+
+[tools.opencode."platforms.macos-x64"]
+checksum = "sha256:dc1c641bc391f28370c30e5ca95d51b0bb355ab5deb387f2d2adc3d5ad56c68b"
+url = "https://github.com/anomalyco/opencode/releases/download/v1.18.26/opencode-darwin-x64.zip"
+url_api = "https://api.github.com/repos/anomalyco/opencode/releases/assets/540146155"
+
+[tools.opencode."platforms.windows-x64"]
+checksum = "sha256:c7af81e288dff3cf4378c9f3509208ef8bf060d7109589fee2cd943845d87786"
+url = "https://github.com/anomalyco/opencode/releases/download/v1.18.26/opencode-windows-x64.zip"
+url_api = "https://api.github.com/repos/anomalyco/opencode/releases/assets/540150402"
+
 [[tools.ruby]]
 version = "4.0.6"
 backend = "core:ruby"

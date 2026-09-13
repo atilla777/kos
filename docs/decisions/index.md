@@ -14,5 +14,6 @@ This directory contains accepted Architecture Decision Records.
 - [ADR-0005: Central Persistence And Repository Registration](0005-central-persistence-and-registration.md) (workflow snapshot storage amended)
 - [ADR-0006: Repository-Specific Task Prefixes](0006-repository-task-prefixes.md)
 - [ADR-0007: Central Workflow Catalog](0007-central-workflow-catalog.md)
+- [ADR-0008: OpenCode Runtime Adapter](0008-opencode-runtime-adapter.md)
 
 Create an ADR for a long-lived decision that crosses tasks or domains, changes an architectural principle, data model, external contract, or substantial mechanism. Each ADR must state its context, decision, consequences, and rejected alternatives.

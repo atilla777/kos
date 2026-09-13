@@ -11,9 +11,9 @@ status: active
 
 1. Identifies the target Git repository.
 2. Optionally materializes initial `AGENTS.md`, `README.md`, and `docs/` content from versioned templates.
-3. Copies selected KOS skills into native runtime paths.
+3. Copies selected KOS skills and required runtime-adapter support files into native runtime paths.
 4. Does not overwrite an existing user file without explicit `--force` authorization.
-5. Verifies CLI availability, required published workflows in KOS, and skill discovery by the selected runtime.
+5. Verifies CLI availability, required published workflows in KOS, and the complete adapter capability contract for the selected runtime.
 
 Initialization asks the user for a repository task prefix, identifies the canonical Git common directory, trusted remote name and normalized URL, and full base ref, displays those exact values, and requires human confirmation before invoking the idempotent `repository.register` CLI command. The prefix must already satisfy the uppercase format; initialization does not silently normalize it. Automatic detection of `main` or `master` does not remove the confirmation requirement. The server validates prefix availability and independently verifies the submitted Git values as defined by [Central Persistence](central-persistence.md). The central state directory belongs to the Rails API, not the target repository.
 
@@ -23,4 +23,4 @@ Before applying project-file or runtime-copy changes, initialization produces a 
 
 Skill installation records a manifest containing KOS and CLI protocol versions, runtime target, supported runtime-version range, and each installed skill's digest. Files are copied through staging and atomic rename. Without `--force`, detected drift fails with a description of differences.
 
-Runtime target paths and required adapter capabilities are defined in [Runtime Integration](runtime-integration.md). Shared workflow publication and pinning are defined in [Workflow Catalog](workflow-catalog.md). The operational MVP initializes one repository and one supported runtime target. Detailed installation plan schemas and runtime adapter mechanics belong to later runtime-integration work.
+Runtime target paths, supported versions, and required adapter capabilities are defined in [Runtime Integration](runtime-integration.md). OpenCode compatibility is reported with the closed runtime schema and requires every capability observation to pass. Shared workflow publication and pinning are defined in [Workflow Catalog](workflow-catalog.md). The operational MVP initializes one repository and one supported runtime target. Detailed installation plan schemas and copy mechanics belong to later runtime-integration work.

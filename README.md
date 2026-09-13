@@ -9,6 +9,8 @@ KOS is a local workflow and state management system for AI-assisted software dev
 
 Ruby, the Rails bootstrap executable, and Lefthook are pinned in `mise.toml` and `mise.lock`. Application gems and Bundler are locked in `Gemfile.lock`.
 
+OpenCode 1.18.26 is pinned as the first runtime integration target. Its adapter contract is tested with an isolated configuration and loopback deterministic provider; project checks do not use personal OpenCode settings or provider credentials.
+
 ## Setup
 
 ```sh
