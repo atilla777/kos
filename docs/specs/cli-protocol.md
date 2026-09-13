@@ -168,9 +168,10 @@ Cleanup uses `worktree.release` twice around the external removal. A clean obser
 Publication follows these commands:
 
 1. `publication.prepare` validates the reviewed candidate, trusted remote and full base ref, records the expected remote OID and durable intent, stores its ID on the task as `active_publication_id`, and returns the publication resource.
-2. `kos-repository` runs checks and performs a conditional fast-forward push of the exact candidate outside the database transaction.
-3. After every push response, including an unknown response, `kos-repository` fetches the trusted remote and returns the observed tip, reachability, time, and evidence digest to `publication.reconcile`.
-4. If the candidate is reachable, the orchestrator safely releases the task worktree and calls `publication.complete`, which atomically verifies the prepared operation and successful manifest, registers its matching publication artifact, marks the attempt succeeded, and advances the task to `completed`.
+2. The orchestrator verifies the approved review, mandatory checks, active lease and fencing token, frozen context, task version, and prepared publication before invoking `kos-repository` outside the database transaction.
+3. `kos-repository` first fetches the trusted remote. It returns an already-reachable or moved-base observation without pushing; only an unchanged expected tip and verified fast-forward relation permit an exact-old-OID conditional push of the candidate.
+4. After every push response, including an unknown response, `kos-repository` fetches the trusted remote and returns the observed tip, reachability, time, and evidence digest to `publication.reconcile`.
+5. If the candidate is reachable, the orchestrator safely releases the task worktree and calls `publication.complete`, which atomically verifies the prepared operation and successful manifest, registers its matching publication artifact, marks the attempt succeeded, and advances the task to `completed`.
 
 The publication resource durably returns the latest observed remote tip, candidate reachability, observation time and evidence digest after reconciliation. If the candidate is not reachable and the observed tip still equals the prepared expected OID, the same prepared effect may be retried. If the observed tip moved, reconciliation marks the publication `superseded`, clears the task's `active_publication_id`, and returns `base_moved`; a new publication may be prepared only for a newly checked and reviewed candidate generation. Successful completion also clears `active_publication_id`. Client-supplied observations are accepted only from the current owning orchestrator as output of `kos-repository`; later adapter contract tests must prove how that evidence is generated.
 

@@ -4,6 +4,7 @@ require "json_schemer"
 require "open3"
 require "pathname"
 require "tempfile"
+require "time"
 require "timeout"
 require "tmpdir"
 require "uri"
@@ -13,11 +14,12 @@ require_relative "json_parser"
 module Kos
   module Repository
     class Error < StandardError
-      attr_reader :category, :code, :retryable
+      attr_reader :category, :code, :outcome, :retryable
 
-      def initialize(category, code, message, retryable: false)
+      def initialize(category, code, message, retryable: false, outcome: "failed")
         @category = category
         @code = code
+        @outcome = outcome
         @retryable = retryable
         super(message)
       end
@@ -51,7 +53,8 @@ module Kos
       }.freeze
       BASE_ARGUMENTS = [ "git", "--no-replace-objects", "-c", "color.ui=false", "-c",
         "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.splitIndex=false", "-c",
-        "commit.gpgSign=false" ].freeze
+        "commit.gpgSign=false", "-c", "trace2.eventTarget=false", "-c", "trace2.normalTarget=false", "-c",
+        "trace2.perfTarget=false" ].freeze
 
       def call(*arguments, timeout: TIMEOUT_SECONDS, environment: {}, stdin: File::NULL)
         stdout = Tempfile.new("kos-repository-out")
@@ -1225,6 +1228,184 @@ module Kos
       end
     end
 
+    class Push < Operation
+      TRUSTED_SCHEMES = %w[https ssh git file].freeze
+      FORBIDDEN_CONFIG = (Fetch::FORBIDDEN_CONFIG + [
+        /\Aremote\..*\.(?:pushurl|receivepack)\z/i,
+        /\Acredential(?:\..+)?\.(?:helper|username|usehttppath)\z/i,
+        /\Ahttp(?:\..+)?\.(?:cookiefile|savecookies|extraheader|sslcert|sslkey)\z/i,
+        /\Apush\.gpgsign\z/i, /\Agpg(?:\.ssh)?\.program\z/i, /\Agpg\.format\z/i,
+        /\Atrace2\.(?:event|normal|perf)target\z/i, /\Ainclude(?:if\..+)?\.path\z/i,
+        /\Aextensions\.worktreeconfig\z/i
+      ]).freeze
+      TRANSPORT_CONFIGURATION = [ "-c", "credential.helper=", "-c", "http.followRedirects=false", "-c",
+        "promisor.acceptFromServer=none" ].freeze
+
+      def call
+        validate_repository!
+        with_lock do
+          validate_repository!
+          validate_authority!
+          validate_trusted_url!
+          validate_remote_configuration!
+          validate_candidate!
+
+          observed_tip, reachable = observe_remote
+          return success(observed_tip, reachable) if reachable || observed_tip != expected_remote_oid
+
+          validate_fast_forward!
+          push_and_observe
+        end
+      end
+
+      private
+
+      def validate_authority!
+        validation!("publication_mismatch", "Publication does not belong to the repository") unless
+          publication.fetch("repository_id") == repository.fetch("id")
+        validation!("push_remote_mismatch", "Publication remote does not match registered trust") unless
+          publication.fetch("remote") == repository.fetch("trusted_remote")
+        validation!("push_ref_mismatch", "Publication ref does not match the registered base ref") unless
+          publication.fetch("base_ref") == repository.fetch("base_ref")
+      end
+
+      def validate_trusted_url!
+        uri = URI.parse(repository.fetch("trusted_remote_url"))
+        userinfo = uri.userinfo && URI::DEFAULT_PARSER.unescape(uri.userinfo)
+        valid_userinfo = userinfo.nil? || (uri.scheme == "ssh" && !userinfo.empty? &&
+          !userinfo.match?(/[:\/@?#\x00-\x1f\x7f]/))
+        valid = uri.absolute? && !uri.opaque && TRUSTED_SCHEMES.include?(uri.scheme) &&
+          uri.query.nil? && uri.fragment.nil? && valid_userinfo
+        valid &&= uri.scheme == "file" ? !uri.path.to_s.empty? && uri.path.start_with?("/") : !uri.host.to_s.empty?
+        validation!("push_configuration_invalid", "Trusted remote URL is invalid") unless valid
+      rescue URI::Error
+        validation!("push_configuration_invalid", "Trusted remote URL is invalid")
+      end
+
+      def validate_remote_configuration!
+        configured = git_common("config", "--null", "--get-all", "remote.#{remote}.url")
+        validation!("push_configuration_invalid", "Trusted remote configuration does not match") unless
+          configured.success && nul_values(configured) == [ repository.fetch("trusted_remote_url") ]
+
+        names = git_common("config", "--local", "--name-only", "--null", "--list")
+        validation!("push_configuration_invalid", "Repository configuration could not be verified") unless names.success
+        validation!("push_configuration_invalid", "Repository configuration can redirect publication") if
+          nul_values(names).any? { |name| FORBIDDEN_CONFIG.any? { |pattern| pattern.match?(name) } }
+      end
+
+      def validate_candidate!
+        object = git_common("cat-file", "-t", candidate_sha)
+        validation!("push_candidate_invalid", "Publication candidate is not a local commit") unless
+          object.success && object.stdout == "commit\n"
+      end
+
+      def validate_fast_forward!
+        expected = git_common("cat-file", "-t", expected_remote_oid)
+        validation!("push_candidate_invalid", "Expected remote OID is not a local commit") unless
+          expected.success && expected.stdout == "commit\n"
+        conflict!("push_non_fast_forward", "Publication candidate does not descend from the expected remote OID") unless
+          git_common("merge-base", "--is-ancestor", expected_remote_oid, candidate_sha).success
+      end
+
+      def push_and_observe
+        begin
+          git_common(*TRANSPORT_CONFIGURATION, "push", "--porcelain", "--no-verify",
+            "--no-signed", "--recurse-submodules=no", "--force-with-lease=#{base_ref}:#{expected_remote_oid}",
+            "--receive-pack=git-receive-pack", repository.fetch("trusted_remote_url"),
+            "#{candidate_sha}:#{base_ref}")
+        rescue StandardError
+          # A transport response cannot establish whether receive-pack updated the remote.
+        end
+
+        observed_tip, reachable = observe_remote
+        success(observed_tip, reachable)
+      rescue StandardError
+        raise Error.new("transient", "push_state_uncertain", "Publication remote state could not be observed",
+          retryable: true, outcome: "unknown")
+      end
+
+      def observe_remote
+        result = git_common(*TRANSPORT_CONFIGURATION, "fetch", "--no-append", "--no-tags", "--no-prune",
+          "--no-prune-tags", "--no-recurse-submodules", "--no-auto-maintenance", "--no-write-commit-graph",
+          "--no-update-shallow", "--no-write-fetch-head", "--refmap=", "--upload-pack=git-upload-pack",
+          repository.fetch("trusted_remote_url"), base_ref)
+        transient!("push_observation_failed", "Publication remote observation failed") unless result.success
+
+        observed_tip = observed_remote_oid
+        [ observed_tip, candidate_reachable?(observed_tip) ]
+      rescue Error => error
+        raise if error.code == "push_observation_failed"
+
+        transient!("push_observation_failed", "Publication remote observation failed")
+      rescue SystemCallError
+        transient!("push_observation_failed", "Publication remote observation failed")
+      end
+
+      def observed_remote_oid
+        result = git_common(*TRANSPORT_CONFIGURATION, "ls-remote", "--refs", "--exit-code",
+          repository.fetch("trusted_remote_url"), base_ref)
+        transient!("push_observation_failed", "Publication remote observation failed") unless result.success
+        match = result.stdout.match(/\A([0-9a-f]{40})\t([^\0\r\n]+)(?:\n)?\z/)
+        transient!("push_observation_failed", "Publication remote observation is invalid") unless
+          match && match[2] == base_ref
+
+        oid = match[1]
+        object = git_common("cat-file", "-t", oid)
+        transient!("push_observation_failed", "Observed remote tip is not a local commit") unless
+          object.success && object.stdout == "commit\n"
+        oid
+      end
+
+      def candidate_reachable?(observed_tip)
+        return true if observed_tip == candidate_sha
+
+        closure = git_common("rev-list", "--objects", "--missing=error", "--quiet", candidate_sha, observed_tip)
+        transient!("push_observation_failed", "Publication reachability could not be verified") unless
+          closure.success
+        git_common("merge-base", "--is-ancestor", candidate_sha, observed_tip).success
+      end
+
+      def success(observed_tip, reachable)
+        observed_at = Time.now.utc.iso8601(6)
+        evidence = { "schema_version" => "1", "repository" => repository, "publication" => publication,
+          "candidate_sha" => candidate_sha, "remote" => remote, "base_ref" => base_ref,
+          "observed_remote_tip" => observed_tip, "candidate_reachable" => reachable, "observed_at" => observed_at }
+        { "candidate_sha" => candidate_sha, "observed_remote_tip" => observed_tip,
+          "candidate_reachable" => reachable, "observed_at" => observed_at,
+          "evidence_digest" => digest(canonical_json(evidence)) }
+      end
+
+      def publication
+        request.fetch("publication")
+      end
+
+      def remote
+        publication.fetch("remote")
+      end
+
+      def base_ref
+        publication.fetch("base_ref")
+      end
+
+      def candidate_sha
+        publication.fetch("candidate_sha")
+      end
+
+      def expected_remote_oid
+        publication.fetch("expected_remote_oid")
+      end
+
+      def nul_values(result)
+        values = result.stdout.split("\0", -1)
+        values.pop if values.last == ""
+        values
+      end
+
+      def digest(bytes)
+        "sha256:#{Digest::SHA256.hexdigest(bytes)}"
+      end
+    end
+
     class Application
       EXIT_BY_CATEGORY = { "internal" => 1, "validation" => 2, "conflict" => 6, "transient" => 8 }.freeze
 
@@ -1253,6 +1434,7 @@ module Kos
         when "commit" then Commit.new(request)
         when "fetch" then Fetch.new(request)
         when "rebase" then Rebase.new(request)
+        when "push" then Push.new(request)
         else Worktree.new(request)
         end
       end
@@ -1268,6 +1450,11 @@ module Kos
             "effect_request_digest" => effect.fetch("request_digest")).tap do |success|
               success["reservation_id"] = request.dig("reservation", "id") if request.fetch("operation") == "rebase"
             end
+        elsif request.fetch("operation") == "push"
+          publication = request.fetch("publication")
+          document.merge(result).merge("publication_id" => publication.fetch("id"),
+            "current_owner_attempt_id" => publication.fetch("current_owner_attempt_id"),
+            "fencing_token" => publication.fetch("fencing_token"))
         else
           reservation = request.fetch("reservation")
           document.merge("reservation_id" => reservation.fetch("id"),
@@ -1279,17 +1466,17 @@ module Kos
 
       def write_error(error)
         @stderr.puts(error.message)
-        write({ "schema_version" => "1", "operation" => known_operation, "outcome" => "failed",
+        write({ "schema_version" => "1", "operation" => known_operation, "outcome" => error.outcome,
           "error" => { "category" => error.category, "code" => error.code, "message" => error.message,
             "retryable" => error.retryable } })
       end
 
       def parse
         operation, input_flag, path, json_flag = @arguments
-        unless %w[materialize observe remove commit fetch rebase].include?(operation) && input_flag == "--input" && path &&
+        unless %w[materialize observe remove commit fetch rebase push].include?(operation) && input_flag == "--input" && path &&
             json_flag == "--json" && @arguments.length == 4
           raise Error.new("validation", "malformed_input",
-            "Usage: kos-repository <materialize|observe|remove|commit|fetch|rebase> --input <path|-> --json")
+            "Usage: kos-repository <materialize|observe|remove|commit|fetch|rebase|push> --input <path|-> --json")
         end
         content = path == "-" ? @input.read : File.binread(path)
         request = Kos::JsonParser.parse(content)
@@ -1303,7 +1490,7 @@ module Kos
       end
 
       def known_operation
-        %w[materialize observe remove commit fetch rebase].include?(@arguments.first) ? @arguments.first : "unknown"
+        %w[materialize observe remove commit fetch rebase push].include?(@arguments.first) ? @arguments.first : "unknown"
       end
 
       def write(document)

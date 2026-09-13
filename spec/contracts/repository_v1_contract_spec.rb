@@ -57,6 +57,14 @@ RSpec.describe RepositoryV1Contract do
       "fetch" => { "request" => fetch_request, "result" => fetch_success } }
   end
 
+  def push_request
+    { "schema_version" => "1", "operation" => "push", "repository" => fetch_request.fetch("repository"),
+      "publication" => { "id" => "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "repository_id" => repository_id, "current_owner_attempt_id" => attempt_id, "fencing_token" => 10,
+        "input_context_digest" => "sha256:#{'e' * 64}", "candidate_sha" => "2" * 40,
+        "remote" => "origin", "base_ref" => "refs/heads/main", "expected_remote_oid" => sha } }
+  end
+
   it "accepts a materialize request" do
     expect(schema.ref("#/$defs/request")).to be_valid(request)
   end
@@ -89,6 +97,13 @@ RSpec.describe RepositoryV1Contract do
     expect(schema.ref("#/$defs/request")).not_to be_valid(rebase_request.merge(
       "reservation" => rebase_request.fetch("reservation").merge("state" => "reserved")))
     expect(schema.ref("#/$defs/request")).not_to be_valid(rebase_request.merge("fetch" => {}))
+  end
+
+  it "accepts only a closed publication-bound push request", :aggregate_failures do
+    expect(schema.ref("#/$defs/request")).to be_valid(push_request)
+    expect(schema.ref("#/$defs/request")).not_to be_valid(push_request.merge("force" => true))
+    expect(schema.ref("#/$defs/request")).not_to be_valid(push_request.merge(
+      "publication" => push_request.fetch("publication").except("input_context_digest")))
   end
 
   it "accepts only registered fetch URL schemes without raw passwords, queries, or fragments" do
@@ -153,6 +168,13 @@ RSpec.describe RepositoryV1Contract do
     expect(schema.ref("#/$defs/success")).not_to be_valid(rebase_success.merge("onto_sha" => "2" * 40))
   end
 
+  it "accepts only a closed publication observation for push success", :aggregate_failures do
+    success = push_success
+    expect(schema.ref("#/$defs/success")).to be_valid(success)
+    expect(schema.ref("#/$defs/success")).not_to be_valid(success.merge("pushed" => true))
+    expect(schema.ref("#/$defs/success")).to be_valid(success.merge("candidate_reachable" => false))
+  end
+
   it "requires identity evidence for a present worktree" do
     observation = schema.ref("#/$defs/observation")
 
@@ -196,6 +218,10 @@ RSpec.describe RepositoryV1Contract do
     expect(rebase_failure_contract_results).to eq([ true, true, false ])
   end
 
+  it "reserves unknown outcomes for unobserved push state", :aggregate_failures do
+    expect(push_unknown_contract_results).to eq([ true, false, false ])
+  end
+
   it "rejects a worktree-only failure for commit" do
     base = { "schema_version" => "1", "outcome" => "failed", "operation" => "commit" }
     worktree_error = { "category" => "conflict", "code" => "branch_exists", "message" => "Conflict",
@@ -229,6 +255,23 @@ RSpec.describe RepositoryV1Contract do
       "effect_id" => rebase_request.dig("effect", "id"), "current_owner_attempt_id" => attempt_id,
       "fencing_token" => 9, "effect_request_digest" => rebase_request.dig("effect", "request_digest"),
       "head_sha" => "2" * 40, "evidence_digest" => "sha256:#{'d' * 64}" }
+  end
+
+  def push_success
+    { "schema_version" => "1", "operation" => "push", "outcome" => "succeeded",
+      "repository_id" => repository_id, "publication_id" => push_request.dig("publication", "id"),
+      "current_owner_attempt_id" => attempt_id, "fencing_token" => 10, "candidate_sha" => "2" * 40,
+      "observed_remote_tip" => "2" * 40, "candidate_reachable" => true,
+      "observed_at" => "2026-09-13T12:00:00.000000Z", "evidence_digest" => "sha256:#{'f' * 64}" }
+  end
+
+  def push_unknown_contract_results
+    unknown = { "schema_version" => "1", "operation" => "push", "outcome" => "unknown",
+      "error" => { "category" => "transient", "code" => "push_state_uncertain",
+        "message" => "Uncertain", "retryable" => true } }
+    contract = schema.ref("#/$defs/failure")
+    [ contract.valid?(unknown), contract.valid?(unknown.merge("operation" => "fetch")),
+      contract.valid?(unknown.merge("outcome" => "failed")) ]
   end
 
   def rebase_failure_contract_results

@@ -51,7 +51,7 @@ status: active
 
 - Only the repository adapter performs mutating Git operations, including worktree creation, commits, rebases, and pushes.
 - A task that changes repository files uses its reserved branch and worktree. Validate repository identity, reservation, fencing token, and expected branch or commit before every Git side effect. A commit requires a verified expected diff and index; operations that do not create that diff require a clean worktree.
-- Publish only the reviewed candidate SHA to the configured trusted remote and base ref using a fast-forward push. Immediately before push, atomically verify that the candidate, approved review evidence, required checks, task version, and expected base ref belong to the active attempt. Never force-push.
+- Publish only the reviewed candidate SHA to the configured trusted remote and base ref using a fast-forward push. Immediately before invoking the repository adapter, atomically verify that the candidate, approved review evidence, required checks, task version, prepared publication, and expected base ref belong to the active attempt. The adapter must independently enforce the exact expected remote OID and fast-forward relation; never authorize a non-fast-forward update.
 - Treat published workflow versions, artifacts, and review evidence as immutable. Reference repository files by repository-relative path plus commit and content digest.
 - Keep runtime installations derived from canonical `skills/` sources. Materialize files through staging and atomic rename; do not treat runtime copies as editable sources.
 

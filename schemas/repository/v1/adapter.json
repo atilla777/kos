@@ -197,7 +197,34 @@
       "required": ["schema_version", "operation", "repository", "reservation", "effect", "fetch"],
       "additionalProperties": false
     },
-    "request": { "oneOf": [{ "$ref": "#/$defs/materialize_request" }, { "$ref": "#/$defs/observe_request" }, { "$ref": "#/$defs/remove_request" }, { "$ref": "#/$defs/commit_request" }, { "$ref": "#/$defs/fetch_request" }, { "$ref": "#/$defs/rebase_request" }] },
+    "publication_snapshot": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "repository_id": { "$ref": "#/$defs/uuid" },
+        "current_owner_attempt_id": { "$ref": "#/$defs/uuid" },
+        "fencing_token": { "type": "integer", "minimum": 1 },
+        "input_context_digest": { "$ref": "#/$defs/digest" },
+        "candidate_sha": { "$ref": "#/$defs/git_oid" },
+        "remote": { "$ref": "#/$defs/identifier" },
+        "base_ref": { "type": "string", "pattern": "^refs/heads/[^ ]+$" },
+        "expected_remote_oid": { "$ref": "#/$defs/git_oid" }
+      },
+      "required": ["id", "repository_id", "current_owner_attempt_id", "fencing_token", "input_context_digest", "candidate_sha", "remote", "base_ref", "expected_remote_oid"],
+      "additionalProperties": false
+    },
+    "push_request": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/schema_version" },
+        "operation": { "const": "push" },
+        "repository": { "$ref": "#/$defs/fetch_repository" },
+        "publication": { "$ref": "#/$defs/publication_snapshot" }
+      },
+      "required": ["schema_version", "operation", "repository", "publication"],
+      "additionalProperties": false
+    },
+    "request": { "oneOf": [{ "$ref": "#/$defs/materialize_request" }, { "$ref": "#/$defs/observe_request" }, { "$ref": "#/$defs/remove_request" }, { "$ref": "#/$defs/commit_request" }, { "$ref": "#/$defs/fetch_request" }, { "$ref": "#/$defs/rebase_request" }, { "$ref": "#/$defs/push_request" }] },
     "observation": {
       "type": "object",
       "properties": {
@@ -279,7 +306,26 @@
       "required": ["schema_version", "operation", "outcome", "repository_id", "reservation_id", "effect_id", "current_owner_attempt_id", "fencing_token", "effect_request_digest", "head_sha", "evidence_digest"],
       "additionalProperties": false
     },
-    "success": { "oneOf": [{ "$ref": "#/$defs/worktree_success" }, { "$ref": "#/$defs/commit_success" }, { "$ref": "#/$defs/fetch_success" }, { "$ref": "#/$defs/rebase_success" }] },
+    "push_success": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/schema_version" },
+        "operation": { "const": "push" },
+        "outcome": { "const": "succeeded" },
+        "repository_id": { "$ref": "#/$defs/uuid" },
+        "publication_id": { "$ref": "#/$defs/uuid" },
+        "current_owner_attempt_id": { "$ref": "#/$defs/uuid" },
+        "fencing_token": { "type": "integer", "minimum": 1 },
+        "candidate_sha": { "$ref": "#/$defs/git_oid" },
+        "observed_remote_tip": { "$ref": "#/$defs/git_oid" },
+        "candidate_reachable": { "type": "boolean" },
+        "observed_at": { "type": "string", "format": "date-time" },
+        "evidence_digest": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["schema_version", "operation", "outcome", "repository_id", "publication_id", "current_owner_attempt_id", "fencing_token", "candidate_sha", "observed_remote_tip", "candidate_reachable", "observed_at", "evidence_digest"],
+      "additionalProperties": false
+    },
+    "success": { "oneOf": [{ "$ref": "#/$defs/worktree_success" }, { "$ref": "#/$defs/commit_success" }, { "$ref": "#/$defs/fetch_success" }, { "$ref": "#/$defs/rebase_success" }, { "$ref": "#/$defs/push_success" }] },
     "error": {
       "type": "object",
       "properties": {
@@ -299,25 +345,27 @@
           "effect_request_mismatch", "fetch_remote_mismatch", "fetch_ref_mismatch", "fetch_configuration_invalid",
           "fetch_failed", "fetch_result_invalid", "fetch_evidence_mismatch", "rebase_target_mismatch",
           "rebase_history_invalid", "rebase_base_moved", "rebase_configuration_invalid", "rebase_conflict",
-          "rebase_failed", "rebase_state_uncertain"
+          "rebase_failed", "rebase_state_uncertain", "publication_mismatch", "push_remote_mismatch",
+          "push_ref_mismatch", "push_configuration_invalid", "push_candidate_invalid", "push_non_fast_forward",
+          "push_observation_failed", "push_state_uncertain"
         ] },
         "message": { "type": "string", "minLength": 1 },
         "retryable": { "type": "boolean" }
       },
       "required": ["category", "code", "message", "retryable"],
       "oneOf": [
-        { "properties": { "category": { "const": "validation" }, "code": { "enum": ["malformed_input", "repository_mismatch", "repository_invalid", "repository_ref_invalid", "repository_format_unsupported", "repository_lock_invalid", "worktree_path_invalid", "task_mismatch", "commit_path_invalid", "commit_message_invalid", "effect_request_mismatch", "fetch_remote_mismatch", "fetch_ref_mismatch", "fetch_configuration_invalid", "fetch_evidence_mismatch", "rebase_target_mismatch"] }, "retryable": { "const": false } } },
-        { "properties": { "category": { "const": "conflict" }, "code": { "enum": ["base_ref_moved", "branch_exists", "worktree_mismatched", "worktree_materialization_failed", "worktree_unlock_failed", "worktree_removal_failed", "index_not_clean", "unfinished_operation", "diff_unavailable", "diff_mismatch", "filter_check_failed", "commit_filter_unsupported", "staging_failed", "index_mismatch", "index_unavailable", "empty_commit", "commit_paths_mismatch", "commit_failed", "ref_moved", "ref_update_failed", "rebase_history_invalid", "rebase_base_moved", "rebase_configuration_invalid", "rebase_conflict", "rebase_failed"] }, "retryable": { "const": false } } },
-        { "properties": { "category": { "const": "transient" }, "code": { "enum": ["git_timeout", "ref_update_uncertain", "fetch_failed", "rebase_state_uncertain"] }, "retryable": { "const": true } } },
+        { "properties": { "category": { "const": "validation" }, "code": { "enum": ["malformed_input", "repository_mismatch", "repository_invalid", "repository_ref_invalid", "repository_format_unsupported", "repository_lock_invalid", "worktree_path_invalid", "task_mismatch", "commit_path_invalid", "commit_message_invalid", "effect_request_mismatch", "fetch_remote_mismatch", "fetch_ref_mismatch", "fetch_configuration_invalid", "fetch_evidence_mismatch", "rebase_target_mismatch", "publication_mismatch", "push_remote_mismatch", "push_ref_mismatch", "push_configuration_invalid", "push_candidate_invalid"] }, "retryable": { "const": false } } },
+        { "properties": { "category": { "const": "conflict" }, "code": { "enum": ["base_ref_moved", "branch_exists", "worktree_mismatched", "worktree_materialization_failed", "worktree_unlock_failed", "worktree_removal_failed", "index_not_clean", "unfinished_operation", "diff_unavailable", "diff_mismatch", "filter_check_failed", "commit_filter_unsupported", "staging_failed", "index_mismatch", "index_unavailable", "empty_commit", "commit_paths_mismatch", "commit_failed", "ref_moved", "ref_update_failed", "rebase_history_invalid", "rebase_base_moved", "rebase_configuration_invalid", "rebase_conflict", "rebase_failed", "push_non_fast_forward"] }, "retryable": { "const": false } } },
+        { "properties": { "category": { "const": "transient" }, "code": { "enum": ["git_timeout", "ref_update_uncertain", "fetch_failed", "rebase_state_uncertain", "push_observation_failed", "push_state_uncertain"] }, "retryable": { "const": true } } },
         { "properties": { "category": { "const": "internal" }, "code": { "enum": ["internal_error", "worktree_verification_failed", "worktree_metadata_invalid", "worktree_marker_conflict", "worktree_removal_unverified", "worktree_lock_invalid", "commit_message_parse_failed", "index_invalid", "commit_verification_failed", "fetch_result_invalid"] }, "retryable": { "const": false } } }
       ],
       "additionalProperties": false
     },
-    "failure": {
+    "failed": {
       "type": "object",
       "properties": {
         "schema_version": { "$ref": "#/$defs/schema_version" },
-        "operation": { "enum": ["materialize", "observe", "remove", "commit", "fetch", "rebase", "unknown"] },
+        "operation": { "enum": ["materialize", "observe", "remove", "commit", "fetch", "rebase", "push", "unknown"] },
         "outcome": { "const": "failed" },
         "error": { "$ref": "#/$defs/error" }
       },
@@ -329,9 +377,29 @@
         { "if": { "properties": { "operation": { "const": "commit" } }, "required": ["operation"] }, "then": { "properties": { "error": { "properties": { "code": { "enum": ["malformed_input", "repository_mismatch", "repository_invalid", "repository_ref_invalid", "repository_format_unsupported", "repository_lock_invalid", "worktree_path_invalid", "task_mismatch", "commit_path_invalid", "commit_message_invalid", "worktree_mismatched", "index_not_clean", "unfinished_operation", "diff_unavailable", "diff_mismatch", "filter_check_failed", "commit_filter_unsupported", "staging_failed", "index_mismatch", "index_unavailable", "empty_commit", "commit_paths_mismatch", "commit_failed", "ref_moved", "ref_update_failed", "git_timeout", "ref_update_uncertain", "internal_error", "commit_message_parse_failed", "index_invalid", "commit_verification_failed"] } } } } } },
         { "if": { "properties": { "operation": { "const": "fetch" } }, "required": ["operation"] }, "then": { "properties": { "error": { "properties": { "code": { "enum": ["malformed_input", "repository_mismatch", "repository_invalid", "repository_ref_invalid", "repository_format_unsupported", "repository_lock_invalid", "effect_request_mismatch", "fetch_remote_mismatch", "fetch_ref_mismatch", "fetch_configuration_invalid", "fetch_failed", "fetch_result_invalid", "git_timeout", "internal_error"] } } } } } },
         { "if": { "properties": { "operation": { "const": "rebase" } }, "required": ["operation"] }, "then": { "properties": { "error": { "properties": { "code": { "enum": ["malformed_input", "repository_mismatch", "repository_invalid", "repository_ref_invalid", "repository_format_unsupported", "repository_lock_invalid", "worktree_path_invalid", "worktree_mismatched", "index_not_clean", "unfinished_operation", "task_mismatch", "effect_request_mismatch", "fetch_evidence_mismatch", "rebase_target_mismatch", "rebase_history_invalid", "rebase_base_moved", "rebase_configuration_invalid", "rebase_conflict", "rebase_failed", "rebase_state_uncertain", "git_timeout", "internal_error"] } } } } } },
+        { "if": { "properties": { "operation": { "const": "push" } }, "required": ["operation"] }, "then": { "properties": { "error": { "properties": { "code": { "enum": ["malformed_input", "repository_mismatch", "repository_invalid", "repository_ref_invalid", "repository_format_unsupported", "repository_lock_invalid", "publication_mismatch", "push_remote_mismatch", "push_ref_mismatch", "push_configuration_invalid", "push_candidate_invalid", "push_non_fast_forward", "push_observation_failed", "git_timeout", "internal_error"] } } } } } },
         { "if": { "properties": { "operation": { "const": "unknown" } }, "required": ["operation"] }, "then": { "properties": { "error": { "properties": { "code": { "const": "malformed_input" } } } } } }
       ],
       "additionalProperties": false
+    },
+    "push_unknown": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/schema_version" },
+        "operation": { "const": "push" },
+        "outcome": { "const": "unknown" },
+        "error": {
+          "allOf": [
+            { "$ref": "#/$defs/error" },
+            { "properties": { "category": { "const": "transient" }, "code": { "const": "push_state_uncertain" }, "retryable": { "const": true } } }
+          ]
+        }
+      },
+      "required": ["schema_version", "operation", "outcome", "error"],
+      "additionalProperties": false
+    },
+    "failure": {
+      "oneOf": [{ "$ref": "#/$defs/failed" }, { "$ref": "#/$defs/push_unknown" }]
     }
   }
 }

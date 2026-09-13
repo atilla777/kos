@@ -274,6 +274,84 @@ RSpec.describe Kos::Repository::Application do
     expect(non_repository_lock_observation).to eq([ 2, "repository_invalid", false ])
   end
 
+  it "conditionally publishes the exact candidate and returns bound remote evidence", :aggregate_failures do
+    expect(successful_push_observation).to eq([ true, true, true, true ])
+  end
+
+  it "observes an already reachable candidate without another push" do
+    input, = prepared_push_request
+    invoke(input)
+    adapter, calls = recording_git
+
+    result = Kos::Repository::Push.new(input, git: adapter).call
+
+    expect([ result.fetch("candidate_reachable"), push_called?(calls), fetch_call_count(calls) ]).to eq([ true, false, 1 ])
+  end
+
+  it "does not push when preflight observation finds a moved base" do
+    expect(moved_base_push_observation).to eq([ true, false, false ])
+  end
+
+  it "returns an authoritative observation after a rejected push response" do
+    input, = prepared_push_request
+    adapter, calls = push_recording_git(push: :reject)
+
+    result = Kos::Repository::Push.new(input, git: adapter).call
+
+    expect([ result.fetch("candidate_reachable"), push_called?(calls), fetch_call_count(calls) ])
+      .to eq([ false, true, 2 ])
+  end
+
+  it "recovers a lost successful push response through post-push observation" do
+    input, candidate = prepared_push_request
+    adapter, calls = push_recording_git(push: :timeout_after_success)
+
+    result = Kos::Repository::Push.new(input, git: adapter).call
+
+    expect([ result.fetch("candidate_reachable"), remote_head, push_called?(calls), fetch_call_count(calls) ])
+      .to eq([ true, candidate, true, 2 ])
+  end
+
+  it "returns unknown when remote state cannot be observed after a push attempt" do
+    expect(unknown_push_observation).to eq([ 8, "unknown", "push_state_uncertain", true ])
+  end
+
+  it "uses the expected remote OID to reject an independent publisher race" do
+    input, = prepared_push_request
+    adapter, calls = push_recording_git(push: :race)
+
+    result = Kos::Repository::Push.new(input, git: adapter).call
+
+    expect([ result.fetch("candidate_reachable"), result.fetch("observed_remote_tip") == remote_head,
+      push_called?(calls) ]).to eq([ false, true, true ])
+  end
+
+  it "rejects non-fast-forward candidates and unsafe push configuration before push" do
+    expect(push_rejection_observations).to eq(
+      [ "push_non_fast_forward", "push_configuration_invalid", true ]
+    )
+  end
+
+  it "rejects signing, credential, receive-pack, and Trace2 configuration without executing it" do
+    expect(push_configuration_override_observation).to eq(Array.new(6, "push_configuration_invalid") + [ false ])
+  end
+
+  it "rejects included executable configuration without executing it" do
+    expect(included_push_configuration_observation).to eq([ "push_configuration_invalid", false ])
+  end
+
+  it "rejects worktree-scoped executable configuration without executing it" do
+    expect(worktree_push_configuration_observation).to eq([ "push_configuration_invalid", false ])
+  end
+
+  it "does not trust or replace the shared FETCH_HEAD file for remote evidence" do
+    expect(shared_fetch_head_observation).to eq([ true, true ])
+  end
+
+  it "waits for the common adapter lock before publishing" do
+    expect(push_lock_observation).to eq([ true, true, true ])
+  end
+
   it "rebases the exact task commit suffix onto verified fetched base evidence", :aggregate_failures do
     expect(successful_rebase_observation).to eq(
       [ true, true, true, [ "KOS-000123" ], "", true, true, true ]
@@ -646,6 +724,170 @@ RSpec.describe Kos::Repository::Application do
     raise "unexpected fetch target" unless fetch_result.fetch("observed_oid") == onto
 
     [ build_rebase_request(task_commit, onto, fetch_input, fetch_result), task_commit, onto ]
+  end
+
+  def prepared_push_request
+    prepare_remote
+    expected_remote_oid = remote_head
+    File.write(File.join(repository_path, "candidate.txt"), "candidate\n")
+    git(repository_path, "add", "candidate.txt")
+    git(repository_path, "commit", "-m", "Candidate\n\nKOS-Task: KOS-000123")
+    candidate = head_sha
+    input = { "schema_version" => "1", "operation" => "push",
+      "repository" => { "id" => repository_id, "git_common_dir" => common_dir,
+        "trusted_remote" => "origin", "trusted_remote_url" => remote_url, "base_ref" => "refs/heads/main" },
+      "publication" => { "id" => "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "repository_id" => repository_id,
+        "current_owner_attempt_id" => "77777777-7777-4777-8777-777777777777", "fencing_token" => 10,
+        "input_context_digest" => "sha256:#{'e' * 64}", "candidate_sha" => candidate, "remote" => "origin",
+        "base_ref" => "refs/heads/main", "expected_remote_oid" => expected_remote_oid } }
+    [ input, candidate ]
+  end
+
+  def successful_push_observation
+    input, candidate = prepared_push_request
+    before = repository_state
+    result = invoke(input)
+    evidence = { "schema_version" => "1", "repository" => input.fetch("repository"),
+      "publication" => input.fetch("publication"), "candidate_sha" => candidate, "remote" => "origin",
+      "base_ref" => "refs/heads/main", "observed_remote_tip" => candidate, "candidate_reachable" => true,
+      "observed_at" => result.fetch("observed_at") }
+    [ result.slice("candidate_sha", "observed_remote_tip", "candidate_reachable") ==
+      { "candidate_sha" => candidate, "observed_remote_tip" => candidate, "candidate_reachable" => true },
+      result.fetch("evidence_digest") == digest(canonical_json(evidence)), remote_head == candidate,
+      repository_state == before ]
+  end
+
+  def moved_base_push_observation
+    input, = prepared_push_request
+    moved_tip = advance_remote
+    adapter, calls = recording_git
+    result = Kos::Repository::Push.new(input, git: adapter).call
+    [ result.fetch("observed_remote_tip") == moved_tip, result.fetch("candidate_reachable"), push_called?(calls) ]
+  end
+
+  def unknown_push_observation
+    input, = prepared_push_request
+    adapter, = push_recording_git(push: :reject, fail_second_fetch: true)
+    allow(Kos::Repository::Push).to receive(:new).and_return(Kos::Repository::Push.new(input, git: adapter))
+    document, status = run(input)
+    [ status, document.fetch("outcome"), document.dig("error", "code"), document.dig("error", "retryable") ]
+  end
+
+  def push_rejection_observations
+    input, = prepared_push_request
+    expected = input.dig("publication", "expected_remote_oid")
+    input.fetch("publication")["candidate_sha"] = create_divergent_candidate(expected)
+    non_fast_forward = run(input).first
+    git(repository_path, "config", "remote.origin.pushurl", "file:///untrusted.git")
+    configured = run(input).first
+    [ non_fast_forward.dig("error", "code"), configured.dig("error", "code"), remote_head == expected ]
+  end
+
+  def push_configuration_override_observation
+    input, = prepared_push_request
+    trigger = File.join(directory, "push-config-executed")
+    script = File.join(directory, "push-config-command")
+    File.write(script, "#!/bin/sh\ntouch '#{trigger}'\nexit 1\n")
+    File.chmod(0o700, script)
+    values = { "remote.origin.receivepack" => script, "credential.helper" => "!#{script}",
+      "push.gpgSign" => "true", "gpg.program" => script, "gpg.ssh.program" => script,
+      "trace2.eventTarget" => trigger }
+    results = values.map do |key, value|
+      git(repository_path, "config", key, value)
+      run(input).first.dig("error", "code").tap { git(repository_path, "config", "--unset-all", key) }
+    end
+    results + [ File.exist?(trigger) ]
+  end
+
+  def included_push_configuration_observation
+    input, = prepared_push_request
+    trigger = File.join(directory, "included-config-executed")
+    script = File.join(directory, "included-config-command")
+    included = File.join(directory, "included.gitconfig")
+    File.write(script, "#!/bin/sh\ntouch '#{trigger}'\nexit 1\n")
+    File.chmod(0o700, script)
+    File.write(included, "[core]\n\tsshCommand = #{script}\n")
+    git(repository_path, "config", "include.path", included)
+    document = run(input).first
+    [ document.dig("error", "code"), File.exist?(trigger) ]
+  end
+
+  def worktree_push_configuration_observation
+    input, = prepared_push_request
+    trigger = File.join(directory, "worktree-config-executed")
+    script = File.join(directory, "worktree-config-command")
+    File.write(script, "#!/bin/sh\ntouch '#{trigger}'\nexit 1\n")
+    File.chmod(0o700, script)
+    git(repository_path, "config", "extensions.worktreeConfig", "true")
+    git(repository_path, "config", "--worktree", "core.sshCommand", script)
+    document = run(input).first
+    [ document.dig("error", "code"), File.exist?(trigger) ]
+  end
+
+  def shared_fetch_head_observation
+    input, candidate = prepared_push_request
+    path = File.join(common_dir, "FETCH_HEAD")
+    untrusted = "#{'f' * 40}\t\tbranch 'main' of file:///untrusted.git\n"
+    File.binwrite(path, untrusted)
+    result = invoke(input)
+    [ result.fetch("observed_remote_tip") == candidate, File.binread(path) == untrusted ]
+  end
+
+  def push_lock_observation
+    input, candidate = prepared_push_request
+    lock = File.open(File.join(common_dir, "kos-repository.lock"), File::RDWR | File::CREAT, 0o600)
+    lock.flock(File::LOCK_EX)
+    worker = Thread.new { Kos::Repository::Push.new(input).call }
+    sleep 0.05
+    blocked = worker.alive?
+    lock.flock(File::LOCK_UN)
+    [ blocked, worker.value.fetch("candidate_reachable"), remote_head == candidate ]
+  ensure
+    lock&.close
+  end
+
+  def push_recording_git(push:, fail_second_fetch: false)
+    adapter = Kos::Repository::Git.new
+    calls = []
+    fetches = 0
+    allow(adapter).to receive(:call).and_wrap_original do |original, *arguments, **options|
+      calls << arguments
+      if arguments.include?("fetch")
+        fetches += 1
+        next Kos::Repository::Git::Result.new("", false) if fail_second_fetch && fetches == 2
+      end
+      if arguments.include?("push")
+        case push
+        when :reject
+          next Kos::Repository::Git::Result.new("", false)
+        when :timeout_after_success
+          original.call(*arguments, **options)
+          raise Kos::Repository::Error.new("transient", "git_timeout", "Git operation timed out", retryable: true)
+        when :race
+          advance_remote
+        end
+      end
+      original.call(*arguments, **options)
+    end
+    [ adapter, calls ]
+  end
+
+  def create_divergent_candidate(base)
+    tree = git(repository_path, "show", "-s", "--format=%T", base).strip
+    git(repository_path, "commit-tree", tree, "-m", "Divergent").strip
+  end
+
+  def remote_head
+    git(remote_path, "rev-parse", "refs/heads/main").strip
+  end
+
+  def push_called?(calls)
+    calls.any? { |arguments| arguments.include?("push") }
+  end
+
+  def fetch_call_count(calls)
+    calls.count { |arguments| arguments.include?("fetch") }
   end
 
   def build_rebase_request(task_commit, onto, fetch_input, fetch_result)

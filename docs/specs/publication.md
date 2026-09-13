@@ -14,17 +14,17 @@ Before review, a workflow fixes a candidate commit SHA containing all required c
 After approval of that candidate, publication:
 
 1. Records durable intent containing candidate SHA, configured remote, and full base ref.
-2. Runs mandatory checks in a clean checkout of the exact candidate SHA.
-3. Confirms that approved review evidence refers to that SHA.
-4. Pushes `<candidate-sha>:<configured-base-ref>` only when the remote base ref still permits fast-forward.
-5. Fetches the trusted remote and creates an artifact proving that the candidate is reachable from the remote base ref, including the observed remote tip.
+2. The orchestrator runs mandatory checks in a clean checkout of the exact candidate SHA.
+3. The orchestrator confirms that approved review evidence refers to that SHA and verifies the active attempt, task version, and prepared publication immediately before invoking `kos-repository`.
+4. `kos-repository` observes the trusted remote and pushes `<candidate-sha>:<configured-base-ref>` only when the observed base ref equals the prepared expected OID and that OID is an ancestor of the candidate.
+5. After every attempted push, including an unknown response, `kos-repository` fetches the trusted remote and returns bounded evidence containing the observed remote tip and candidate reachability.
 6. Registers the artifact and advances workflow status through the CLI in one transaction.
 
 Only the reviewed candidate may be published to the trusted remote and base ref. Force-push is prohibited.
 
 ## Recovery And Base Movement
 
-If push outcome is unknown, such as a connection loss after sending data, publication fetches the remote before attempting another push. Publication is successful if the candidate is reachable from the configured base ref. A retry is allowed only after that check and only while the base ref still permits fast-forward. The same idempotency key returns the already recorded outcome.
+If push outcome is unknown, such as a connection loss after sending data, publication fetches the remote before attempting another push. Every adapter invocation performs this preflight observation: it returns without another push when the candidate is already reachable and does not push when the observed tip differs from the prepared expected OID. A retry is allowed only when the candidate is not reachable and the base ref still equals that OID. The same idempotency key returns the already recorded outcome.
 
 If another task moved the base branch, KOS rejects the push. The task must synchronize with the current base, produce a new candidate SHA, repeat required checks and independent review, and then publish the new generation. Evidence for the old candidate does not satisfy the new candidate.
 
