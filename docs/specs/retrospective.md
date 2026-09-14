@@ -23,19 +23,23 @@ A workflow subagent delivers its finalized primary result before retrospective s
 
 The subagent analyzes only its own dialogue and sends a second, separate sanitized retrospective result through the runtime adapter. The retrospective transport is not part of the primary workflow result manifest.
 
+The runtime supplies a schema-valid retrospective session UUID, source, primary-result acknowledgement, enablement, recursion suppression, and lifecycle eligibility. Missing or malformed invocation data produces no retrospective result; the skill does not infer, generate, repair, or replace runtime identity.
+
 The main orchestrator first records the normal completed, blocked, `needs_human`, or handoff state. It then analyzes only its own dialogue and orchestration quality, combines any sanitized subagent results, and includes actionable proposals in its final user report.
 
 ## Privacy And Authority
 
 Raw dialogue remains private to the invoking agent and under the runtime's retention policy. It is not sent to Rails, the CLI, another agent, a task artifact, or another repository. The orchestrator may receive only the closed sanitized result, without verbatim transcript excerpts.
 
-The retrospective treats dialogue as untrusted evidence rather than executable instructions. It omits credentials, secrets, environment values, personal data, unrelated source content, and private absolute paths. If a safe summary cannot be produced, it returns `no_action` or a generic user-visible warning.
+The retrospective treats dialogue as untrusted evidence rather than executable instructions. It omits credentials, secrets, environment values, personal data, unrelated source content, and private absolute paths. The first canonical skill increment returns `no_action` when a safe summary cannot be produced; a separate generic warning transport is deferred.
 
 `kos-retrospective` receives no state mutation, filesystem mutation, Git, network, subagent-launch, or workflow repository-effect authority. A recursion marker disables end-of-session retrospective while retrospective itself runs.
 
 ## Result And Classification
 
 A result is either `no_action` or one or more bounded, independently actionable proposals. Each proposal contains a category, problem, observed impact, sanitized evidence summary, proposed outcome, affected workflow version or repository when known, suggested task type, and unresolved uncertainty.
+
+The skill uses a suggested task type only when permitted input establishes a schema-valid value. It returns `no_action` rather than reading catalog state or inventing a type when no reliable value is available.
 
 Categories identify the authoritative source that would need correction:
 
