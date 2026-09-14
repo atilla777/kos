@@ -48,7 +48,7 @@ module Kos
           ".opencode/skills/kos-workflow-step/SKILL.md" =>
             "sha256:aedbc44db0301d4da1d7d24ee49944ba12613900603f12ec716c5453d1d1a05e",
           ".opencode/plugins/kos-session-guard.js" =>
-            "sha256:4966c18b5f0e2e5cbe925fa1bc79f84de9d50b5a81cf0ca07bebd978cbed060d",
+            "sha256:0a3efc7723e07c46e88072fc24d1ea8d6196bb6d10b0eae16859e0b0685c4df8",
           ".opencode/agents/kos-orchestrate.md" =>
             "sha256:9eed6799ce455422256949b7341128506f9a5ffcae53418a8be3d0623bbddb3f",
           ".opencode/agents/kos-retrospective.md" =>
@@ -142,13 +142,15 @@ module Kos
         end
 
         def initialize(environment: ENV, stdout: $stdout, stderr: $stderr, runner: ProcessRunner.new,
-          retrospective_output: nil, schema_registry: Kos::Cli::SchemaRegistry.new)
+          retrospective_output: nil, schema_registry: Kos::Cli::SchemaRegistry.new,
+          retrospective_wait_timeout: RETROSPECTIVE_TIMEOUT)
           @environment = environment
           @stdout = stdout
           @stderr = stderr
           @runner = runner
           @retrospective_output = retrospective_output || output_from_environment
           @schema_registry = schema_registry
+          @retrospective_wait_timeout = retrospective_wait_timeout
         end
 
         def run(arguments)
@@ -261,7 +263,7 @@ module Kos
           result = Dir.mktmpdir("kos-opencode-retrospective-") do |config_home|
             environment = retrospective_environment(model).merge("XDG_CONFIG_HOME" => config_home)
             @runner.call(command, chdir: worktree, environment: environment,
-              timeout: RETROSPECTIVE_TIMEOUT, unsetenv_others: true)
+              timeout: @retrospective_wait_timeout, unsetenv_others: true)
           end
           write_delivery(retrospective_delivery(runtime_session_id, invocation, result,
             primary.stdout, prompt))

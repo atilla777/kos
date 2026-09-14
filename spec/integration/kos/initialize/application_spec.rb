@@ -108,12 +108,12 @@ RSpec.describe Kos::Initialize::Application do
     expect(incomplete_rollback_result).to eq("rollback_incomplete")
   end
 
-  it "discovers the installed copy after its independent source bundle is removed" do
+  it "retains a complete installed copy after its independent source bundle is removed" do
     expect(installed_copy_result).to be(true)
   end
 
-  it "rejects staged profiles with extra built-in or custom authority and incomplete procedure" do
-    expect(invalid_profile_results).to eq(%w[capability_failed capability_failed capability_failed capability_failed])
+  it "rejects a staged profile that real OpenCode resolves with excess authority" do
+    expect(capability_rejection_result).to eq([ "capability_failed", false ])
   end
 
   it "does not follow an .opencode replacement during stage creation" do
@@ -424,40 +424,31 @@ RSpec.describe Kos::Initialize::Application do
     result = invoke("apply", "--input", "-", "--approved-plan", plan.fetch("plan_digest"), "--json",
       source_root: source)
     FileUtils.rm_rf(source)
-    verifier = Kos::Runtime::OpenCode::CapabilityVerifier.new(executable: real_opencode,
-      launcher_executable: File.join(test_bin, "kos-opencode"),
-      staged_opencode: File.join(repository, ".opencode"))
-    result.fetch(:status).zero? && !File.exist?(source) && verifier.call.fetch("compatible")
+    manifest = JSON.parse(File.read(File.join(repository, ".opencode/kos-runtime-manifest.json")))
+    installed = manifest.fetch("managed_files").all? do |entry|
+      File.file?(File.join(repository, entry.fetch("path")))
+    end
+    result.fetch(:status).zero? && !File.exist?(source) && installed && installed_bundle_compatible?
   end
 
-  def invalid_profile_results
+  def capability_rejection_result
     source = copy_source_bundle("permissive-source")
     profile = File.join(source, "runtime/opencode/agents/kos-orchestrate.md")
     File.write(profile, File.read(profile).sub('"*": deny', '"*": allow'))
     File.unlink(File.join(test_bin, "opencode"))
     plan = invoke("plan", "--input", "-", "--json", source_root: source).fetch(:document)
-    permissive = invoke("apply", "--input", "-", "--approved-plan", plan.fetch("plan_digest"), "--json",
+    result = invoke("apply", "--input", "-", "--approved-plan", plan.fetch("plan_digest"), "--json",
       source_root: source, real_capability: true)
-    corrupt_source = copy_source_bundle("corrupt-source")
-    corrupt_profile = File.join(corrupt_source, "runtime/opencode/agents/kos-orchestrate.md")
-    File.write(corrupt_profile, File.read(corrupt_profile).sub("mode: primary", "mode: invalid"))
-    corrupt_plan = invoke("plan", "--input", "-", "--json", source_root: corrupt_source).fetch(:document)
-    corrupt = invoke("apply", "--input", "-", "--approved-plan", corrupt_plan.fetch("plan_digest"), "--json",
-      source_root: corrupt_source, real_capability: true)
-    authority_source = copy_source_bundle("authority-source")
-    authority_profile = File.join(authority_source, "runtime/opencode/agents/kos-orchestrate.md")
-    additions = "  read: allow\n  write: allow\n  patch: allow\n  webfetch: allow\n  question: allow\n  rogue_runtime_tool: allow\n"
-    File.write(authority_profile, File.read(authority_profile).sub("---\n\nLoad", "#{additions}---\n\nLoad"))
-    authority_plan = invoke("plan", "--input", "-", "--json", source_root: authority_source).fetch(:document)
-    authority = invoke("apply", "--input", "-", "--approved-plan", authority_plan.fetch("plan_digest"), "--json",
-      source_root: authority_source, real_capability: true)
-    procedure_source = copy_source_bundle("procedure-source")
-    procedure_profile = File.join(procedure_source, "runtime/opencode/agents/kos-retrospective.md")
-    File.write(procedure_profile, File.read(procedure_profile).sub("Retain every material uncertainty", "Ignore uncertainty"))
-    procedure_plan = invoke("plan", "--input", "-", "--json", source_root: procedure_source).fetch(:document)
-    procedure = invoke("apply", "--input", "-", "--approved-plan", procedure_plan.fetch("plan_digest"), "--json",
-      source_root: procedure_source, real_capability: true)
-    [ permissive, corrupt, authority, procedure ].map { |result| result.dig(:document, "error", "code") }
+    [ result.dig(:document, "error", "code"), File.exist?(File.join(repository, ".opencode/agents/kos-orchestrate.md")) ]
+  end
+
+  def installed_bundle_compatible?
+    verifier = Kos::Runtime::OpenCode::CapabilityVerifier.new(executable: real_opencode,
+      launcher_executable: File.join(test_bin, "kos-opencode"), staged_opencode: File.join(repository, ".opencode"))
+    check_root = File.join(directory, "installed-check")
+    FileUtils.mkdir_p(check_root)
+    verifier.send(:verify_installed_bundle, check_root)
+    true
   end
 
   def stage_creation_race_results

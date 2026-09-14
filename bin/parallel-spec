@@ -1,0 +1,27 @@
+#!/usr/bin/env ruby
+
+# Keep the measured subprocess-heavy files distributed across four stable workers.
+groups = [
+  %w[spec/integration/kos/initialize/application_spec.rb],
+  %w[
+    spec/integration/idempotency/execute_concurrency_spec.rb
+    spec/integration/runtime_configuration/update_concurrency_spec.rb
+    spec/integration/repository_effects/prepare_concurrency_spec.rb
+    spec/integration/workflow_attempts/reconcile_migration_spec.rb
+    spec/requests/api/v1/repository_effects_spec.rb
+    spec/integration/workflow_steps/capture_context_concurrency_spec.rb
+  ],
+  %w[
+    spec/integration/task_creation/create_call_spec.rb
+    spec/integration/kos/cli/application_spec.rb
+    spec/integration/kos/repository/application_spec.rb
+    spec/integration/publications/prepare_concurrency_spec.rb
+    spec/integration/kos/state/prepare_spec.rb
+    spec/integration/repository_registration/register_concurrency_spec.rb
+    spec/integration/publications/create_publications_spec.rb
+  ]
+]
+
+command = [ "bundle", "exec", "parallel_rspec", "-n", "4", "--highest-exit-status",
+  "--specify-groups", groups.map { |files| files.join(",") }.join("|") ]
+exec(*command, *ARGV)

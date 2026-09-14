@@ -72,6 +72,10 @@ RSpec.describe Kos::Runtime::OpenCode::Launcher do
     ])
   end
 
+  it "uses a short injected wait without changing the production invocation budget" do
+    expect(injected_wait_observation).to eq([ 0.05, 30 ])
+  end
+
   it "runs retrospective after normal nonzero exit but not after signaled or abrupt completion" do
     expect(completion_observations).to eq([ [ 7, 4 ], [ 143, 3 ], [ 143, 3 ] ])
   end
@@ -80,7 +84,7 @@ RSpec.describe Kos::Runtime::OpenCode::Launcher do
     expect(option_observations).to eq([ true, %w[-- --model prompt/value], [ 2, 2, 2, 2, 2 ] ])
   end
 
-  it "removes KOS, Git, and SSH secrets only from the retrospective process" do
+  it "removes KOS, Git, SSH secrets, and hostile config only from the retrospective process" do
     expect(retrospective_environment_observation).to eq([ false, false, false, false, "1", true ])
   end
 
@@ -165,6 +169,15 @@ RSpec.describe Kos::Runtime::OpenCode::Launcher do
   end
 
   private
+
+  def injected_wait_observation
+    delivery = StringIO.new
+    process = runner(success("1.18.26\n"), enabled_config, success(primary_output), timed_out)
+    described_class.new(environment: {}, stdout: StringIO.new, stderr: StringIO.new, runner: process,
+      retrospective_output: delivery, retrospective_wait_timeout: 0.05)
+      .run([ "--worktree", directory, "--", "task" ])
+    [ process.calls.last.last.fetch(:timeout), JSON.parse(delivery.string).dig("invocation", "timeout_seconds") ]
+  end
 
   def truncated_primary_observation
     delivery = StringIO.new

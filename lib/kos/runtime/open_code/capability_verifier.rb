@@ -3,6 +3,7 @@ require "fileutils"
 require "json"
 require "open3"
 require "rbconfig"
+require "stringio"
 require "tempfile"
 require "timeout"
 require "tmpdir"
@@ -111,6 +112,7 @@ module Kos
         end
 
         DEFAULT_TIMEOUT = Launcher::RETROSPECTIVE_TIMEOUT + 15
+        PROBE_RETROSPECTIVE_TIMEOUT = 0.05
 
         def initialize(executable:, launcher_executable:, staged_opencode:, path: ENV.fetch("PATH", ""),
           timeout: DEFAULT_TIMEOUT)
@@ -290,9 +292,12 @@ module Kos
         end
 
         def verify_child_timeout_contract(directory)
-          provider = DeterministicProvider.new(retrospective_result: :delayed)
+          provider = DeterministicProvider.new(retrospective_result: :delayed,
+            retrospective_delay: PROBE_RETROSPECTIVE_TIMEOUT * 10)
           provider.start
-          project = prepare_project(directory, "child-timeout", provider.base_url)
+          project = prepare_project(directory, "child-timeout", provider.base_url, read_only: false,
+            retrospective_timeout: PROBE_RETROSPECTIVE_TIMEOUT)
+          FileUtils.chmod_R(0o555, File.join(project, ".opencode"))
           stdout, = run_opencode(directory, project)
           provider.stop
           events = parse_events(stdout)
@@ -310,11 +315,12 @@ module Kos
           provider&.stop
         end
 
-        def prepare_project(directory, name, base_url, read_only: true)
+        def prepare_project(directory, name, base_url, read_only: true, retrospective_timeout: nil)
           project = File.join(directory, "#{name}-worktree")
           FileUtils.mkdir_p([ File.join(project, "nested"), File.join(project, ".opencode") ])
           FileUtils.cp_r("#{@staged_opencode}/.", File.join(project, ".opencode"))
           FileUtils.rm_f(File.join(project, ".opencode", "kos-runtime-manifest.json"))
+          shorten_plugin_timeout(project, retrospective_timeout) if retrospective_timeout
           write_probe(project)
           write_marker(File.join(project, ".opencode"))
           write_config(project, base_url)
@@ -323,6 +329,16 @@ module Kos
 
           FileUtils.chmod_R(0o555, File.join(project, ".opencode")) if read_only
           project
+        end
+
+        def shorten_plugin_timeout(project, timeout)
+          plugin = File.join(project, ".opencode/plugins/kos-session-guard.js")
+          source = File.binread(plugin)
+          expected = "const TIMEOUT_MILLISECONDS = TIMEOUT_SECONDS * 1000"
+          replacement = "const TIMEOUT_MILLISECONDS = #{timeout * 1000}"
+          raise Incompatible, "Installed session guard timeout contract is missing" unless source.include?(expected)
+
+          File.binwrite(plugin, source.sub(expected, replacement))
         end
 
         def write_probe(project)
@@ -405,11 +421,21 @@ module Kos
           raise Incompatible, "Child was not continued exactly once" unless child_requests(requests).length == 4
           raise Incompatible, "Parent and child cwd differ from worktree" unless cwd_verified?(requests, project)
           raise Incompatible, "Child did not load the project skill" unless probe_loaded?(requests)
+          verify_retrospective_tool_schema!(requests)
           delivery = retrospective_tool_delivery(events)
           unless delivery&.fetch("outcome", nil) == "result" && delivery.dig("invocation", "source") == "workflow_step" &&
               delivery.dig("invocation", "timeout_seconds") == 30
             raise Incompatible, "Plugin child_retrospective did not deliver a separate result"
           end
+        end
+
+        def verify_retrospective_tool_schema!(requests)
+          definition = requests.flat_map { |request| request.fetch("tools", []) }
+            .find { |tool| tool.dig("function", "name") == "child_retrospective" }
+          parameters = definition&.dig("function", "parameters")
+          fields = [ "child_session_id" ]
+          valid = parameters&.dig("properties")&.keys&.sort == fields && parameters&.fetch("required", [])&.sort == fields
+          raise Incompatible, "Plugin child_retrospective exposed an unexpected tool schema" unless valid
         end
 
         def verify_launcher_root_contract(directory)
@@ -451,13 +477,14 @@ module Kos
         end
 
         def verify_launcher_timeout_contract(directory)
-          with_launcher_contract(directory, "launcher-timeout", retrospective_result: :delayed) do |result|
+          with_launcher_contract(directory, "launcher-timeout", retrospective_result: :delayed,
+            retrospective_timeout: PROBE_RETROSPECTIVE_TIMEOUT) do |result|
             delivery = parse_json(result.fetch(:delivery), "launcher timeout delivery")
             checks = { status: normal_primary_status?(result),
               stdout: result.fetch(:stdout) == result.fetch(:primary_stdout),
               stderr: result.fetch(:stderr) == result.fetch(:primary_stderr),
               outcome: delivery["outcome"] == "no_result", reason: delivery["reason"] == "timeout",
-              budget: delivery.dig("invocation", "timeout_seconds") == 30,
+              budget: delivery.dig("invocation", "timeout_seconds") == Launcher::RETROSPECTIVE_TIMEOUT,
               no_late_response: result.fetch(:provider).delayed_responses.zero?,
               single_delivery: result.fetch(:delivery).lines.one? }
             failures = checks.reject { |_name, passed| passed }.keys
@@ -465,14 +492,16 @@ module Kos
           end
         end
 
-        def with_launcher_contract(directory, name, retrospective_result:)
-          provider = DeterministicProvider.new(root_only: true, retrospective_result: retrospective_result)
+        def with_launcher_contract(directory, name, retrospective_result:,
+          retrospective_timeout: Launcher::RETROSPECTIVE_TIMEOUT)
+          provider = DeterministicProvider.new(root_only: true, retrospective_result: retrospective_result,
+            retrospective_delay: retrospective_timeout * 10)
           provider.start
           project = prepare_project(directory, name, provider.base_url)
           paths = launcher_fixture_paths(directory, name)
           write_fake_kos(paths.fetch(:kos), paths.fetch(:config_log))
           write_opencode_wrapper(paths)
-          result = run_launcher(directory, project, provider, paths)
+          result = run_launcher(directory, project, provider, paths, retrospective_timeout: retrospective_timeout)
           provider.stop
           yield result.merge(provider: provider)
         ensure
@@ -527,7 +556,7 @@ module Kos
           File.chmod(0o755, paths.fetch(:wrapper))
         end
 
-        def run_launcher(directory, project, provider, paths)
+        def run_launcher(directory, project, provider, paths, retrospective_timeout: Launcher::RETROSPECTIVE_TIMEOUT)
           delivery = Tempfile.new("kos-retrospective-delivery", directory)
           environment = { "KOS_OPENCODE_EXECUTABLE" => paths.fetch(:wrapper),
             "KOS_EXECUTABLE" => paths.fetch(:kos), "KOS_RETROSPECTIVE_FD" => delivery.fileno.to_s,
@@ -535,9 +564,20 @@ module Kos
             "KOS_REPOSITORY_ID" => "capability-repository", "GIT_ASKPASS" => "capability-askpass",
             "GIT_SSH_COMMAND" => "capability-ssh", "SSH_AGENT_PID" => "1234",
             "SSH_AUTH_SOCK" => "/capability/ssh.sock" }
-          stdout, stderr, status = capture(directory, @launcher_executable, "--worktree", project,
-            "--model", "kos-contract/kos-contract", "--", "Run launcher contract.", chdir: project,
-            extra_environment: environment, file_descriptors: { delivery.fileno => delivery })
+          if retrospective_timeout == Launcher::RETROSPECTIVE_TIMEOUT
+            stdout, stderr, status = capture(directory, @launcher_executable, "--worktree", project,
+              "--model", "kos-contract/kos-contract", "--", "Run launcher contract.", chdir: project,
+              extra_environment: environment, file_descriptors: { delivery.fileno => delivery })
+          else
+            stdout = StringIO.new
+            stderr = StringIO.new
+            status = Launcher.new(environment: isolated_environment(directory).merge(environment), stdout: stdout,
+              stderr: stderr, retrospective_output: delivery,
+              retrospective_wait_timeout: retrospective_timeout).run(
+                [ "--worktree", project, "--model", "kos-contract/kos-contract", "--", "Run launcher contract." ])
+            stdout = stdout.string
+            stderr = stderr.string
+          end
           delivery.rewind
           { stdout: stdout, stderr: stderr, status: status, delivery: delivery.read,
             primary_stdout: File.binread(paths.fetch(:primary_stdout)),
@@ -564,7 +604,8 @@ module Kos
         end
 
         def normal_primary_status?(result)
-          result.fetch(:status).exited? && result.fetch(:status).exitstatus == 7
+          status = result.fetch(:status)
+          status == 7 || (status.exited? && status.exitstatus == 7)
         end
 
         def verify_rejected_retrospective(stdout, requests, label)

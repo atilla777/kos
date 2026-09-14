@@ -153,4 +153,7 @@ mise run zeitwerk
 mise run check
 ```
 
+`mise run test` runs four isolated RSpec processes with a separate SQLite database per worker. Use
+`bundle exec rspec` when a serial diagnostic run is required.
+
 See `AGENTS.md`, `docs/specs/`, `docs/rules/`, and `docs/decisions/` before changing application behavior or architecture.

@@ -43,6 +43,10 @@ RSpec.describe Kos::Runtime::OpenCode::CapabilityVerifier do
     expect(extras.map { |tool| extra_tool_rejected?(tool) }).to all(be(true))
   end
 
+  it "rejects malformed agent identity, mode, authority, and retrospective procedure directly" do
+    expect(%i[identity mode authority procedure].map { |failure| agent_contract_rejected?(failure) }).to all(be(true))
+  end
+
   it "does not copy a repository-bound manifest into a temporary capability worktree" do
     File.write(File.join(staged_opencode, "kos-runtime-manifest.json"), "repository-bound\n")
     verifier = described_class.new(executable: "opencode", launcher_executable: "kos-opencode",
@@ -76,6 +80,27 @@ RSpec.describe Kos::Runtime::OpenCode::CapabilityVerifier do
       "permission" => permissions }
     verifier = described_class.allocate
     verifier.send(:verify_agent_definition!, "kos-orchestrate", definition)
+    false
+  rescue described_class::Incompatible
+    true
+  end
+
+  def agent_contract_rejected?(failure)
+    name = failure == :procedure ? "kos-retrospective" : "kos-orchestrate"
+    contract = described_class::AGENT_CONTRACTS.fetch(name)
+    enabled = described_class::AGENT_ENABLED_TOOLS.fetch(name)
+    definition = { "name" => name, "mode" => contract.fetch("mode"),
+      "tools" => enabled.to_h { |tool| [ tool, true ] },
+      "permission" => contract.fetch("permissions").map do |permission, pattern, action|
+        { "permission" => permission, "pattern" => pattern, "action" => action }
+      end,
+      "prompt" => described_class::RETROSPECTIVE_PROCEDURE_MARKERS.join("\n") }
+    definition["name"] = "other" if failure == :identity
+    definition["mode"] = "invalid" if failure == :mode
+    definition["permission"] << { "permission" => "*", "pattern" => "*", "action" => "allow" } if
+      failure == :authority
+    definition["prompt"] = "incomplete" if failure == :procedure
+    described_class.allocate.send(:verify_agent_definition!, name, definition)
     false
   rescue described_class::Incompatible
     true

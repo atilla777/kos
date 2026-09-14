@@ -135,7 +135,8 @@ module OpenCodeSessionGuardContract
   end
 
   def timeout_probe_script
-    File.read(PLUGIN).sub("const TIMEOUT_SECONDS = 30", "const TIMEOUT_SECONDS = 0.01") + <<~JAVASCRIPT
+    File.read(PLUGIN).sub("const TIMEOUT_MILLISECONDS = TIMEOUT_SECONDS * 1000",
+      "const TIMEOUT_MILLISECONDS = 10") + <<~JAVASCRIPT
       let aborted = false;
       let prompts = 0;
       const client = { session: { messages: async (request) => new Promise((_resolve, reject) =>

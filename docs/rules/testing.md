@@ -30,5 +30,7 @@ status: active
 
 - Run the smallest relevant test set while iterating, then run the affected suite before completion.
 - Run the full suite for changes to shared infrastructure, persistence, workflow semantics, CLI contracts, or repository adapters.
+- Assert production timeout values separately from timeout mechanics. Exercise waiting, cancellation, and process termination with the shortest deterministic injected budget that preserves the production code path.
+- Use `mise run test` for the isolated parallel suite and `bundle exec rspec` for serial diagnosis.
 - State exactly which commands ran and whether any required check could not run.
 - Tests must be deterministic, isolated, and safe to run repeatedly in any order.

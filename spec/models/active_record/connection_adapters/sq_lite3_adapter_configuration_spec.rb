@@ -9,4 +9,9 @@ RSpec.describe ActiveRecord::ConnectionAdapters::SQLite3Adapter do
     expect(pragmas.to_h { |pragma| [ pragma, connection.select_value("PRAGMA #{pragma}") ] })
       .to eq("journal_mode" => "wal", "synchronous" => 2, "busy_timeout" => 5000, "foreign_keys" => 1)
   end
+
+  it "isolates the database selected for each parallel worker" do
+    suffix = ENV.fetch("TEST_ENV_NUMBER", "")
+    expect(connection.pool.db_config.database).to end_with("storage/test#{suffix}.sqlite3")
+  end
 end

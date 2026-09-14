@@ -21,7 +21,7 @@ run = "bin/rails console"
 
 [tasks.test]
 description = "Run the RSpec suite"
-run = "bundle exec rspec"
+run = "bin/parallel-spec"
 
 [tasks.lint]
 description = "Run RuboCop"

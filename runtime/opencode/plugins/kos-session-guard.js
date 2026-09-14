@@ -1,4 +1,5 @@
 const TIMEOUT_SECONDS = 30
+const TIMEOUT_MILLISECONDS = TIMEOUT_SECONDS * 1000
 const MAX_RESULTS = 5
 const MAX_PARENTS = 64
 const MAX_DIALOGUE_NODES = 10000
@@ -257,7 +258,7 @@ export const KosSessionGuard = async ({ client, directory }) => {
           let timer
           let cancel
           const boundary = new Promise((resolve) => {
-            timer = setTimeout(() => resolve({ reason: "timeout" }), TIMEOUT_SECONDS * 1000)
+            timer = setTimeout(() => resolve({ reason: "timeout" }), TIMEOUT_MILLISECONDS)
             cancel = () => resolve({ reason: "cancelled" })
             if (context.abort.aborted) cancel()
             else context.abort.addEventListener("abort", cancel, { once: true })

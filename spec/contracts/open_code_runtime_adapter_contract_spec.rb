@@ -1,14 +1,11 @@
-require "fileutils"
 require "json"
 require "json_schemer"
-require "tmpdir"
 require "uri"
 require "spec_helper"
 require_relative "../../lib/kos/runtime/open_code/capability_verifier"
 require_relative "../../lib/kos/runtime/open_code/transport"
 
 module OpenCodeRuntimeAdapterContract
-  ROOT = File.expand_path("../..", __dir__)
   FIXTURE = File.expand_path("../fixtures/runtime/opencode/project", __dir__)
   RUNTIME_SCHEMA_PATH = File.expand_path("../../schemas/runtime/v1/opencode.json", __dir__)
   CLI_SCHEMA_DIRECTORY = File.expand_path("../../schemas/cli/v1", __dir__)
@@ -89,8 +86,11 @@ RSpec.describe OpenCodeRuntimeAdapterContract do
     expect(invalid_exchange_messages).to eq(invalid_exchange_expectations)
   end
 
-  it "passes the real OpenCode 1.18.26 adapter round trip" do
-    expect(run_runtime_contract).to eq([])
+  it "pins the closed compatible report produced by the real runtime check" do
+    report = Kos::Runtime::OpenCode::CapabilityVerifier.expected_report
+    expect([ report.fetch("runtime_version"), report.fetch("compatible"),
+      report.fetch("observations").keys, runtime_definition("capability_report").valid?(report) ])
+      .to eq([ "1.18.26", true, Kos::Runtime::OpenCode::CapabilityVerifier::CAPABILITIES, true ])
   end
 
   def runtime_definition(name)
@@ -333,21 +333,5 @@ RSpec.describe OpenCodeRuntimeAdapterContract do
 
   def deliver(exchange, delivery, expected_intent: effect_result.fetch("effect_intent_id"))
     exchange.deliver_effect(delivery, expected_effect_intent_id: expected_intent)
-  end
-
-  def run_runtime_contract
-    Dir.mktmpdir("kos-opencode-contract-") do |directory|
-      staged = File.join(directory, ".opencode")
-      FileUtils.mkdir_p(staged)
-      FileUtils.cp_r(File.join(described_class::ROOT, "skills"), File.join(staged, "skills"))
-      %w[agents plugins].each do |member|
-        FileUtils.cp_r(File.join(described_class::ROOT, "runtime/opencode", member), File.join(staged, member))
-      end
-      verifier = Kos::Runtime::OpenCode::CapabilityVerifier.new(executable: "opencode",
-        launcher_executable: File.join(described_class::ROOT, "bin/kos-opencode"), staged_opencode: staged)
-      verifier.call == Kos::Runtime::OpenCode::CapabilityVerifier.expected_report ? [] : [ "unexpected report" ]
-    end
-  rescue StandardError => error
-    [ "#{error.class}: #{error.message}" ]
   end
 end

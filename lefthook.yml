@@ -8,4 +8,4 @@ pre-commit:
 pre-push:
   commands:
     rspec:
-      run: bundle exec rspec
+      run: bin/parallel-spec
