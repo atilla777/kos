@@ -12,11 +12,11 @@ KOS runtime files must be installed into a target repository without making that
 
 ## Decision
 
-The installed OpenCode bundle contains ordinary copies of the six canonical skills, the KOS session-guard plugin, and restrictive orchestrator and workflow-step agent profiles. The source distribution identifies itself as KOS 0.1.0 and binds each plan and installation to the complete source-bundle digest.
+The installed OpenCode bundle contains ordinary copies of the six canonical skills, the KOS session-guard plugin, and restrictive orchestrator, workflow-step, and retrospective agent profiles. The retrospective profile has no skill-tool authority and therefore embeds the complete analysis, sanitization, and closed result procedure instead of depending on runtime skill loading. The source distribution identifies itself as KOS 0.1.0 and binds each plan and installation to the complete source-bundle digest.
 
 `kos-initialize` separates deterministic planning from application. A plan records repository trust values, runtime and workflow readiness, source identity, destination observations, and a canonical digest. Application rebuilds that plan under a repository installation lock and requires its exact approved digest. Any update, drift recovery, or unmanaged collision also requires explicit force authorization. Symlinks, wrong object types, unsafe ancestry, malformed manifests, and changed observations always fail closed.
 
-Files are prepared and verified in staging on the target filesystem, then published by per-file atomic rename. The closed manifest is published last and acts as the bundle commit marker. An in-process error attempts rollback; interruption without a committed manifest is handled as drift through a newly generated and approved plan rather than implicit continuation. The initializer runs the complete executable OpenCode adapter contract against the staged bundle before publication.
+Files are prepared and verified in staging on the target filesystem, then published by per-file atomic rename. The closed manifest is published last and acts as the bundle commit marker. An in-process error attempts rollback; interruption without a committed manifest is handled as drift through a newly generated and approved plan rather than implicit continuation. The initializer runs the complete executable OpenCode adapter contract against the staged bundle before publication, including the retrospective profile's restrictive permissions and embedded procedure even when retrospective is disabled. Root lifecycle verification invokes the packaged `kos-opencode` launcher with deterministic local configuration and the real pinned OpenCode process.
 
 ## Consequences
 
@@ -25,7 +25,7 @@ Files are prepared and verified in staging on the target filesystem, then publis
 - Safe upgrades require a new approved plan and force authorization when installed bytes change.
 - Atomicity is per file rather than across the whole bundle; the manifest distinguishes a completed installation from crash residue.
 - The first installation target remains exactly OpenCode 1.18.26. Supporting another version requires passing the complete adapter contract and changing the closed installation contract.
-- KOS application packaging remains separate; the initializer consumes bundle files from its installed distribution and requires `kos` and `kos-repository` to already be on `PATH`.
+- KOS application packaging remains separate from the repository-local runtime bundle. The initializer consumes bundle files from its installed distribution and requires `kos`, `kos-repository`, and `kos-opencode` to already be executable on `PATH`; it binds the launcher path into readiness and verifies its behavior against the staged bundle rather than copying the launcher into the target repository.
 
 ## Rejected Alternatives
 

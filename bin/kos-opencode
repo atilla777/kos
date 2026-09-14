@@ -1,0 +1,5 @@
+#!/usr/bin/env ruby
+
+require_relative "../lib/kos/runtime/open_code/launcher"
+
+exit Kos::Runtime::OpenCode::Launcher.new.run(ARGV)

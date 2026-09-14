@@ -14,4 +14,12 @@ RSpec.describe RuntimeConfig do
   it "provides one durable installation-wide default" do
     expect(singleton_summary).to eq([ [ 1, false, 0 ], true ])
   end
+
+  it "uses optimistic locking for changes" do
+    first = described_class.current
+    stale = described_class.find(first.id)
+    first.update!(retrospective_enabled: true)
+
+    expect { stale.update!(retrospective_enabled: true) }.to raise_error(ActiveRecord::StaleObjectError)
+  end
 end

@@ -15,6 +15,15 @@ module Api
           }
         end
 
+        def runtime_config(record)
+          {
+            "schema_version" => "1",
+            "retrospective_enabled" => record.retrospective_enabled,
+            "lock_version" => record.lock_version,
+            "updated_at" => timestamp(record.updated_at)
+          }
+        end
+
         def task_type(record)
           optional({
             "schema_version" => "1",

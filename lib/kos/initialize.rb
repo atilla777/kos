@@ -413,8 +413,12 @@ module Kos
         ".opencode/skills/kos-workflow-step/SKILL.md" => "skills/kos-workflow-step/SKILL.md",
         ".opencode/plugins/kos-session-guard.js" => "runtime/opencode/plugins/kos-session-guard.js",
         ".opencode/agents/kos-orchestrate.md" => "runtime/opencode/agents/kos-orchestrate.md",
+        ".opencode/agents/kos-retrospective.md" => "runtime/opencode/agents/kos-retrospective.md",
         ".opencode/agents/kos-workflow-step.md" => "runtime/opencode/agents/kos-workflow-step.md"
       }.freeze
+      PREVIOUS_INVENTORY = INVENTORY.except(".opencode/agents/kos-retrospective.md").freeze
+      PREVIOUS_CAPABILITY_REPORT_DIGEST =
+        "sha256:7affe716c66b446a0ae94eae35a115fcf9657165adc9af6d773180e007086701".freeze
 
       def initialize(cwd: Dir.pwd, environment: ENV, runner: CommandRunner.new, source_root: ROOT, schema: Schema.new,
         failure_injector: nil, capability_verifier_factory: nil)
@@ -515,6 +519,7 @@ module Kos
       def inspect_readiness
         kos = executable("kos")
         repository = executable("kos-repository")
+        launcher = executable("kos-opencode")
         opencode = executable("opencode")
         version = command!(opencode, "--version", chdir: @cwd).strip
         raise Error.new("runtime_incompatible", "OpenCode #{OPEN_CODE_VERSION} is required") unless version == OPEN_CODE_VERSION
@@ -530,7 +535,8 @@ module Kos
           raise Error.new("workflow_unavailable", "Active quick-fix workflow is not readable")
         end
         {
-          "kos_executable" => kos, "repository_executable" => repository, "opencode_executable" => opencode,
+          "kos_executable" => kos, "repository_executable" => repository,
+          "launcher_executable" => launcher, "opencode_executable" => opencode,
           "capability_report_digest" => Kos::Runtime::OpenCode::CapabilityVerifier.report_digest,
           "quick_fix_workflow_version_id" => workflow_id,
           "quick_fix_workflow_version" => workflow.fetch("version"),
@@ -586,9 +592,13 @@ module Kos
         actual_inventory = inventory.map { |entry| [ entry.fetch("path"), entry.fetch("source") ] }
         recomputed_bundle = CanonicalJson.digest(inventory.map { |entry| entry.slice("path", "source", "digest") })
         capability = Kos::Runtime::OpenCode::CapabilityVerifier.report_digest
-        unless actual_inventory == expected_inventory && manifest.fetch("repository") == repository &&
-            manifest.fetch("source_bundle_digest") == recomputed_bundle &&
-            manifest.fetch("capability_report_digest") == capability
+        previous_inventory = PREVIOUS_INVENTORY.map { |destination_path, source| [ destination_path, source ] }
+        supported_contract = (actual_inventory == expected_inventory &&
+          manifest.fetch("capability_report_digest") == capability) ||
+          (actual_inventory == previous_inventory &&
+            manifest.fetch("capability_report_digest") == PREVIOUS_CAPABILITY_REPORT_DIGEST)
+        unless supported_contract && manifest.fetch("repository") == repository &&
+            manifest.fetch("source_bundle_digest") == recomputed_bundle
           raise Error.new("manifest_invalid", "Runtime manifest does not own this exact installation")
         end
         observation = { "observed" => "expected", "digest" => "sha256:#{Digest::SHA256.hexdigest(bytes)}",
@@ -718,6 +728,7 @@ module Kos
 
       def verify_staged_bundle(stage, readiness)
         verifier = @capability_verifier_factory.call(executable: readiness.fetch("opencode_executable"),
+          launcher_executable: readiness.fetch("launcher_executable"),
           staged_opencode: destination(stage.proc_path, ".opencode"), path: @environment.fetch("PATH", ""))
         report = verifier.call
         digest = Kos::Runtime::OpenCode::CapabilityVerifier.report_digest(report)

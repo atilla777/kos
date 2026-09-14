@@ -207,7 +207,7 @@ RSpec.describe KosCliSkillContract do
 
   it "identifies catalog commands that are not implemented" do
     expect(described_class.unavailable_commands).to contain_exactly(
-      "runtime-config get", "runtime-config update", "artifact register", "publication complete"
+      "artifact register", "publication complete"
     )
   end
 

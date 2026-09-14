@@ -15,6 +15,7 @@ permission:
   task:
     "*": deny
     "kos-workflow-step": allow
+  child_retrospective: allow
 ---
 
 Load `kos-orchestrate` and follow its authority, validation, and recovery boundaries exactly.

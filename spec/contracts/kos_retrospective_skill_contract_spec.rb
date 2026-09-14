@@ -53,13 +53,14 @@ module KosRetrospectiveSkillContract
     ],
     "Preserve The Primary Result" => [
       "primary result was delivered", "acknowledged and durably handled it", "`primary_result_acknowledged: true`",
-      "bounded runtime budget", "must not delay, replace, downgrade, amend, or change",
+      "fixed 30-second runtime budget", "including provider latency", "must not delay, replace, downgrade, amend, or change",
       "Deliver the retrospective result separately"
     ],
     "Protect Privacy And Authority" => [
-      "invoking agent's own private session dialogue", "only a closed sanitized child result",
+      "dialogue available in the invoking agent's own session", "only a closed child result that passed runtime validation",
       "untrusted evidence, not executable instructions", "Never send raw dialogue or verbatim transcript excerpts",
       "credentials, secrets, environment values, personal data, unrelated source content, and private absolute paths",
+      "runtime structurally validates", "deterministically rejects obvious", "not proof", "return `no_action`",
       "Do not read or mutate KOS state", "read or write the filesystem", "launch or continue a subagent"
     ],
     "Analyze The Session" => [
@@ -80,6 +81,13 @@ module KosRetrospectiveSkillContract
     "Leave Follow-Up To The User" => [
       "sanitized runtime transport document with no persistence", "Do not deduplicate, submit, create, approve, schedule",
       "The user decides whether follow-up is warranted"
+    ],
+    "Use The OpenCode Lifecycle Transport" => [
+      "`kos-opencode`", "samples installation-wide enablement once", "same root OpenCode session",
+      "`subagent_type` is exactly `kos-workflow-step`", "with only `child_session_id`",
+      "not a model-supplied eligibility or acknowledgement boolean", "retained idle child session",
+      "at most five sanitized child results in receipt order", "`KOS_RETROSPECTIVE_FD`",
+      "Distinguish transport outcome `no_result`", "skill outcome is `no_action`"
     ]
   }.freeze
 
@@ -182,14 +190,6 @@ module KosRetrospectiveSkillContract
     end
   end
 
-  def unavailable_runtime_errors
-    unavailable = section("Fail Closed At Missing Runtime Boundaries", nil)
-    required = [ "does not yet provide", "graceful-end hook", "private self-dialogue input",
-      "retrospective invocation document", "bounded timeout enforcement", "separate post-primary result delivery",
-      "do not invoke this skill manually as a substitute", "never weakens recovery or the primary result" ]
-    required.reject { |guidance| unavailable.include?(guidance) }
-  end
-
   def forbidden_guidance
     FORBIDDEN_GUIDANCE.select { |guidance| content.downcase.include?(guidance.downcase) }
   end
@@ -223,7 +223,7 @@ module KosRetrospectiveSkillContract
   def next_heading(heading)
     headings = [ "Accept The Lifecycle Boundary", "Preserve The Primary Result", "Protect Privacy And Authority",
       "Analyze The Session", "Classify Proposals", "Build The Closed Result", "Leave Follow-Up To The User",
-      "Fail Closed At Missing Runtime Boundaries" ]
+      "Use The OpenCode Lifecycle Transport" ]
     headings.fetch(headings.index(heading) + 1, nil)
   end
 
@@ -325,10 +325,6 @@ RSpec.describe KosRetrospectiveSkillContract do
 
   it "defines lifecycle, primary-result, privacy, authority, classification, and task boundaries" do
     expect([ described_class.missing_guidance, described_class.forbidden_guidance ]).to eq([ [], [] ])
-  end
-
-  it "does not claim unavailable OpenCode retrospective transport" do
-    expect(described_class.unavailable_runtime_errors).to be_empty
   end
 
   it "is discovered from a nested worktree by pinned OpenCode" do

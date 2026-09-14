@@ -34,7 +34,7 @@ After explicit approval, rerun from the same repository with the identical reque
 kos-initialize apply --input <path|-> --approved-plan <sha256:digest> --json [--force]
 ```
 
-Use `--force` whenever the approved plan contains any `update` or `conflict`, including a missing or drifted managed file. Apply rebuilds the complete plan under its installation lock and rejects any digest or destination-observation change before registration or publication. It verifies the installed `kos`, `kos-repository`, active readable published `quick-fix`, OpenCode `1.18.26`, and the complete executable adapter contract against the staged runtime bundle before publishing ordinary copied files. The manifest is published last.
+Use `--force` whenever the approved plan contains any `update` or `conflict`, including a missing or drifted managed file. Apply rebuilds the complete plan under its installation lock and rejects any digest or destination-observation change before registration or publication. It verifies executable `kos`, `kos-repository`, and `kos-opencode` commands, the active readable published `quick-fix`, OpenCode `1.18.26`, and the complete executable adapter contract against the staged runtime bundle before publishing ordinary copied files. Retrospective lifecycle capability is required even while retrospective is disabled. The manifest is published last.
 
 Stop on a malformed result, conflict without explicit force, drift, unsafe object, changed plan, readiness failure, registration failure, capability failure, or partial rollback report. Generate and obtain approval for a new plan after any interrupted or partial installation.
 
@@ -43,4 +43,5 @@ Stop on a malformed result, conflict without explicit force, drift, unsafe objec
 - Preserve unrelated `.opencode` content. Never delete or rewrite a path outside the managed inventory.
 - Never accept symlinks, non-regular managed objects, path traversal, unsafe ancestry, or a malformed or unsupported manifest.
 - Installed files are derived copies. Canonical skills remain under the KOS `skills/` source tree.
-- Initialization installs `kos-retrospective` instructions but does not provide or claim graceful-end invocation, private-dialogue extraction, timeout enforcement, or separate result delivery.
+- A changed source-bundle or capability-report digest makes an existing installation a managed upgrade. Generate a new plan, show every changed managed path and digest, obtain explicit approval of that plan, and apply it with `--force`; never update an installed copy directly.
+- The managed OpenCode bundle supplies the retrospective skill, child lifecycle plugin support, and a restrictive retrospective agent profile that embeds the complete procedure and closed result instructions rather than depending on runtime skill loading. `kos-opencode` supplies root lifecycle invocation and separate `KOS_RETROSPECTIVE_FD` delivery as the installed process adapter, not as an editable project-local skill.

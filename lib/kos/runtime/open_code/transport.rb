@@ -13,12 +13,14 @@ module Kos
         TASK_OUTPUT = %r{\A<task id="([^"]+)" state="completed">\n<task_result>\n(.*)\n</task_result>\n</task>\z}m
         SCHEMA_ROOT = File.expand_path("../../../../schemas", __dir__)
 
-        attr_reader :child_session_id, :state
+        attr_reader :child_session_id, :retrospective_results, :state
 
         def initialize(attempt_id:, input_context_digest:, allowed_operations:)
           @attempt_id = attempt_id
           @input_context_digest = input_context_digest
           @allowed_operations = allowed_operations
+          @retrospective_results = []
+          @retrospective_acknowledged = false
           @state = :awaiting_turn
         end
 
@@ -41,6 +43,28 @@ module Kos
           result = delivery.fetch("effect_result")
           validate_effect_result(result, expected_effect_intent_id)
           @state = :awaiting_turn
+          delivery
+        end
+
+        def acknowledge_primary(invocation)
+          fail_exchange("retrospective was already acknowledged") if @retrospective_acknowledged
+          fail_exchange("primary result is not complete") unless state == :completed
+          validate_document("invocation", invocation, schema: self.class.retrospective_schema)
+          fail_exchange("retrospective source is not a workflow step") unless invocation.fetch("source") == "workflow_step"
+
+          @retrospective_invocation = invocation
+          @retrospective_acknowledged = true
+          @state = :awaiting_retrospective
+          invocation
+        end
+
+        def accept_retrospective_delivery(delivery)
+          fail_exchange("retrospective is not expected") unless state == :awaiting_retrospective
+          validate_document("retrospective_delivery", delivery)
+          validate_retrospective_binding(delivery)
+          @retrospective_results << delivery.fetch("result") if delivery.fetch("outcome") == "result"
+          @retrospective_results.shift while @retrospective_results.length > 5
+          @state = :completed
           delivery
         end
 
@@ -134,8 +158,20 @@ module Kos
           turn.key?("effect")
         end
 
-        def validate_document(name, document)
-          return if self.class.schema.ref("#/$defs/#{name}").valid?(document)
+        def validate_retrospective_binding(delivery)
+          fail_exchange("retrospective targets another child session") unless
+            delivery.fetch("runtime_session_id") == child_session_id
+          fail_exchange("retrospective invocation changed") unless delivery.fetch("invocation") == @retrospective_invocation
+          return unless delivery.fetch("outcome") == "result"
+
+          result = delivery.fetch("result")
+          expected = @retrospective_invocation.values_at("session_id", "source", "primary_result_acknowledged")
+          fail_exchange("retrospective result identity changed") unless
+            result.values_at("session_id", "source", "primary_result_acknowledged") == expected
+        end
+
+        def validate_document(name, document, schema: self.class.schema)
+          return if schema.ref("#/$defs/#{name}").valid?(document)
 
           fail_exchange("document does not satisfy #{name}")
         end
@@ -148,12 +184,27 @@ module Kos
           def schema
             @schema ||= begin
               path = File.join(SCHEMA_ROOT, "runtime/v1/opencode.json")
-              registry = Dir[File.join(SCHEMA_ROOT, "cli/v1/*.json")].to_h do |schema_path|
+              registry = Dir[File.join(SCHEMA_ROOT, "{cli,runtime}/v1/*.json")].to_h do |schema_path|
                 document = JSON.parse(File.read(schema_path))
                 [ URI(document.fetch("$id")), document ]
               end
               JSONSchemer.schema(JSON.parse(File.read(path)), ref_resolver: registry.to_proc)
             end
+          end
+
+          def retrospective_schema
+            @retrospective_schema ||= begin
+              path = File.join(SCHEMA_ROOT, "runtime/v1/retrospective.json")
+              JSONSchemer.schema(JSON.parse(File.read(path)))
+            end
+          end
+
+          def valid_retrospective_result?(document)
+            retrospective_schema.ref("#/$defs/result").valid?(document)
+          end
+
+          def valid_retrospective_delivery?(document)
+            schema.ref("#/$defs/retrospective_delivery").valid?(document)
           end
         end
       end

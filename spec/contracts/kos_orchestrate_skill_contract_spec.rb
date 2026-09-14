@@ -66,6 +66,14 @@ module KosOrchestrateSkillContract
       "only when exactly one transition is fully evidenced", "Do not infer a `decision` value",
       "publication complete", "never pass publication evidence to `step complete`"
     ],
+    "Deliver Retrospective Separately" => [
+      "`KOS_RETROSPECTIVE_ENABLED`", "explicitly invoke `child_retrospective`",
+      "`subagent_type` is exactly `kos-workflow-step`", "with exactly one argument, `child_session_id`",
+      "tool call itself is the explicit acknowledgement signal", "never send `lifecycle_eligible`",
+      "`outcome: \"no_result\"`", "`no_action`", "structurally validate", "never as proof of semantic privacy",
+      "five schema-valid sanitized child results in receipt order", "KOS supplies no raw child dialogue",
+      "`kos-opencode`", "`KOS_RETROSPECTIVE_FD`"
+    ],
     "Fail Closed At Missing Boundaries" => [
       "publication cannot advance to `completed`", "complete registered repository trust snapshot",
       "authoritative worktree allocation path", "adopted generic effect IDs",
@@ -158,7 +166,8 @@ module KosOrchestrateSkillContract
 
   def next_heading(heading)
     headings = [ "Authority Boundary", "Read Authoritative State", "Own The Attempt", "Prepare The Context",
-      "Dispatch The Pinned Mode", "Mediate Typed Effects", "Submit The Result", "Fail Closed At Missing Boundaries" ]
+      "Dispatch The Pinned Mode", "Mediate Typed Effects", "Submit The Result", "Deliver Retrospective Separately",
+      "Fail Closed At Missing Boundaries" ]
     headings.fetch(headings.index(heading) + 1, nil)
   end
 

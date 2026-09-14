@@ -41,7 +41,22 @@ bin/kos task-type list --limit 20 --json
 bin/kos workflow get --workflow-version UUID --json
 bin/kos task get --repository UUID --task KOS-000123 --json
 bin/kos artifact list --repository UUID --task KOS-000123 --limit 20 --json
+bin/kos runtime-config get --json
 ```
+
+Retrospective is installation-wide and disabled by default. Enable it with a global optimistic-locking update body containing `retrospective_enabled: true` and the `expected_lock_version` returned by `runtime-config get`:
+
+```sh
+bin/kos runtime-config update --input runtime-config.json --idempotency-key retrospective-enable-1 --json
+```
+
+Start a KOS OpenCode orchestration through `kos-opencode`, always providing the explicit task worktree. The adapter samples retrospective enablement once, preserves the primary OpenCode JSON stream on stdout and diagnostics on stderr, and writes the separate root retrospective delivery to `KOS_RETROSPECTIVE_FD` after primary completion. The descriptor must be at least 3 and name a writable regular file. For example, descriptor 3 records newline-delimited delivery JSON without mixing it into the primary result:
+
+```sh
+KOS_RETROSPECTIVE_FD=3 bin/kos-opencode --worktree /absolute/task-worktree -- "Run the current KOS workflow status" 3>retrospective.ndjson
+```
+
+Retrospective has a fixed 30-second budget including provider latency. A delivery with `outcome: "no_result"` reports that no valid retrospective was produced; it differs from a valid nested result with `outcome: "no_action"`. Dialogue remains available only inside the same OpenCode session. The root continuation uses OpenCode's pure mode and is skipped if bounded primary capture is incomplete, both root `opencode.json` and `opencode.jsonc` exist, an explicit custom `OPENCODE_CONFIG` is selected, or exact managed runtime integrity changes. Custom OpenCode config-file, config-content, and config-directory overrides are removed from the retrospective process, which uses an isolated empty global config directory. Before delivery, KOS structurally rejects obvious secret, environment-assignment, private-path, and verbatim-dialogue leakage; this bounded check backs up fail-closed model sanitization but is not a semantic privacy guarantee.
 
 Workflow catalog mutations read only their command body from a JSON file or stdin and require an idempotency key:
 
@@ -62,7 +77,7 @@ bin/kos-initialize plan --input initialize.json --json
 bin/kos-initialize apply --input initialize.json --approved-plan sha256:DIGEST --json
 ```
 
-Add `--force` to `apply` only after approving every planned update or conflict. Installation verifies `kos`, `kos-repository`, the active published `quick-fix` workflow, and the complete OpenCode adapter contract before publishing six skills, the session guard, and two agent profiles under `.opencode`. The manifest is published last at `.opencode/kos-runtime-manifest.json`; unrelated OpenCode files are not managed.
+Add `--force` to `apply` only after approving every planned update or conflict. Installation requires executable `kos`, `kos-repository`, and `kos-opencode` commands, verifies the active published `quick-fix` workflow and the complete OpenCode adapter contract, including retrospective while disabled, then publishes six skills, the session guard, and three restrictive agent profiles under `.opencode`. The manifest is published last at `.opencode/kos-runtime-manifest.json`; unrelated OpenCode files are not managed. A changed source-bundle or capability-report digest is a managed upgrade and requires a new approved plan plus `--force`; never edit installed copies directly.
 
 Create a task from an input body containing `title` and `task_type: quick-fix`:
 

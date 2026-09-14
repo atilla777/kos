@@ -40,6 +40,10 @@ RSpec.describe Kos::Initialize::Application do
     expect(plan_contract_results).to all(be_truthy)
   end
 
+  it "requires kos, kos-repository, and kos-opencode to be executable on PATH" do
+    expect(required_executable_results).to all(eq([ "executable_unavailable", true ]))
+  end
+
   it "applies copied files, publishes the manifest last, and then plans unchanged" do
     expect(apply_contract_results).to all(be_truthy)
   end
@@ -59,6 +63,11 @@ RSpec.describe Kos::Initialize::Application do
 
   it "reports changed and missing owned files as drift" do
     expect(drift_results).to eq(%w[drifted missing force_required])
+  end
+
+  it "plans the previous nine-file bundle as an explicitly approved managed upgrade" do
+    expect(previous_bundle_upgrade_results)
+      .to eq(%w[create update managed_previous capability_changed force_required])
   end
 
   it "rejects symlink ancestry and malformed manifests" do
@@ -103,8 +112,8 @@ RSpec.describe Kos::Initialize::Application do
     expect(installed_copy_result).to be(true)
   end
 
-  it "rejects permissive and corrupt staged production agent profiles" do
-    expect(invalid_profile_results).to eq(%w[capability_failed capability_failed])
+  it "rejects staged profiles with extra built-in or custom authority and incomplete procedure" do
+    expect(invalid_profile_results).to eq(%w[capability_failed capability_failed capability_failed capability_failed])
   end
 
   it "does not follow an .opencode replacement during stage creation" do
@@ -149,6 +158,17 @@ RSpec.describe Kos::Initialize::Application do
     raise result.inspect unless result.fetch(:status).zero?
   end
 
+  def required_executable_results
+    %w[kos kos-repository kos-opencode].map do |name|
+      path = File.join(test_bin, name)
+      mode = File.stat(path).mode & 0o777
+      File.chmod(0o644, path)
+      result = invoke("plan", "--input", "-", "--json")
+      File.chmod(mode, path)
+      [ result.dig(:document, "error", "code"), result.fetch(:stderr).include?(name) ]
+    end
+  end
+
   def write_executables
     write_executable("kos", <<~RUBY)
       #!/usr/bin/env ruby
@@ -172,6 +192,10 @@ RSpec.describe Kos::Initialize::Application do
       puts JSON.generate("schema_version" => "1", "command" => identifier, "data" => data)
     RUBY
     write_executable("kos-repository", "#!/usr/bin/env ruby\nexit 0\n")
+    write_executable("kos-opencode", <<~RUBY)
+      #!/usr/bin/env ruby
+      exec #{File.join(KosInitializeApplicationFixture::ROOT, "bin/kos-opencode").inspect}, *ARGV
+    RUBY
     write_executable("opencode", <<~RUBY)
       #!/usr/bin/env ruby
       require "json"
@@ -220,8 +244,10 @@ RSpec.describe Kos::Initialize::Application do
       plan.dig("repository", "worktree_root") == File.realpath(repository),
       plan.dig("repository", "git_common_dir") == File.realpath(File.join(repository, ".git")),
       plan.dig("repository", "trusted_remote_url") == "ssh://git@example.test/team/project.git",
+      plan.dig("readiness", "launcher_executable") == File.realpath(File.join(test_bin, "kos-opencode")),
       plan.fetch("managed_files").map { |file| file.fetch("action") }.uniq == [ "create" ],
-      plan.fetch("managed_files").length == 9 ]
+      plan.fetch("managed_files").length == 10,
+      plan.fetch("managed_files").any? { |file| file.fetch("path") == ".opencode/agents/kos-retrospective.md" } ]
   end
 
   def apply_contract_results
@@ -235,7 +261,7 @@ RSpec.describe Kos::Initialize::Application do
     repeated = invoke("plan", "--input", "-", "--json").fetch(:document)
     no_op = invoke("apply", "--input", "-", "--approved-plan", repeated.fetch("plan_digest"), "--json")
     [ result.fetch(:status).zero?, manifest.fetch("repository_id") == KosInitializeApplicationFixture::REPOSITORY_ID,
-      manifest.fetch("kos_version") == "0.1.0", manifest.fetch("managed_files").length == 9, copied,
+      manifest.fetch("kos_version") == "0.1.0", manifest.fetch("managed_files").length == 10, copied,
       repeated.fetch("managed_files").all? { |file| file.fetch("action") == "unchanged" },
       no_op.dig(:document, "published_files") == [] ]
   end
@@ -270,6 +296,31 @@ RSpec.describe Kos::Initialize::Application do
     File.write(File.join(repository, ".opencode/kos-runtime-manifest.json"), '{"schema_version":"2"}')
     malformed = invoke("plan", "--input", "-", "--json")
     [ symlink, malformed ].map { |result| result.dig(:document, "error", "code") }
+  end
+
+  def previous_bundle_upgrade_results
+    apply_clean_install
+    manifest_path = File.join(repository, ".opencode/kos-runtime-manifest.json")
+    manifest = JSON.parse(File.read(manifest_path))
+    agent = ".opencode/agents/kos-retrospective.md"
+    plugin = ".opencode/plugins/kos-session-guard.js"
+    manifest.fetch("managed_files").reject! { |file| file.fetch("path") == agent }
+    legacy = "legacy session guard\n"
+    File.write(File.join(repository, plugin), legacy)
+    manifest.fetch("managed_files").find { |file| file.fetch("path") == plugin }["digest"] =
+      "sha256:#{Digest::SHA256.hexdigest(legacy)}"
+    manifest["source_bundle_digest"] = Kos::Initialize::CanonicalJson.digest(manifest.fetch("managed_files"))
+    manifest["capability_report_digest"] = Kos::Initialize::Installer::PREVIOUS_CAPABILITY_REPORT_DIGEST
+    File.write(manifest_path, JSON.generate(manifest))
+    File.unlink(File.join(repository, agent))
+
+    plan = invoke("plan", "--input", "-", "--json").fetch(:document)
+    files = plan.fetch("managed_files").to_h { |file| [ file.fetch("path"), file ] }
+    rejected = invoke("apply", "--input", "-", "--approved-plan", plan.fetch("plan_digest"), "--json")
+    [ files.fetch(agent).fetch("action"), files.fetch(plugin).fetch("action"),
+      files.fetch(plugin).fetch("observed"),
+      plan.dig("readiness", "capability_report_digest") == manifest.fetch("capability_report_digest") ?
+        "capability_unchanged" : "capability_changed", rejected.dig(:document, "error", "code") ]
   end
 
   def stale_and_symlink_results
@@ -374,6 +425,7 @@ RSpec.describe Kos::Initialize::Application do
       source_root: source)
     FileUtils.rm_rf(source)
     verifier = Kos::Runtime::OpenCode::CapabilityVerifier.new(executable: real_opencode,
+      launcher_executable: File.join(test_bin, "kos-opencode"),
       staged_opencode: File.join(repository, ".opencode"))
     result.fetch(:status).zero? && !File.exist?(source) && verifier.call.fetch("compatible")
   end
@@ -392,7 +444,20 @@ RSpec.describe Kos::Initialize::Application do
     corrupt_plan = invoke("plan", "--input", "-", "--json", source_root: corrupt_source).fetch(:document)
     corrupt = invoke("apply", "--input", "-", "--approved-plan", corrupt_plan.fetch("plan_digest"), "--json",
       source_root: corrupt_source, real_capability: true)
-    [ permissive, corrupt ].map { |result| result.dig(:document, "error", "code") }
+    authority_source = copy_source_bundle("authority-source")
+    authority_profile = File.join(authority_source, "runtime/opencode/agents/kos-orchestrate.md")
+    additions = "  read: allow\n  write: allow\n  patch: allow\n  webfetch: allow\n  question: allow\n  rogue_runtime_tool: allow\n"
+    File.write(authority_profile, File.read(authority_profile).sub("---\n\nLoad", "#{additions}---\n\nLoad"))
+    authority_plan = invoke("plan", "--input", "-", "--json", source_root: authority_source).fetch(:document)
+    authority = invoke("apply", "--input", "-", "--approved-plan", authority_plan.fetch("plan_digest"), "--json",
+      source_root: authority_source, real_capability: true)
+    procedure_source = copy_source_bundle("procedure-source")
+    procedure_profile = File.join(procedure_source, "runtime/opencode/agents/kos-retrospective.md")
+    File.write(procedure_profile, File.read(procedure_profile).sub("Retain every material uncertainty", "Ignore uncertainty"))
+    procedure_plan = invoke("plan", "--input", "-", "--json", source_root: procedure_source).fetch(:document)
+    procedure = invoke("apply", "--input", "-", "--approved-plan", procedure_plan.fetch("plan_digest"), "--json",
+      source_root: procedure_source, real_capability: true)
+    [ permissive, corrupt, authority, procedure ].map { |result| result.dig(:document, "error", "code") }
   end
 
   def stage_creation_race_results

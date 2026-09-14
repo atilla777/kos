@@ -4,6 +4,21 @@
   "$defs": {
     "identifier": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,127}$" },
     "uuid": { "type": "string", "format": "uuid" },
+    "invocation": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "1" },
+        "session_id": { "$ref": "#/$defs/uuid" },
+        "source": { "enum": ["orchestrator", "workflow_step"] },
+        "retrospective_enabled": { "const": true },
+        "lifecycle_eligible": { "const": true },
+        "recursion_suppressed": { "const": true },
+        "primary_result_acknowledged": { "const": true },
+        "timeout_seconds": { "const": 30 }
+      },
+      "required": ["schema_version", "session_id", "source", "retrospective_enabled", "lifecycle_eligible", "recursion_suppressed", "primary_result_acknowledged", "timeout_seconds"],
+      "additionalProperties": false
+    },
     "proposal": {
       "type": "object",
       "properties": {
@@ -40,6 +55,9 @@
         { "if": { "properties": { "outcome": { "const": "proposals" } }, "required": ["outcome"] }, "then": { "properties": { "proposals": { "minItems": 1 } } } }
       ],
       "additionalProperties": false
+    },
+    "no_result_reason": {
+      "enum": ["cancelled", "duplicate", "limit_reached", "malformed_result", "provider_failure", "timeout", "transport_failure"]
     }
   }
 }

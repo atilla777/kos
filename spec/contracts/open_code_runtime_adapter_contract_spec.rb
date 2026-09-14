@@ -22,6 +22,9 @@ module OpenCodeRuntimeAdapterContract
         document = JSON.parse(File.read(path))
         [ URI(document.fetch("$id")), document ]
       end
+      retrospective_path = File.expand_path("../../schemas/runtime/v1/retrospective.json", __dir__)
+      retrospective = JSON.parse(File.read(retrospective_path))
+      schemas[URI(retrospective.fetch("$id"))] = retrospective
       JSONSchemer.schema(runtime, ref_resolver: schemas.to_proc)
     end
   end
@@ -33,6 +36,18 @@ module OpenCodeRuntimeAdapterContract
   def completion(child_session_id, turn)
     { "schema_version" => "1", "runtime" => "opencode",
       "child_session_id" => child_session_id, "turn" => turn }
+  end
+
+  def invocation(session_id: "11111111-1111-4111-8111-111111111111", source: "workflow_step")
+    { "schema_version" => "1", "session_id" => session_id, "source" => source,
+      "retrospective_enabled" => true, "lifecycle_eligible" => true, "recursion_suppressed" => true,
+      "primary_result_acknowledged" => true, "timeout_seconds" => 30 }
+  end
+
+  def retrospective_result(invocation)
+    { "schema_version" => "1", "session_id" => invocation.fetch("session_id"),
+      "source" => invocation.fetch("source"), "primary_result_acknowledged" => true,
+      "outcome" => "no_action", "proposals" => [] }
   end
 end
 
@@ -49,6 +64,17 @@ RSpec.describe OpenCodeRuntimeAdapterContract do
   it "accepts a valid effect exchange and final manifest in order" do
     expect(valid_exchange_result)
       .to eq([ effect_request, result_manifest, :completed ])
+  end
+
+  it "accepts one bound post-primary retrospective delivery" do
+    expect(valid_retrospective_exchange_result).to all(be(true))
+  end
+
+  it "rejects premature, duplicate, mismatched, and recursive retrospective input" do
+    expect(retrospective_rejections).to eq([
+      "primary result is not complete", "retrospective is not expected", "retrospective was already acknowledged",
+      "retrospective targets another child session", "document does not satisfy invocation"
+    ])
   end
 
   it "delivers a schema-valid effect failure without success-only target fields" do
@@ -75,10 +101,17 @@ RSpec.describe OpenCodeRuntimeAdapterContract do
     report = capability_report
     completion = described_class.completion(child_session_id, effect_request)
     delivery = effect_delivery
+    invocation = described_class.invocation
+    retrospective = retrospective_delivery(invocation)
     [ runtime_definition("capability_report").valid?(report),
       runtime_definition("workflow_step_completion").valid?(completion),
       runtime_definition("workflow_step_completion").valid?(described_class.completion(child_session_id, result_manifest)),
       runtime_definition("effect_delivery").valid?(delivery),
+      runtime_definition("retrospective_delivery").valid?(retrospective),
+      runtime_definition("retrospective_no_result_delivery").valid?(retrospective_no_result_delivery(invocation)),
+      !runtime_definition("retrospective_delivery").valid?(retrospective.merge("dialogue" => "private")),
+      !runtime_definition("retrospective_delivery").valid?(retrospective_no_result_delivery(invocation).merge(
+        "reason" => "no_action")),
       !runtime_definition("workflow_step_completion").valid?(completion.merge("prose" => "trust me")),
       !runtime_definition("workflow_step_completion").valid?(described_class.completion(child_session_id, "not JSON")),
       !runtime_definition("effect_delivery").valid?(delivery.merge("prompt" => "rewrite the result")),
@@ -126,9 +159,7 @@ RSpec.describe OpenCodeRuntimeAdapterContract do
   end
 
   def capability_report
-    capabilities = %w[
-      skill_discovery non_interactive_json subagent_launch worktree_cwd typed_effect_round_trip
-    ]
+    capabilities = Kos::Runtime::OpenCode::CapabilityVerifier::CAPABILITIES
     { "schema_version" => "1", "runtime" => "opencode", "runtime_version" => "1.18.26",
       "compatible" => true,
       "observations" => capabilities.to_h do |capability|
@@ -212,6 +243,58 @@ RSpec.describe OpenCodeRuntimeAdapterContract do
     new_exchange.tap { |exchange| exchange.accept_task_completion(task_event(child_session_id, JSON.generate(effect_request))) }
   end
 
+  def completed_exchange
+    new_exchange.tap do |exchange|
+      exchange.accept_task_completion(task_event(child_session_id, JSON.generate(result_manifest)))
+    end
+  end
+
+  def retrospective_delivery(invocation)
+    { "schema_version" => "1", "runtime" => "opencode", "runtime_session_id" => child_session_id,
+      "invocation" => invocation, "outcome" => "result",
+      "result" => described_class.retrospective_result(invocation) }
+  end
+
+  def retrospective_no_result_delivery(invocation)
+    { "schema_version" => "1", "runtime" => "opencode", "runtime_session_id" => child_session_id,
+      "invocation" => invocation, "outcome" => "no_result", "reason" => "timeout" }
+  end
+
+  def retrospective_rejections
+    premature = new_exchange
+    duplicate = completed_exchange
+    invocation = described_class.invocation
+    duplicate.acknowledge_primary(invocation)
+    duplicate.accept_retrospective_delivery(retrospective_no_result_delivery(invocation))
+    acknowledged = completed_exchange
+    acknowledged.acknowledge_primary(invocation)
+    mismatched = completed_exchange
+    mismatched.acknowledge_primary(invocation)
+    recursive = completed_exchange
+    invalid_invocation = invocation.merge("recursion_suppressed" => false)
+    [ -> { premature.acknowledge_primary(invocation) },
+      -> { duplicate.accept_retrospective_delivery(retrospective_no_result_delivery(invocation)) },
+      -> { acknowledged.acknowledge_primary(invocation) },
+      -> { mismatched.accept_retrospective_delivery(
+        retrospective_no_result_delivery(invocation).merge("runtime_session_id" => "ses_other")) },
+      -> { recursive.acknowledge_primary(invalid_invocation) } ].map do |operation|
+      operation.call
+      "accepted"
+    rescue Kos::Runtime::OpenCode::Transport::InvalidExchange => error
+      error.message
+    end
+  end
+
+  def valid_retrospective_exchange_result
+    exchange = completed_exchange
+    invocation = described_class.invocation
+    exchange.acknowledge_primary(invocation)
+    delivery = retrospective_delivery(invocation)
+    accepted = exchange.accept_retrospective_delivery(delivery)
+    [ accepted == delivery, exchange.retrospective_results == [ described_class.retrospective_result(invocation) ],
+      exchange.state == :completed ]
+  end
+
   def delivery_child_case
     delivery = effect_delivery.merge("child_session_id" => "ses_other")
     [ prepared_exchange, ->(exchange) { deliver(exchange, delivery) } ]
@@ -260,7 +343,8 @@ RSpec.describe OpenCodeRuntimeAdapterContract do
       %w[agents plugins].each do |member|
         FileUtils.cp_r(File.join(described_class::ROOT, "runtime/opencode", member), File.join(staged, member))
       end
-      verifier = Kos::Runtime::OpenCode::CapabilityVerifier.new(executable: "opencode", staged_opencode: staged)
+      verifier = Kos::Runtime::OpenCode::CapabilityVerifier.new(executable: "opencode",
+        launcher_executable: File.join(described_class::ROOT, "bin/kos-opencode"), staged_opencode: staged)
       verifier.call == Kos::Runtime::OpenCode::CapabilityVerifier.expected_report ? [] : [ "unexpected report" ]
     end
   rescue StandardError => error

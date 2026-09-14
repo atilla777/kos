@@ -26,8 +26,14 @@ module KosInitializeContract
   def schema_contract_results
     document = JSON.parse(File.read(SCHEMA_PATH))
     definitions = %w[request plan apply_result manifest failure]
+    readiness_required = document.dig("$defs", "readiness", "required")
+    plan_inventory = document.dig("$defs", "plan", "properties", "managed_files")
+    manifest_inventory = document.dig("$defs", "manifest", "properties", "managed_files")
     [ document.fetch("$schema") == "https://json-schema.org/draft/2020-12/schema",
       definitions.all? { |definition| schema.ref("#/$defs/#{definition}") },
+      %w[kos_executable repository_executable launcher_executable].all? { |name| readiness_required.include?(name) },
+      plan_inventory.values_at("minItems", "maxItems") == [ 10, 10 ],
+      manifest_inventory.values_at("minItems", "maxItems") == [ 9, 10 ],
       schema.ref("#/$defs/request").valid?(request),
       !schema.ref("#/$defs/request").valid?(request.merge("unexpected" => true)),
       !schema.ref("#/$defs/request").valid?(request.merge(
@@ -39,15 +45,21 @@ module KosInitializeContract
     frontmatter = YAML.safe_load(content.match(/\A---\n(.*?)\n---\n/m)[1])
     [ frontmatter.fetch("name") == "kos-initialize",
       %w[exact\ canonical\ Git\ common\ directory --approved-plan --force].all? { |text| content.include?(text) },
-      content.include?("does not provide or claim graceful-end invocation"),
+      content.include?("Retrospective lifecycle capability is required even while retrospective is disabled"),
+      content.include?("changed source-bundle or capability-report digest"),
+      content.include?("`kos-opencode` supplies root lifecycle invocation"),
+      content.include?("executable `kos`, `kos-repository`, and `kos-opencode` commands"),
+      content.include?("embeds the complete procedure and closed result instructions"),
       Dir[File.join(ROOT, "skills/*/SKILL.md")].length == 6 ]
   end
 
   def support_contract_results
     orchestrator = File.read(File.join(ROOT, "runtime/opencode/agents/kos-orchestrate.md"))
+    retrospective = File.read(File.join(ROOT, "runtime/opencode/agents/kos-retrospective.md"))
     step = File.read(File.join(ROOT, "runtime/opencode/agents/kos-workflow-step.md"))
     guard = File.read(File.join(ROOT, "runtime/opencode/plugins/kos-session-guard.js"))
     [ orchestrator.include?('"*": deny') && orchestrator.include?('"kos-workflow-step": allow'),
+      retrospective.include?('"*": deny') && !retrospective.include?("allow"),
       step.include?('"git *": deny') && step.include?('"kos *": deny') && step.include?("task: deny"),
       guard.include?("unretained child session") && guard.include?("child session rebinding") ]
   end

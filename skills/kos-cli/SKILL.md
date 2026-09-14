@@ -50,12 +50,12 @@ Use only these commands until a later installed CLI explicitly supports more:
 
 | Scope | Reads | Mutations |
 | --- | --- | --- |
-| Global | `task-type list`, `workflow list`, `workflow get`, `workflow export`, `workflow-draft get`, `workflow-draft validate` | `repository register`, `workflow-draft import`, `workflow publish`, `workflow activate` |
+| Global | `runtime-config get`, `task-type list`, `workflow list`, `workflow get`, `workflow export`, `workflow-draft get`, `workflow-draft validate` | `repository register`, `runtime-config update`, `workflow-draft import`, `workflow publish`, `workflow activate` |
 | Repository | `task get`, `attempt get`, `worktree get`, `effect get`, `publication get`, `artifact list` | `task create`, `attempt claim`, `attempt renew`, `attempt fail`, `attempt needs-human`, `attempt reconcile`, `step context`, `step complete`, `worktree reserve`, `worktree confirm`, `worktree reconcile`, `worktree release`, `effect prepare`, `effect reconcile`, `publication prepare`, `publication reconcile` |
 
 ## Unavailable Commands
 
-`runtime-config get`, `runtime-config update`, `artifact register`, and `publication complete` exist in the wider protocol design but are not available in the current CLI. Do not invoke them or simulate them through direct API access.
+`artifact register` and `publication complete` exist in the wider protocol design but are not available in the current CLI. Do not invoke them or simulate them through direct API access.
 
 ## Validate Every Result
 

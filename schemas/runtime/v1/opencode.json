@@ -30,9 +30,16 @@
             "non_interactive_json": { "$ref": "#/$defs/capability_observation" },
             "subagent_launch": { "$ref": "#/$defs/capability_observation" },
             "worktree_cwd": { "$ref": "#/$defs/capability_observation" },
-            "typed_effect_round_trip": { "$ref": "#/$defs/capability_observation" }
+            "typed_effect_round_trip": { "$ref": "#/$defs/capability_observation" },
+            "retrospective_agent_isolation": { "$ref": "#/$defs/capability_observation" },
+            "retrospective_root_post_primary": { "$ref": "#/$defs/capability_observation" },
+            "retrospective_child_delivery": { "$ref": "#/$defs/capability_observation" },
+            "retrospective_disabled_suppression": { "$ref": "#/$defs/capability_observation" },
+            "retrospective_recursion_suppression": { "$ref": "#/$defs/capability_observation" },
+            "retrospective_child_timeout_independence": { "$ref": "#/$defs/capability_observation" },
+            "retrospective_timeout_failure_independence": { "$ref": "#/$defs/capability_observation" }
           },
-          "required": ["skill_discovery", "non_interactive_json", "subagent_launch", "worktree_cwd", "typed_effect_round_trip"],
+          "required": ["skill_discovery", "non_interactive_json", "subagent_launch", "worktree_cwd", "typed_effect_round_trip", "retrospective_agent_isolation", "retrospective_root_post_primary", "retrospective_child_delivery", "retrospective_disabled_suppression", "retrospective_recursion_suppression", "retrospective_child_timeout_independence", "retrospective_timeout_failure_independence"],
           "additionalProperties": false
         }
       },
@@ -48,7 +55,14 @@
                   "non_interactive_json": { "properties": { "outcome": { "const": "passed" } } },
                   "subagent_launch": { "properties": { "outcome": { "const": "passed" } } },
                   "worktree_cwd": { "properties": { "outcome": { "const": "passed" } } },
-                  "typed_effect_round_trip": { "properties": { "outcome": { "const": "passed" } } }
+                  "typed_effect_round_trip": { "properties": { "outcome": { "const": "passed" } } },
+                  "retrospective_agent_isolation": { "properties": { "outcome": { "const": "passed" } } },
+                  "retrospective_root_post_primary": { "properties": { "outcome": { "const": "passed" } } },
+                  "retrospective_child_delivery": { "properties": { "outcome": { "const": "passed" } } },
+                  "retrospective_disabled_suppression": { "properties": { "outcome": { "const": "passed" } } },
+                  "retrospective_recursion_suppression": { "properties": { "outcome": { "const": "passed" } } },
+                  "retrospective_child_timeout_independence": { "properties": { "outcome": { "const": "passed" } } },
+                  "retrospective_timeout_failure_independence": { "properties": { "outcome": { "const": "passed" } } }
                 }
               }
             }
@@ -63,9 +77,16 @@
                   "non_interactive_json": { "properties": { "outcome": { "const": "passed" } }, "required": ["outcome"] },
                   "subagent_launch": { "properties": { "outcome": { "const": "passed" } }, "required": ["outcome"] },
                   "worktree_cwd": { "properties": { "outcome": { "const": "passed" } }, "required": ["outcome"] },
-                  "typed_effect_round_trip": { "properties": { "outcome": { "const": "passed" } }, "required": ["outcome"] }
+                  "typed_effect_round_trip": { "properties": { "outcome": { "const": "passed" } }, "required": ["outcome"] },
+                  "retrospective_agent_isolation": { "properties": { "outcome": { "const": "passed" } }, "required": ["outcome"] },
+                  "retrospective_root_post_primary": { "properties": { "outcome": { "const": "passed" } }, "required": ["outcome"] },
+                  "retrospective_child_delivery": { "properties": { "outcome": { "const": "passed" } }, "required": ["outcome"] },
+                  "retrospective_disabled_suppression": { "properties": { "outcome": { "const": "passed" } }, "required": ["outcome"] },
+                  "retrospective_recursion_suppression": { "properties": { "outcome": { "const": "passed" } }, "required": ["outcome"] },
+                  "retrospective_child_timeout_independence": { "properties": { "outcome": { "const": "passed" } }, "required": ["outcome"] },
+                  "retrospective_timeout_failure_independence": { "properties": { "outcome": { "const": "passed" } }, "required": ["outcome"] }
                 },
-                "required": ["skill_discovery", "non_interactive_json", "subagent_launch", "worktree_cwd", "typed_effect_round_trip"]
+                "required": ["skill_discovery", "non_interactive_json", "subagent_launch", "worktree_cwd", "typed_effect_round_trip", "retrospective_agent_isolation", "retrospective_root_post_primary", "retrospective_child_delivery", "retrospective_disabled_suppression", "retrospective_recursion_suppression", "retrospective_child_timeout_independence", "retrospective_timeout_failure_independence"]
               }
             },
             "required": ["observations"]
@@ -102,6 +123,59 @@
       },
       "required": ["schema_version", "runtime", "child_session_id", "effect_result"],
       "additionalProperties": false
+    },
+    "retrospective_delivery_base": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "1" },
+        "runtime": { "const": "opencode" },
+        "runtime_session_id": { "$ref": "#/$defs/runtime_session_id" },
+        "invocation": { "$ref": "retrospective.json#/$defs/invocation" },
+        "outcome": { "enum": ["result", "no_result"] }
+      },
+      "required": ["schema_version", "runtime", "runtime_session_id", "invocation", "outcome"]
+    },
+    "retrospective_result_delivery": {
+      "allOf": [
+        { "$ref": "#/$defs/retrospective_delivery_base" },
+        {
+          "type": "object",
+          "properties": {
+            "schema_version": true,
+            "runtime": true,
+            "runtime_session_id": true,
+            "invocation": true,
+            "outcome": { "const": "result" },
+            "result": { "$ref": "retrospective.json#/$defs/result" }
+          },
+          "required": ["result"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "retrospective_no_result_delivery": {
+      "allOf": [
+        { "$ref": "#/$defs/retrospective_delivery_base" },
+        {
+          "type": "object",
+          "properties": {
+            "schema_version": true,
+            "runtime": true,
+            "runtime_session_id": true,
+            "invocation": true,
+            "outcome": { "const": "no_result" },
+            "reason": { "$ref": "retrospective.json#/$defs/no_result_reason" }
+          },
+          "required": ["reason"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "retrospective_delivery": {
+      "oneOf": [
+        { "$ref": "#/$defs/retrospective_result_delivery" },
+        { "$ref": "#/$defs/retrospective_no_result_delivery" }
+      ]
     }
   }
 }

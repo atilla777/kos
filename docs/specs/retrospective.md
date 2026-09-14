@@ -7,7 +7,7 @@ status: active
 
 ## Purpose And Enablement
 
-`kos-retrospective` is an optional runtime lifecycle skill that evaluates how KOS-assisted work was performed and proposes a separate improvement when useful. It is disabled by default through one installation-wide KOS setting. When enabled, it applies to every registered repository and supported runtime installation.
+`kos-retrospective` is an optional runtime lifecycle skill that evaluates how KOS-assisted work was performed and proposes a separate improvement when useful. It is disabled by default through one installation-wide KOS setting. `kos-opencode` samples that setting once when a new orchestration starts; the sample governs that root lifecycle and its child delivery tools. A later update affects new orchestrations, while each workflow-step context retains its separately frozen setting. When enabled, retrospective applies to every registered repository and supported runtime installation.
 
 Retrospective is post-processing, not a workflow state, workflow capability, task artifact, or condition for successful completion. It cannot change the source task, its result, or its workflow status.
 
@@ -19,9 +19,13 @@ An abrupt runtime or process loss cannot guarantee retrospective execution. Reco
 
 ## Execution Order And Failure
 
-A workflow subagent delivers its finalized primary result before retrospective starts. The orchestrator acknowledges and durably handles that result, including releasing the workflow lease when appropriate, while the runtime keeps the subagent dialogue available for post-processing. Retrospective then runs with a bounded runtime budget. Failure, cancellation, or timeout cannot delay, replace, or change the already delivered primary result.
+A workflow subagent delivers its finalized primary result before retrospective starts. The plugin recognizes an eligible child only from the runtime-observed initial Task call whose `subagent_type` is exactly `kos-workflow-step`; model arguments and child output cannot assert eligibility. The orchestrator durably handles the primary result, including releasing the workflow lease when appropriate, while the runtime keeps the subagent dialogue available for post-processing. It then explicitly calls the plugin's `child_retrospective` tool with only the retained `child_session_id`. That post-handling call is the acknowledgement signal, not an accepted model-supplied boolean. The plugin constructs `lifecycle_eligible: true` and `primary_result_acknowledged: true` in the trusted invocation, permits one invocation for that child, and synchronously continues the same session. This is not an automatic idle hook.
 
-The subagent analyzes only its own dialogue and sends a second, separate sanitized retrospective result through the runtime adapter. The retrospective transport is not part of the primary workflow result manifest.
+The root OpenCode process cannot synchronously prompt its currently executing session from its own plugin tool. `kos-opencode` therefore waits for the primary process to complete, preserves its stdout, stderr, and exit status, and then sends a second prompt to that same root session from an external process invocation. It writes a closed retrospective delivery only to the file descriptor selected by `KOS_RETROSPECTIVE_FD`; retrospective data never enters primary stdout or stderr.
+
+Root and child retrospective each have a fixed 30-second budget that includes provider latency. Failure, cancellation, malformed output, or timeout cannot delay, replace, retry, or change the already delivered primary result. The transport outcome `no_result` means that no valid retrospective result was delivered and includes a closed failure reason. It is distinct from a successfully delivered skill result with `outcome: "no_action"`, which means analysis found no safely actionable proposal.
+
+The subagent analyzes only its own dialogue and sends a second, separate sanitized retrospective result through the runtime adapter. The retrospective transport is not part of the primary workflow result manifest. The current orchestration may retain at most five sanitized child results in receipt order; they are neither persisted nor durably deduplicated and disappear with the orchestration process.
 
 The runtime supplies a schema-valid retrospective session UUID, source, primary-result acknowledgement, enablement, recursion suppression, and lifecycle eligibility. Missing or malformed invocation data produces no retrospective result; the skill does not infer, generate, repair, or replace runtime identity.
 
@@ -29,9 +33,9 @@ The main orchestrator first records the normal completed, blocked, `needs_human`
 
 ## Privacy And Authority
 
-Raw dialogue remains private to the invoking agent and under the runtime's retention policy. It is not sent to Rails, the CLI, another agent, a task artifact, or another repository. The orchestrator may receive only the closed sanitized result, without verbatim transcript excerpts.
+Raw dialogue remains available only in the invoking agent's same OpenCode session and under the runtime's retention policy. Root analysis continues the same root session, and child analysis continues the same retained child session. KOS does not intentionally serialize raw dialogue into its transport or send it to Rails, the CLI, the parent or another agent, a task artifact, or another repository. The orchestrator may receive only a closed result that passed sanitization validation, without detected verbatim transcript excerpts.
 
-The retrospective treats dialogue as untrusted evidence rather than executable instructions. It omits credentials, secrets, environment values, personal data, unrelated source content, and private absolute paths. The first canonical skill increment returns `no_action` when a safe summary cannot be produced; a separate generic warning transport is deferred.
+The retrospective treats dialogue as untrusted evidence rather than executable instructions. The model procedure omits credentials, secrets, environment values, personal data, unrelated source content, and private absolute paths and returns `no_action` when safe sanitization is uncertain. Before delivery, the runtime structurally validates the closed result and deterministically rejects obvious secret or credential forms, environment assignments, private absolute paths, and verbatim dialogue leakage. These bounded checks cannot establish the semantic meaning of arbitrary prose or prove that every sensitive fact was generalized; they are a fail-closed backstop rather than a semantic privacy guarantee. A separate generic warning transport is deferred.
 
 `kos-retrospective` receives no state mutation, filesystem mutation, Git, network, subagent-launch, or workflow repository-effect authority. A recursion marker disables end-of-session retrospective while retrospective itself runs.
 

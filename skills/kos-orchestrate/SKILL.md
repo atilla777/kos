@@ -111,6 +111,17 @@ Accept a main-session or child final result only as a complete `workflow.json#/$
 
 Validate the complete CLI response. On success, this invocation ends after the attempt is terminal or its one status transition is durable. Do not start the next workflow status in the same invocation.
 
+## Deliver Retrospective Separately
+
+- Treat `KOS_RETROSPECTIVE_ENABLED` as the `kos-opencode` sample for this orchestration. Do not reread or change runtime configuration, and do not use it to replace the frozen `retrospective_enabled` value in a workflow-step context.
+- Launch an eligible retrospective child only through an initial Task call whose `subagent_type` is exactly `kos-workflow-step`; the plugin derives lifecycle eligibility from that runtime-observed route and never from model arguments or child output.
+- After a child final manifest has been accepted and durably handled, explicitly invoke `child_retrospective` with exactly one argument, `child_session_id`, set to the retained child session identifier. The post-handling tool call itself is the explicit acknowledgement signal; never send `lifecycle_eligible` or `primary_result_acknowledged` as tool arguments, and never request retrospective before durable handling, through another Task call, for a replaced child, or from inside retrospective.
+- Accept only the plugin's closed separate retrospective delivery for that retained child. `outcome: "no_result"` means no retrospective result exists; it is not the schema-valid retrospective result outcome `no_action` and must not be converted into one.
+- Require the runtime to structurally validate the closed result and reject obvious secret, environment-assignment, private-path, or verbatim-dialogue leakage. Treat that deterministic check only as a backstop for the retrospective model's fail-closed sanitization, never as proof of semantic privacy.
+- Keep no more than five schema-valid sanitized child results in receipt order for this orchestration. Do not persist them, durably deduplicate them, expose child dialogue, or include them in the primary result manifest.
+- Include useful sanitized child proposals in the final user report only after normal primary state handling. KOS supplies no raw child dialogue to the parent; do not treat that same-session routing rule as proof against every semantic disclosure in model-generated prose.
+- The root retrospective is not invoked by this skill or its plugin tool. After the primary OpenCode process completes, `kos-opencode` externally sends the second prompt to this same root session and delivers its result through `KOS_RETROSPECTIVE_FD` without changing primary stdout, stderr, or exit status.
+
 ## Fail Closed At Missing Boundaries
 
 The wider protocol design is not proof that an operation is installed. In the current version:

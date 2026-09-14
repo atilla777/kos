@@ -24,6 +24,8 @@ module Kos
       IDEMPOTENCY_KEY_FORMAT = /\A[A-Za-z0-9._:-]{8,255}\z/
       COMMANDS = {
         %w[repository register] => [ "repository.register", nil, {}, true ],
+        %w[runtime-config get] => [ "runtime_config.get", nil, {} ],
+        %w[runtime-config update] => [ "runtime_config.update", nil, {}, true ],
         %w[task-type list] => [ "task_type.list", nil, { "limit" => "--limit", "cursor" => "--cursor" } ],
         %w[workflow list] => [ "workflow.list", nil, { "limit" => "--limit", "cursor" => "--cursor" } ],
         %w[workflow get] => [ "workflow.get", nil, { "workflow_version_id" => "--workflow-version" } ],
@@ -156,6 +158,8 @@ module Kos
 
       PATHS = {
         "repository.register" => "/api/v1/repositories",
+        "runtime_config.get" => "/api/v1/runtime-config",
+        "runtime_config.update" => "/api/v1/runtime-config",
         "task_type.list" => "/api/v1/task-types",
         "workflow.list" => "/api/v1/workflow-versions",
         "workflow.get" => "/api/v1/workflow-versions/%<workflow_version_id>s",

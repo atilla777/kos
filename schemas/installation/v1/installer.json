@@ -71,13 +71,14 @@
       "properties": {
         "kos_executable": { "$ref": "#/$defs/absolute_path" },
         "repository_executable": { "$ref": "#/$defs/absolute_path" },
+        "launcher_executable": { "$ref": "#/$defs/absolute_path" },
         "opencode_executable": { "$ref": "#/$defs/absolute_path" },
         "capability_report_digest": { "$ref": "#/$defs/digest" },
         "quick_fix_workflow_version_id": { "type": "string", "format": "uuid" },
         "quick_fix_workflow_version": { "type": "string", "minLength": 1 },
         "quick_fix_content_digest": { "$ref": "#/$defs/digest" }
       },
-      "required": ["kos_executable", "repository_executable", "opencode_executable", "capability_report_digest", "quick_fix_workflow_version_id", "quick_fix_workflow_version", "quick_fix_content_digest"],
+      "required": ["kos_executable", "repository_executable", "launcher_executable", "opencode_executable", "capability_report_digest", "quick_fix_workflow_version_id", "quick_fix_workflow_version", "quick_fix_content_digest"],
       "additionalProperties": false
     },
     "plan": {
@@ -93,7 +94,7 @@
         "source_bundle_digest": { "$ref": "#/$defs/digest" },
         "readiness": { "$ref": "#/$defs/readiness" },
         "manifest_observation": { "$ref": "#/$defs/manifest_observation" },
-        "managed_files": { "type": "array", "minItems": 9, "maxItems": 9, "items": { "$ref": "#/$defs/managed_file" } },
+        "managed_files": { "type": "array", "minItems": 10, "maxItems": 10, "items": { "$ref": "#/$defs/managed_file" } },
         "plan_digest": { "$ref": "#/$defs/digest" }
       },
       "required": ["schema_version", "operation", "kos_version", "cli_protocol_version", "registration_idempotency_key", "repository", "runtime", "source_bundle_digest", "readiness", "manifest_observation", "managed_files", "plan_digest"],
@@ -120,7 +121,7 @@
         "repository_id": { "type": "string", "format": "uuid" },
         "source_bundle_digest": { "$ref": "#/$defs/digest" },
         "capability_report_digest": { "$ref": "#/$defs/digest" },
-        "managed_files": { "type": "array", "minItems": 9, "maxItems": 9, "items": { "$ref": "#/$defs/manifest_file" } }
+        "managed_files": { "type": "array", "minItems": 9, "maxItems": 10, "items": { "$ref": "#/$defs/manifest_file" } }
       },
       "required": ["schema_version", "kos_version", "cli_protocol_version", "runtime", "repository", "repository_id", "source_bundle_digest", "capability_report_digest", "managed_files"],
       "additionalProperties": false
