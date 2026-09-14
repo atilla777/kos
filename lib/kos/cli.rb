@@ -23,6 +23,7 @@ module Kos
     class Parser
       IDEMPOTENCY_KEY_FORMAT = /\A[A-Za-z0-9._:-]{8,255}\z/
       COMMANDS = {
+        %w[repository register] => [ "repository.register", nil, {}, true ],
         %w[task-type list] => [ "task_type.list", nil, { "limit" => "--limit", "cursor" => "--cursor" } ],
         %w[workflow list] => [ "workflow.list", nil, { "limit" => "--limit", "cursor" => "--cursor" } ],
         %w[workflow get] => [ "workflow.get", nil, { "workflow_version_id" => "--workflow-version" } ],
@@ -154,6 +155,7 @@ module Kos
         Net::HTTPHeaderSyntaxError, Net::ProtocolError, Net::OpenTimeout, OpenSSL::SSL::SSLError ].freeze
 
       PATHS = {
+        "repository.register" => "/api/v1/repositories",
         "task_type.list" => "/api/v1/task-types",
         "workflow.list" => "/api/v1/workflow-versions",
         "workflow.get" => "/api/v1/workflow-versions/%<workflow_version_id>s",

@@ -30,6 +30,14 @@ RSpec.describe Idempotency::Execute, :aggregate_failures do
     end
   end
 
+  def execute_transient_failure
+    described_class.call(command: "workflow.publish", key: "publish-key-1", body:, status: 201,
+      serialize: serializer, error_status: ->(_error) { 504 }) do
+      TaskType.create!(id: "transient", name: "transient", workflow_id: "transient")
+      raise OperationError.new("request_timeout", "Timed out")
+    end
+  end
+
   def prepared_replay_summary
     calls = []
     baseline = ActiveRecord::Base.connection.open_transactions
@@ -51,6 +59,18 @@ RSpec.describe Idempotency::Execute, :aggregate_failures do
       }.to raise_error(OperationError) { |error| expect(error.code).to eq("invalid_artifact") }
     end
     calls
+  end
+
+  def transient_preparation_summary
+    calls = 0
+    errors = 2.times.map do
+      prepare = -> { calls += 1; raise OperationError.new("request_timeout", "Timed out") }
+      described_class.call(command: "workflow.publish", key: "transient-prepare", body:, status: 201,
+        serialize: serializer, prepare:, error_status: ->(_error) { 504 }) { "unused" }
+    rescue OperationError => error
+      error.code
+    end
+    [ errors, calls, IdempotencyRecord.count ]
   end
 
   def execute(value = "first", request_body: body, &block)
@@ -95,6 +115,19 @@ RSpec.describe Idempotency::Execute, :aggregate_failures do
     expect { execute_partial_failure }.to raise_error(OperationError)
 
     expect([ TaskType.exists?("partial"), IdempotencyRecord.count ]).to eq([ false, 1 ])
+  end
+
+  it "rolls back and does not replay transient operation failures" do
+    2.times do
+      expect { execute_transient_failure }
+        .to raise_error(OperationError) { |error| expect(error.code).to eq("request_timeout") }
+    end
+
+    expect([ TaskType.exists?("transient"), IdempotencyRecord.count ]).to eq([ false, 0 ])
+  end
+
+  it "does not persist transient preparation failures" do
+    expect(transient_preparation_summary).to eq([ %w[request_timeout request_timeout], 2, 0 ])
   end
 
   it "replays integer schema values represented as integral JSON floats" do

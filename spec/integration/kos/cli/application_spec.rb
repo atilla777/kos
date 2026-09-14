@@ -222,6 +222,9 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
     manifest = { "schema_version" => "1", "attempt_id" => resource_id,
       "input_context_digest" => "sha256:#{'a' * 64}", "outcome" => "failed", "artifacts" => [] }
     [
+      [ %w[repository register], "repository.register", "/api/v1/repositories",
+        { "git_common_dir" => "/srv/project/.git", "task_prefix" => "KOS", "trusted_remote" => "origin",
+          "trusted_remote_url" => "ssh://git@example.com/team/project.git", "base_ref" => "refs/heads/main" } ],
       [ %w[workflow-draft import], "workflow_draft.import", "/api/v1/workflow-drafts/quick-fix",
         { "workflow_id" => "quick-fix", "definition" => definition, "expected_lock_version" => 0 } ],
       [ %w[workflow publish], "workflow.publish", "/api/v1/workflow-drafts/quick-fix/publication",

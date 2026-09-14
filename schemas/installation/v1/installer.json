@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kos.local/schemas/installation/v1/installer.json",
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "absolute_path": { "type": "string", "pattern": "^/", "minLength": 1 },
+    "relative_path": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000]+$", "minLength": 1 },
+    "request": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "1" },
+        "task_prefix": { "type": "string", "pattern": "^[A-Z][A-Z0-9]{1,9}$" },
+        "trusted_remote": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
+        "base_ref": { "type": "string", "pattern": "^refs/heads/[^ ]+$" },
+        "registration_idempotency_key": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{8,255}$" },
+        "runtime": { "$ref": "#/$defs/runtime" }
+      },
+      "required": ["schema_version", "task_prefix", "trusted_remote", "base_ref", "registration_idempotency_key", "runtime"],
+      "additionalProperties": false
+    },
+    "runtime": {
+      "type": "object",
+      "properties": { "target": { "const": "opencode" }, "version": { "const": "1.18.26" } },
+      "required": ["target", "version"],
+      "additionalProperties": false
+    },
+    "repository": {
+      "type": "object",
+      "properties": {
+        "worktree_root": { "$ref": "#/$defs/absolute_path" },
+        "git_common_dir": { "$ref": "#/$defs/absolute_path" },
+        "task_prefix": { "type": "string" },
+        "trusted_remote": { "type": "string" },
+        "trusted_remote_url": { "type": "string", "format": "uri" },
+        "base_ref": { "type": "string" }
+      },
+      "required": ["worktree_root", "git_common_dir", "task_prefix", "trusted_remote", "trusted_remote_url", "base_ref"],
+      "additionalProperties": false
+    },
+    "managed_file": {
+      "type": "object",
+      "properties": {
+        "path": { "$ref": "#/$defs/relative_path" },
+        "source": { "$ref": "#/$defs/relative_path" },
+        "digest": { "$ref": "#/$defs/digest" },
+        "action": { "enum": ["create", "update", "unchanged", "conflict"] },
+        "observed": { "enum": ["absent", "missing", "expected", "managed_previous", "drifted", "unmanaged", "symlink", "wrong_type"] },
+        "observed_digest": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["path", "source", "digest", "action", "observed"],
+      "additionalProperties": false
+    },
+    "manifest_observation": {
+      "type": "object",
+      "properties": {
+        "observed": { "enum": ["absent", "expected"] },
+        "digest": { "$ref": "#/$defs/digest" },
+        "repository_id": { "type": "string", "format": "uuid" }
+      },
+      "required": ["observed"],
+      "allOf": [
+        { "if": { "properties": { "observed": { "const": "expected" } }, "required": ["observed"] },
+          "then": { "required": ["digest", "repository_id"] } },
+        { "if": { "properties": { "observed": { "const": "absent" } }, "required": ["observed"] },
+          "then": { "not": { "anyOf": [{ "required": ["digest"] }, { "required": ["repository_id"] }] } } }
+      ],
+      "additionalProperties": false
+    },
+    "readiness": {
+      "type": "object",
+      "properties": {
+        "kos_executable": { "$ref": "#/$defs/absolute_path" },
+        "repository_executable": { "$ref": "#/$defs/absolute_path" },
+        "opencode_executable": { "$ref": "#/$defs/absolute_path" },
+        "capability_report_digest": { "$ref": "#/$defs/digest" },
+        "quick_fix_workflow_version_id": { "type": "string", "format": "uuid" },
+        "quick_fix_workflow_version": { "type": "string", "minLength": 1 },
+        "quick_fix_content_digest": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["kos_executable", "repository_executable", "opencode_executable", "capability_report_digest", "quick_fix_workflow_version_id", "quick_fix_workflow_version", "quick_fix_content_digest"],
+      "additionalProperties": false
+    },
+    "plan": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "1" },
+        "operation": { "const": "plan" },
+        "kos_version": { "const": "0.1.0" },
+        "cli_protocol_version": { "const": "1" },
+        "registration_idempotency_key": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{8,255}$" },
+        "repository": { "$ref": "#/$defs/repository" },
+        "runtime": { "$ref": "#/$defs/runtime" },
+        "source_bundle_digest": { "$ref": "#/$defs/digest" },
+        "readiness": { "$ref": "#/$defs/readiness" },
+        "manifest_observation": { "$ref": "#/$defs/manifest_observation" },
+        "managed_files": { "type": "array", "minItems": 9, "maxItems": 9, "items": { "$ref": "#/$defs/managed_file" } },
+        "plan_digest": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["schema_version", "operation", "kos_version", "cli_protocol_version", "registration_idempotency_key", "repository", "runtime", "source_bundle_digest", "readiness", "manifest_observation", "managed_files", "plan_digest"],
+      "additionalProperties": false
+    },
+    "manifest_file": {
+      "type": "object",
+      "properties": {
+        "path": { "$ref": "#/$defs/relative_path" },
+        "source": { "$ref": "#/$defs/relative_path" },
+        "digest": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["path", "source", "digest"],
+      "additionalProperties": false
+    },
+    "manifest": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "1" },
+        "kos_version": { "const": "0.1.0" },
+        "cli_protocol_version": { "const": "1" },
+        "runtime": { "$ref": "#/$defs/runtime" },
+        "repository": { "$ref": "#/$defs/repository" },
+        "repository_id": { "type": "string", "format": "uuid" },
+        "source_bundle_digest": { "$ref": "#/$defs/digest" },
+        "capability_report_digest": { "$ref": "#/$defs/digest" },
+        "managed_files": { "type": "array", "minItems": 9, "maxItems": 9, "items": { "$ref": "#/$defs/manifest_file" } }
+      },
+      "required": ["schema_version", "kos_version", "cli_protocol_version", "runtime", "repository", "repository_id", "source_bundle_digest", "capability_report_digest", "managed_files"],
+      "additionalProperties": false
+    },
+    "apply_result": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "1" },
+        "operation": { "const": "apply" },
+        "plan_digest": { "$ref": "#/$defs/digest" },
+        "manifest_path": { "$ref": "#/$defs/absolute_path" },
+        "repository_id": { "type": "string", "format": "uuid" },
+        "published_files": { "type": "array", "items": { "$ref": "#/$defs/relative_path" }, "uniqueItems": true }
+      },
+      "required": ["schema_version", "operation", "plan_digest", "manifest_path", "repository_id", "published_files"],
+      "additionalProperties": false
+    },
+    "failure": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "1" },
+        "operation": { "enum": ["plan", "apply", "unknown"] },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+            "message": { "type": "string", "minLength": 1 },
+            "retryable": { "const": false }
+          },
+          "required": ["code", "message", "retryable"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["schema_version", "operation", "error"],
+      "additionalProperties": false
+    }
+  }
+}

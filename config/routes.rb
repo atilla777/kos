@@ -7,6 +7,7 @@ Rails.application.routes.draw do
 
   namespace :api do
     namespace :v1 do
+      resources :repositories, only: :create
       resources :task_types, only: :index, path: "task-types" do
         post :current_workflow, on: :member, path: "current-workflow"
       end

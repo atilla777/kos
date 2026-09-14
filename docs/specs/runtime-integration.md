@@ -53,6 +53,6 @@ The local `kos-repository` executable has a separate closed JSON adapter contrac
 
 When retrospective is enabled installation-wide, the runtime adapter must support graceful end invocation, a bounded timeout, recursion suppression, private self-dialogue access, preservation of the primary result, and a second sanitized result delivery after the primary result is acknowledged. Lack of a graceful end hook or abrupt process loss may skip retrospective but cannot weaken workflow recovery.
 
-Installation planning, copy manifests, drift handling, and canonical skill behavior belong to later runtime-integration work.
+Installation planning, copy manifests, drift handling, and staged capability verification are defined by [Initialization](initialization.md) and [ADR-0009](../decisions/0009-runtime-bundle-installation.md). The installed OpenCode bundle contains the six canonical skills, the session guard, and restrictive orchestrator and workflow-step agent profiles as derived ordinary copies rather than runtime links to the canonical source checkout.
 
 The OpenCode adapter transport uses `schemas/runtime/v1/opencode.json`. The closed sanitized retrospective result uses `schemas/runtime/v1/retrospective.json`. Both are runtime transport rather than CLI/API persistence documents.

@@ -215,6 +215,10 @@ RSpec.describe Kos::Repository::Application do
       .to eq([ 2, "fetch_configuration_invalid", false ])
   end
 
+  it "accepts equivalent scp-like configured URLs for fetch and push trust checks" do
+    expect(scp_like_trust_results).to eq([ "git@example.test:team/project.git" ] * 2)
+  end
+
   it "rejects fetch.bundleURI before transport" do
     expect(bundle_uri_rejection).to eq([ "fetch_configuration_invalid", false, false ])
   end
@@ -1186,6 +1190,48 @@ RSpec.describe Kos::Repository::Application do
     [ arguments.each_cons(2).include?([ "-c", "http.followRedirects=false" ]),
       arguments.each_cons(2).include?([ "-c", "credential.helper=" ]),
       arguments.each_cons(2).include?([ "-c", "promisor.acceptFromServer=none" ]) ]
+  end
+
+  def scp_like_trust_results
+    raw_url = "git@example.test:team/project.git"
+    fetch_input = fetch_request
+    git(repository_path, "config", "--replace-all", "remote.origin.url", raw_url)
+    fetch_input.fetch("repository")["trusted_remote_url"] = "ssh://git@example.test/team/project.git"
+    fetch_adapter, fetch_calls = recording_git(fetch_success: false)
+    capture_operation_error(Kos::Repository::Fetch.new(fetch_input, git: fetch_adapter))
+
+    push_input, = prepared_push_request
+    git(repository_path, "config", "--replace-all", "remote.origin.url", raw_url)
+    push_input.fetch("repository")["trusted_remote_url"] = "ssh://git@example.test/team/project.git"
+    push_adapter, push_calls = scp_push_recording_git(push_input)
+    Kos::Repository::Push.new(push_input, git: push_adapter).call
+
+    [ transport_target(fetch_calls, "fetch"), transport_target(push_calls, "push") ]
+  end
+
+  def scp_push_recording_git(input)
+    adapter = Kos::Repository::Git.new
+    calls = []
+    pushed = false
+    allow(adapter).to receive(:call).and_wrap_original do |original, *arguments, **options|
+      calls << arguments
+      next Kos::Repository::Git::Result.new("", true) if arguments.include?("fetch")
+      if arguments.include?("ls-remote")
+        oid = pushed ? input.dig("publication", "candidate_sha") : input.dig("publication", "expected_remote_oid")
+        next Kos::Repository::Git::Result.new("#{oid}\trefs/heads/main\n", true)
+      end
+      if arguments.include?("push")
+        pushed = true
+        next Kos::Repository::Git::Result.new("", true)
+      end
+
+      original.call(*arguments, **options)
+    end
+    [ adapter, calls ]
+  end
+
+  def transport_target(calls, operation)
+    calls.find { |arguments| arguments.include?(operation) }[-2]
   end
 
   def invalid_trusted_url_results

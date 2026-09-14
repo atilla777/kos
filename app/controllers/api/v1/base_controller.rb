@@ -4,6 +4,7 @@ module Api
       wrap_parameters false
 
       COMMANDS = {
+        "repositories#create" => "repository.register",
         "task_types#index" => "task_type.list",
         "workflow_versions#index" => "workflow.list",
         "workflow_versions#show" => "workflow.get",

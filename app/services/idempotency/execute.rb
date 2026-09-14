@@ -3,6 +3,7 @@ require "digest"
 module Idempotency
   class Execute
     Result = Data.define(:data, :status, :replayed, :error)
+    TRANSIENT_STATUSES = [ 503, 504 ].freeze
 
     def self.call(command:, key:, body:, status:, serialize:, repository: nil, error_status: ->(_error) { 409 },
       prepare: nil)
@@ -71,7 +72,10 @@ module Idempotency
         end
       end
     rescue OperationError => error
-      Result.new(nil, error_status.call(error), false, error)
+      status = error_status.call(error)
+      raise error if TRANSIENT_STATUSES.include?(status)
+
+      Result.new(nil, status, false, error)
     end
     private_class_method :capture
 

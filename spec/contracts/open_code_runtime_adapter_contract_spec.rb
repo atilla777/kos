@@ -1,12 +1,10 @@
 require "fileutils"
 require "json"
 require "json_schemer"
-require "open3"
-require "timeout"
 require "tmpdir"
 require "uri"
 require "spec_helper"
-require_relative "../support/open_code_fake_provider"
+require_relative "../../lib/kos/runtime/open_code/capability_verifier"
 require_relative "../../lib/kos/runtime/open_code/transport"
 
 module OpenCodeRuntimeAdapterContract
@@ -39,9 +37,9 @@ module OpenCodeRuntimeAdapterContract
 end
 
 RSpec.describe OpenCodeRuntimeAdapterContract do
-  let(:effect_request) { OpenCodeFakeProvider::EFFECT_REQUEST }
-  let(:effect_result) { OpenCodeFakeProvider::EFFECT_RESULT }
-  let(:result_manifest) { OpenCodeFakeProvider::RESULT_MANIFEST }
+  let(:effect_request) { Kos::Runtime::OpenCode::DeterministicProvider::EFFECT_REQUEST }
+  let(:effect_result) { Kos::Runtime::OpenCode::DeterministicProvider::EFFECT_RESULT }
+  let(:result_manifest) { Kos::Runtime::OpenCode::DeterministicProvider::RESULT_MANIFEST }
   let(:child_session_id) { "ses_contract_child" }
 
   it "defines closed capability, child turn, and effect delivery documents" do
@@ -255,254 +253,17 @@ RSpec.describe OpenCodeRuntimeAdapterContract do
   end
 
   def run_runtime_contract
-    discovery = Dir.mktmpdir("kos-opencode-discovery-") { |directory| verify_skill_discovery(directory) }
-    valid = Dir.mktmpdir("kos-opencode-contract-") { |directory| execute_runtime_contract(directory) }
-    rejected = Dir.mktmpdir("kos-opencode-guard-") { |directory| verify_session_guard(directory) }
-    discovery + valid + rejected
+    Dir.mktmpdir("kos-opencode-contract-") do |directory|
+      staged = File.join(directory, ".opencode")
+      FileUtils.mkdir_p(staged)
+      FileUtils.cp_r(File.join(described_class::ROOT, "skills"), File.join(staged, "skills"))
+      %w[agents plugins].each do |member|
+        FileUtils.cp_r(File.join(described_class::ROOT, "runtime/opencode", member), File.join(staged, member))
+      end
+      verifier = Kos::Runtime::OpenCode::CapabilityVerifier.new(executable: "opencode", staged_opencode: staged)
+      verifier.call == Kos::Runtime::OpenCode::CapabilityVerifier.expected_report ? [] : [ "unexpected report" ]
+    end
   rescue StandardError => error
     [ "#{error.class}: #{error.message}" ]
-  end
-
-  def execute_runtime_contract(directory)
-    project = prepare_project(directory)
-    provider = OpenCodeFakeProvider.new
-    provider.start
-    write_config(project, provider.base_url)
-    runtime_contract_errors(directory, project, provider)
-  ensure
-    FileUtils.chmod_R(0755, File.join(project, ".opencode")) if project && File.exist?(File.join(project, ".opencode"))
-    provider&.stop
-  end
-
-  def verify_session_guard(directory)
-    project = prepare_project(directory)
-    provider = OpenCodeFakeProvider.new(invalid_continuation: :omit)
-    provider.start
-    write_config(project, provider.base_url)
-    protect_runtime_config(project)
-    stdout, stderr, _status = run_opencode(directory, project)
-    return [] if session_guard_rejected?(stdout)
-
-    [ "session guard accepted an unretained child: #{stderr}" ]
-  ensure
-    FileUtils.chmod_R(0755, File.join(project, ".opencode")) if project && File.exist?(File.join(project, ".opencode"))
-    provider&.stop
-  end
-
-  def session_guard_rejected?(stdout)
-    stdout.lines.map { |line| JSON.parse(line) }.any? do |event|
-      event["type"] == "tool_use" && event.dig("part", "tool") == "task" &&
-        event.dig("part", "state", "status") == "error" &&
-        event.dig("part", "state", "error").include?("unretained child session")
-    end
-  end
-
-  def runtime_contract_errors(directory, project, provider)
-    errors = []
-    errors << "unexpected runtime version" unless runtime_version(directory) == "1.18.26"
-    protect_runtime_config(project)
-    stdout, stderr, status = run_opencode(directory, project)
-    errors << "OpenCode failed: #{stderr}" unless status.success?
-    return errors unless status.success?
-
-    verify_runtime_events(stdout, provider.requests, project, errors)
-  end
-
-  def verify_skill_discovery(directory)
-    project = prepare_project(directory)
-    FileUtils.rm_r(File.join(project, ".opencode/plugins"))
-    skill_discovered?(directory, project) ? [] : [ "fixture skill was not discovered" ]
-  end
-
-  def skill_discovered?(directory, project)
-    skill = discovered_skill(directory, project)
-    skill && skill["name"] == "kos-contract-probe" &&
-      skill["location"] == File.join(project, ".opencode/skills/kos-contract-probe/SKILL.md")
-  end
-
-  def verify_runtime_events(stdout, requests, project, errors)
-    events = stdout.lines.map { |line| JSON.parse(line) }
-    task_events = events.filter_map { |event| completed_task_event(event) }
-    errors << "expected two completed Task calls" unless task_events.length == 2
-    return errors unless task_events.length == 2
-
-    verify_runtime_exchange(task_events, errors)
-    errors << "parent did not finish non-interactively" unless final_text?(events)
-    errors << "child was not resumed exactly once" unless requests.count { |request| child_request?(request) } == 4
-    errors << "parent and child did not observe the worktree cwd" unless cwd_observed_by_both_sessions?(requests, project)
-    errors << "child did not load the fixture skill" unless child_loaded_skill?(requests)
-    errors
-  end
-
-  def verify_runtime_exchange(task_events, errors)
-    exchange = new_exchange
-    first = exchange.accept_task_completion(task_events.first)
-    delivery = effect_delivery.merge("child_session_id" => exchange.child_session_id)
-    deliver(exchange, delivery)
-    second = exchange.accept_task_completion(task_events.last)
-    errors << "child returned an unexpected effect request" unless first.fetch("turn") == effect_request
-    errors << "child returned an unexpected final manifest" unless second.fetch("turn") == result_manifest
-    errors << "exchange did not complete" unless exchange.state == :completed
-  rescue Kos::Runtime::OpenCode::Transport::InvalidExchange => error
-    errors << error.message
-  end
-
-  def prepare_project(directory)
-    project = File.join(directory, "task-worktree")
-    FileUtils.mkdir_p(project)
-    FileUtils.cp_r("#{OpenCodeRuntimeAdapterContract::FIXTURE}/.", project)
-    prepare_plugin_dependency_marker(project)
-    _stdout, stderr, status = Open3.capture3("git", "init", "--quiet", project)
-    raise stderr unless status.success?
-
-    project
-  end
-
-  def prepare_plugin_dependency_marker(project)
-    prepare_npm_marker(File.join(project, ".opencode"))
-  end
-
-  def prepare_npm_marker(config)
-    FileUtils.mkdir_p(File.join(config, "node_modules"))
-    dependency = { "@opencode-ai/plugin" => "1.18.26" }
-    File.write(File.join(config, "package.json"), JSON.generate("dependencies" => dependency))
-    lock = { "name" => "kos-runtime-contract", "lockfileVersion" => 3, "packages" => {
-      "" => { "dependencies" => dependency } } }
-    File.write(File.join(config, "package-lock.json"), JSON.generate(lock))
-  end
-
-  def protect_runtime_config(project)
-    FileUtils.chmod_R(0555, File.join(project, ".opencode"))
-  end
-
-  def write_config(project, base_url)
-    config = {
-      "$schema" => "https://opencode.ai/config.json",
-      "model" => "kos-contract/kos-contract",
-      "small_model" => "kos-contract/kos-contract",
-      "share" => "disabled",
-      "autoupdate" => false,
-      "provider" => {
-        "kos-contract" => {
-          "npm" => "@ai-sdk/openai-compatible",
-          "name" => "KOS Contract",
-          "options" => { "baseURL" => base_url, "apiKey" => "contract-only" },
-          "models" => { "kos-contract" => { "name" => "KOS Contract" } }
-        }
-      }
-    }
-    File.write(File.join(project, "opencode.json"), JSON.pretty_generate(config))
-  end
-
-  def runtime_version(directory)
-    stdout, stderr, status = capture(directory, "opencode", "--version")
-    raise stderr unless status.success?
-
-    stdout.strip
-  end
-
-  def discovered_skill(directory, project)
-    stdout, stderr, status = capture(directory, "opencode", "debug", "skill", chdir: File.join(project, "nested"))
-    raise stderr unless status.success?
-
-    JSON.parse(stdout).find { |skill| skill.fetch("name") == "kos-contract-probe" }
-  end
-
-  def run_opencode(directory, project)
-    capture(directory, "opencode", "run", "--format", "json", "--dir", project,
-      "--agent", "kos-contract-orchestrator", "--model", "kos-contract/kos-contract",
-      "--title", "KOS runtime contract", "--print-logs", "--log-level", "DEBUG",
-      "Run the KOS runtime contract.", timeout: 30)
-  end
-
-  def capture(directory, *command, chdir: OpenCodeRuntimeAdapterContract::ROOT, timeout: 30)
-    environment = isolated_environment(directory)
-    Open3.popen3(environment, *command, chdir: chdir, unsetenv_others: true, pgroup: true) do |stdin, stdout, stderr, wait|
-      stdin.close
-      out_reader = Thread.new { stdout.read }
-      err_reader = Thread.new { stderr.read }
-      timed_out = !wait.join(timeout)
-      terminate_process(wait) if timed_out
-      output = [ out_reader.value, err_reader.value, wait.value ]
-      raise Timeout::Error, "#{command.join(' ')} exceeded #{timeout} seconds: #{output[1]}" if timed_out
-
-      output
-    end
-  end
-
-  def terminate_process(wait)
-    Process.kill("TERM", -wait.pid)
-    Process.kill("KILL", -wait.pid) unless wait.join(2)
-    wait.join
-  rescue Errno::ESRCH
-    nil
-  end
-
-  def isolated_environment(directory)
-    home = File.join(directory, "home")
-    paths = {
-      "HOME" => home,
-      "XDG_CONFIG_HOME" => File.join(directory, "config"),
-      "XDG_DATA_HOME" => File.join(directory, "data"),
-      "XDG_CACHE_HOME" => File.join(directory, "cache"),
-      "XDG_STATE_HOME" => File.join(directory, "state")
-    }
-    paths.each_value { |path| FileUtils.mkdir_p(path) }
-    prepare_npm_marker(File.join(paths.fetch("XDG_CONFIG_HOME"), "opencode"))
-    paths.merge(
-      "PATH" => ENV.fetch("PATH"),
-      "TMPDIR" => directory,
-      "USER" => "kos-contract",
-      "OPENCODE_DISABLE_AUTOUPDATE" => "true",
-      "OPENCODE_DISABLE_DEFAULT_PLUGINS" => "true",
-      "OPENCODE_DISABLE_MODELS_FETCH" => "true",
-      "OPENCODE_DISABLE_CLAUDE_CODE" => "true",
-      "NO_PROXY" => "127.0.0.1,localhost"
-    )
-  end
-
-  def completed_task_event(event)
-    return unless event["type"] == "tool_use"
-    return unless event.dig("part", "tool") == "task"
-    return unless event.dig("part", "state", "status") == "completed"
-
-    event
-  end
-
-  def child_request?(request)
-    JSON.generate(request.fetch("messages")).include?("KOS_CONTRACT_CHILD")
-  end
-
-  def cwd_observed_by_both_sessions?(requests, project)
-    grouped = requests.group_by { |request| child_request?(request) ? :child : :parent }
-    grouped.values.all? do |session_requests|
-      session_requests.any? do |request|
-        tool_outputs(request).any? { |output| output.lines.map(&:strip).include?(project) }
-      end
-    end
-  end
-
-  def child_loaded_skill?(requests)
-    requests.select { |request| child_request?(request) }.any? do |request|
-      tool_outputs(request).any? { |output| output.include?("<skill_content name=\"kos-contract-probe\">") }
-    end
-  end
-
-  def tool_outputs(request)
-    request.fetch("messages").select { |message| message["role"] == "tool" }
-      .flat_map { |message| string_values(message["content"]) }
-  end
-
-  def string_values(value)
-    case value
-    when Hash then value.values.flat_map { |item| string_values(item) }
-    when Array then value.flat_map { |item| string_values(item) }
-    when String then [ value ]
-    else []
-    end
-  end
-
-  def final_text?(events)
-    events.any? { |event| event["type"] == "text" && event.dig("part", "text") == "contract-complete" }
   end
 end

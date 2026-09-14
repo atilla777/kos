@@ -7,9 +7,9 @@ require "tempfile"
 require "time"
 require "timeout"
 require "tmpdir"
-require "uri"
 
 require_relative "json_parser"
+require_relative "git_url"
 
 module Kos
   module Repository
@@ -161,6 +161,12 @@ module Kos
         end
       end
 
+      def normalized_git_url(value)
+        Kos::GitUrl.normalize(value)
+      rescue Kos::GitUrl::Invalid
+        nil
+      end
+
       def validation!(code, message)
         raise Error.new("validation", code, message)
       end
@@ -175,6 +181,81 @@ module Kos
 
       def internal!(code, message)
         raise Error.new("internal", code, message)
+      end
+    end
+
+    class Registration
+      REMOTE_FORMAT = /\A[a-z][a-z0-9_-]{0,127}\z/
+
+      def initialize(attributes, git: Git.new)
+        @attributes = attributes
+        @git = git
+      end
+
+      def call
+        common = attributes.fetch("git_common_dir")
+        invalid!("Git common directory is invalid") unless canonical_existing(common) == common && File.directory?(common)
+
+        observed = git_common("rev-parse", "--path-format=absolute", "--git-common-dir")
+        invalid!("Git common directory identity does not match") unless
+          observed.success && observed.stdout.strip == common && canonical_existing(observed.stdout.strip) == common
+
+        remote = attributes.fetch("trusted_remote")
+        invalid!("Trusted remote is invalid") unless remote.match?(REMOTE_FORMAT)
+        urls = git_values("config", "--null", "--get-all", "remote.#{remote}.url")
+        invalid!("Trusted remote configuration is invalid") unless urls.length == 1
+
+        requested_url = normalized_url(attributes.fetch("trusted_remote_url"))
+        observed_url = normalized_url(urls.first)
+        invalid!("Trusted remote URL is invalid") unless requested_url == attributes.fetch("trusted_remote_url")
+        invalid!("Trusted remote URL does not match") unless observed_url == requested_url
+
+        base_ref = attributes.fetch("base_ref")
+        valid_ref = base_ref.start_with?("refs/heads/") && base_ref != "refs/heads/" &&
+          @git.call("check-ref-format", base_ref).success
+        invalid!("Base ref is invalid") unless valid_ref
+        invalid!("Base ref is not present locally") unless
+          git_common("show-ref", "--verify", "--quiet", base_ref).success
+
+        attributes.slice("git_common_dir", "task_prefix", "trusted_remote", "trusted_remote_url", "base_ref")
+      rescue KeyError
+        invalid!("Repository registration input is invalid")
+      end
+
+      private
+
+      attr_reader :attributes
+
+      def git_common(*arguments)
+        @git.call("--git-dir=#{attributes.fetch('git_common_dir')}", *arguments)
+      end
+
+      def git_values(*arguments)
+        result = git_common(*arguments)
+        return [] unless result.success
+
+        values = result.stdout.split("\0", -1)
+        values.pop if values.last == ""
+        values
+      end
+
+      def canonical_existing(path)
+        pathname = Pathname.new(path)
+        return unless pathname.absolute? && pathname.cleanpath.to_s == path && !path.include?("\0")
+
+        pathname.realpath.to_s
+      rescue Errno::EACCES, Errno::ENOENT, Errno::ENOTDIR, Errno::ELOOP
+        nil
+      end
+
+      def normalized_url(value)
+        Kos::GitUrl.normalize(value)
+      rescue Kos::GitUrl::Invalid
+        invalid!("Trusted remote URL is invalid")
+      end
+
+      def invalid!(message)
+        raise Error.new("validation", "repository_registration_invalid", message)
       end
     end
 
@@ -821,7 +902,6 @@ module Kos
         /\A(?:fetch|transfer)\.bundleuri\z/i, /\Abundle\..*\.uri\z/i,
         /\Ahttp(?:\..+)?\.(?:proxy|curloptresolve|followredirects)\z/i,
         /\Apromisor\.acceptfromserver\z/i, /\Aextensions\.partialclone\z/i ].freeze
-      TRUSTED_SCHEMES = %w[https ssh git file].freeze
 
       def call
         validate_repository!
@@ -845,20 +925,9 @@ module Kos
       end
 
       def validate_trusted_url!
-        uri = URI.parse(repository.fetch("trusted_remote_url"))
-        userinfo = uri.userinfo && URI::DEFAULT_PARSER.unescape(uri.userinfo)
-        valid_userinfo = userinfo.nil? || (uri.scheme == "ssh" && !userinfo.empty? &&
-          !userinfo.match?(/[:\/@?#\x00-\x1f\x7f]/))
-        valid = uri.absolute? && !uri.opaque && TRUSTED_SCHEMES.include?(uri.scheme) &&
-          uri.query.nil? && uri.fragment.nil? && valid_userinfo
-        if uri.scheme == "file"
-          valid &&= !uri.path.to_s.empty? && uri.path.start_with?("/")
-        else
-          valid &&= !uri.host.to_s.empty?
-        end
-        validation!("fetch_configuration_invalid", "Trusted remote URL is invalid") unless valid
-      rescue URI::Error
-        validation!("fetch_configuration_invalid", "Trusted remote URL is invalid")
+        url = repository.fetch("trusted_remote_url")
+        validation!("fetch_configuration_invalid", "Trusted remote URL is invalid") unless
+          normalized_git_url(url) == url
       end
 
       def validate_authority!
@@ -873,8 +942,10 @@ module Kos
       def validate_remote_configuration!
         configured = git_common("config", "--null", "--get-all", "remote.#{remote}.url")
         urls = nul_values(configured)
+        normalized = urls.map { |url| normalized_git_url(url) }
         validation!("fetch_configuration_invalid", "Trusted remote configuration does not match") unless
-          configured.success && urls == [ repository.fetch("trusted_remote_url") ]
+          configured.success && normalized == [ repository.fetch("trusted_remote_url") ]
+        @transport_url = urls.first
 
         names = git_common("config", "--name-only", "--null", "--list")
         validation!("fetch_configuration_invalid", "Repository configuration could not be verified") unless names.success
@@ -888,7 +959,7 @@ module Kos
           "fetch", "--no-append", "--no-tags", "--no-prune",
           "--no-prune-tags", "--no-recurse-submodules", "--no-auto-maintenance", "--no-write-commit-graph",
           "--no-update-shallow", "--refmap=", "--upload-pack=git-upload-pack",
-          repository.fetch("trusted_remote_url"), ref)
+          @transport_url, ref)
         transient!("fetch_failed", "Trusted fetch failed") unless result.success
 
         observed_oid = observed_fetch_oid
@@ -1229,7 +1300,6 @@ module Kos
     end
 
     class Push < Operation
-      TRUSTED_SCHEMES = %w[https ssh git file].freeze
       FORBIDDEN_CONFIG = (Fetch::FORBIDDEN_CONFIG + [
         /\Aremote\..*\.(?:pushurl|receivepack)\z/i,
         /\Acredential(?:\..+)?\.(?:helper|username|usehttppath)\z/i,
@@ -1270,22 +1340,18 @@ module Kos
       end
 
       def validate_trusted_url!
-        uri = URI.parse(repository.fetch("trusted_remote_url"))
-        userinfo = uri.userinfo && URI::DEFAULT_PARSER.unescape(uri.userinfo)
-        valid_userinfo = userinfo.nil? || (uri.scheme == "ssh" && !userinfo.empty? &&
-          !userinfo.match?(/[:\/@?#\x00-\x1f\x7f]/))
-        valid = uri.absolute? && !uri.opaque && TRUSTED_SCHEMES.include?(uri.scheme) &&
-          uri.query.nil? && uri.fragment.nil? && valid_userinfo
-        valid &&= uri.scheme == "file" ? !uri.path.to_s.empty? && uri.path.start_with?("/") : !uri.host.to_s.empty?
-        validation!("push_configuration_invalid", "Trusted remote URL is invalid") unless valid
-      rescue URI::Error
-        validation!("push_configuration_invalid", "Trusted remote URL is invalid")
+        url = repository.fetch("trusted_remote_url")
+        validation!("push_configuration_invalid", "Trusted remote URL is invalid") unless
+          normalized_git_url(url) == url
       end
 
       def validate_remote_configuration!
         configured = git_common("config", "--null", "--get-all", "remote.#{remote}.url")
+        urls = nul_values(configured)
+        normalized = urls.map { |url| normalized_git_url(url) }
         validation!("push_configuration_invalid", "Trusted remote configuration does not match") unless
-          configured.success && nul_values(configured) == [ repository.fetch("trusted_remote_url") ]
+          configured.success && normalized == [ repository.fetch("trusted_remote_url") ]
+        @transport_url = urls.first
 
         names = git_common("config", "--local", "--name-only", "--null", "--list")
         validation!("push_configuration_invalid", "Repository configuration could not be verified") unless names.success
@@ -1311,7 +1377,7 @@ module Kos
         begin
           git_common(*TRANSPORT_CONFIGURATION, "push", "--porcelain", "--no-verify",
             "--no-signed", "--recurse-submodules=no", "--force-with-lease=#{base_ref}:#{expected_remote_oid}",
-            "--receive-pack=git-receive-pack", repository.fetch("trusted_remote_url"),
+            "--receive-pack=git-receive-pack", @transport_url,
             "#{candidate_sha}:#{base_ref}")
         rescue StandardError
           # A transport response cannot establish whether receive-pack updated the remote.
@@ -1328,7 +1394,7 @@ module Kos
         result = git_common(*TRANSPORT_CONFIGURATION, "fetch", "--no-append", "--no-tags", "--no-prune",
           "--no-prune-tags", "--no-recurse-submodules", "--no-auto-maintenance", "--no-write-commit-graph",
           "--no-update-shallow", "--no-write-fetch-head", "--refmap=", "--upload-pack=git-upload-pack",
-          repository.fetch("trusted_remote_url"), base_ref)
+          @transport_url, base_ref)
         transient!("push_observation_failed", "Publication remote observation failed") unless result.success
 
         observed_tip = observed_remote_oid
@@ -1343,7 +1409,7 @@ module Kos
 
       def observed_remote_oid
         result = git_common(*TRANSPORT_CONFIGURATION, "ls-remote", "--refs", "--exit-code",
-          repository.fetch("trusted_remote_url"), base_ref)
+          @transport_url, base_ref)
         transient!("push_observation_failed", "Publication remote observation failed") unless result.success
         match = result.stdout.match(/\A([0-9a-f]{40})\t([^\0\r\n]+)(?:\n)?\z/)
         transient!("push_observation_failed", "Publication remote observation is invalid") unless

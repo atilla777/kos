@@ -2,6 +2,19 @@ module Api
   module V1
     class Serializer
       class << self
+        def repository(record)
+          {
+            "schema_version" => "1",
+            "id" => record.id,
+            "git_common_dir" => record.git_common_dir,
+            "task_prefix" => record.task_prefix,
+            "trusted_remote" => record.trusted_remote,
+            "trusted_remote_url" => record.trusted_remote_url,
+            "base_ref" => record.base_ref,
+            "registered_at" => timestamp(record.created_at)
+          }
+        end
+
         def task_type(record)
           optional({
             "schema_version" => "1",

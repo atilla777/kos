@@ -55,6 +55,15 @@ bin/kos workflow export --workflow-version UUID --json
 
 The import body contains `workflow_id`, the complete `definition`, and `expected_lock_version`. Publish contains `workflow_id` and `expected_lock_version`; activate contains `task_type`, `workflow_version_id`, and `expected_lock_version`. Use `--input -` to read the body from stdin.
 
+Register a repository and install the supported OpenCode runtime through an explicitly approved initialization plan. The request contains `schema_version: "1"`, the uppercase `task_prefix`, configured `trusted_remote`, full local `base_ref`, a stable `registration_idempotency_key`, and runtime `{ "target": "opencode", "version": "1.18.26" }`:
+
+```sh
+bin/kos-initialize plan --input initialize.json --json
+bin/kos-initialize apply --input initialize.json --approved-plan sha256:DIGEST --json
+```
+
+Add `--force` to `apply` only after approving every planned update or conflict. Installation verifies `kos`, `kos-repository`, the active published `quick-fix` workflow, and the complete OpenCode adapter contract before publishing six skills, the session guard, and two agent profiles under `.opencode`. The manifest is published last at `.opencode/kos-runtime-manifest.json`; unrelated OpenCode files are not managed.
+
 Create a task from an input body containing `title` and `task_type: quick-fix`:
 
 ```sh
