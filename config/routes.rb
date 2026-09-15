@@ -65,6 +65,8 @@ Rails.application.routes.draw do
         resources :publications, only: [] do
           post :recover_base_moved, path: "recover-base-moved", on: :member
         end
+        get "publications/:publication_id/result", to: "publication_results#show"
+        post "publications/:publication_id/result", to: "publication_results#record"
         resources :repository_effects, only: [], path: "repository-effects" do
           post :reconcile_rebase, path: "reconcile-rebase", on: :member
         end

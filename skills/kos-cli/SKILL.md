@@ -55,7 +55,7 @@ Use only these commands until a later installed CLI explicitly supports more:
 | --- | --- | --- |
 | Global | `runtime-config get`, `task-type list`, `workflow list`, `workflow get`, `workflow export`, `workflow-draft get`, `workflow-draft validate` | `repository register`, `runtime-config update`, `workflow-draft import`, `workflow publish`, `workflow activate` |
 | Repository v1 | `repository get`, `task get`, `attempt get`, `worktree get`, `effect get`, `publication get`, `artifact list` | `task create`, `attempt claim`, `attempt renew`, `attempt fail`, `attempt needs-human`, `attempt reconcile`, `step context`, `step complete`, `worktree reserve`, `worktree confirm`, `worktree reconcile`, `worktree release`, `effect prepare`, `effect reconcile`, `publication prepare`, `publication reconcile` |
-| Repository v2 | `publication-preflight get` | `publication-preflight prepare`, `publication-preflight reconcile`, `publication prepare-observed`, `publication recover-base-moved`, `effect reconcile-rebase` |
+| Repository v2 | `publication-preflight get`, `publication-result get` | `publication-preflight prepare`, `publication-preflight reconcile`, `publication prepare-observed`, `publication recover-base-moved`, `publication-result record`, `effect reconcile-rebase` |
 
 ## Unavailable Commands
 
@@ -66,7 +66,7 @@ Use only these commands until a later installed CLI explicitly supports more:
 Capture stdout and the process exit status separately. The CLI performs full request and response JSON Schema validation. Independently fail closed unless all of these checks pass:
 
 1. Stdout contains exactly one JSON object and no prose.
-2. `schema_version` is exactly `"2"` for the publication-preflight, observed-publication, base-moved recovery, and atomic rebase-reconciliation commands and `"1"` for every other installed command.
+2. `schema_version` is exactly `"2"` for the publication-preflight, publication-result, observed-publication, base-moved recovery, and atomic rebase-reconciliation commands and `"1"` for every other installed command.
 3. `request_id` is a UUID string.
 4. `command` equals the logical command invoked, such as `task.get`; `unknown` is valid only for an `unknown_command` failure.
 5. Exactly one of `data` or `error` is present.
@@ -107,6 +107,9 @@ For stable conflict and recovery codes:
 - After a final transient mutation failure, read authoritative state when the resource identifier is known. When a creation response lost the new identifier, recover the recorded response with an exact same-command, same-body, same-key replay; never create a replacement intent.
 - Never blindly resubmit an `unknown` repository or publication effect. Observe the external state through the owning orchestrator and `kos-repository`, then record that typed observation through the matching KOS reconciliation command.
 - Replaying an idempotent state mutation means the exact same command, scope, body, and key. It may recover a recorded response, but it never authorizes repeating an underlying Git or other external effect. Prefer resource read and reconciliation whenever its identifier is known.
+- Record a successful publication manifest with version 2 `publication-result record` immediately after `publication reconcile` proves the reviewed candidate reachable and before any `worktree release`. Use the exact unchanged manifest, publication ID, and current leased preconditions; never derive or trust a caller-supplied publication evidence digest because the server recomputes it from the durable observation.
+- A replacement attempt uses version 2 `publication-result get --publication <publication-id>` to retrieve the immutable original result without the recording idempotency key. After validating its producer, manifest identity, context, candidate, target, checks, and canonical reachable evidence, it resumes cleanup only; it must not run a child, push again, or record a replacement result.
+- `publication complete` remains unavailable after result recording and worktree release. Stop before it, and never pass a publication artifact or publication evidence to `step complete`.
 
 ## Safe Mutation Sequence
 

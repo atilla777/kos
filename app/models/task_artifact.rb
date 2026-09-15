@@ -8,6 +8,10 @@ class TaskArtifact < ApplicationRecord
   belongs_to :task
   belongs_to :workflow_attempt
 
+  has_many :reviewed_publication_results, class_name: "PublicationResult",
+    foreign_key: :approved_review_artifact_id, inverse_of: :approved_review_artifact,
+    dependent: :restrict_with_exception
+
   validates :artifact_type, :state, :producer, :metadata, presence: true
   validates :artifact_type, inclusion: { in: TYPES }
   validates :state, inclusion: { in: STATES }

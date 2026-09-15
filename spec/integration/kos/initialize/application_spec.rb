@@ -50,6 +50,12 @@ RSpec.describe Kos::Initialize::Application do
     expect(result.dig(:document, "error", "code")).to eq("runtime_incompatible")
   end
 
+  it "rejects an installed state CLI without publication-result support" do
+    remove_publication_result_commands
+    result = invoke("plan", "--input", "-", "--json")
+    expect(result.dig(:document, "error", "code")).to eq("runtime_incompatible")
+  end
+
   it "applies copied files, publishes the manifest last, and then plans unchanged" do
     expect(apply_contract_results).to all(be_truthy)
   end
@@ -140,6 +146,12 @@ RSpec.describe Kos::Initialize::Application do
 
   private
 
+  def remove_publication_result_commands
+    path = File.join(test_bin, "kos")
+    commands = /\["publication-result", "get"\],\n\s*\["publication-result", "record"\],\s*/
+    write_executable("kos", File.read(path).sub(commands, ""))
+  end
+
   def invoke(*arguments, failure_injector: nil, real_capability: false, capability_verifier_factory: nil,
     source_root: KosInitializeApplicationFixture::ROOT)
     stdout = StringIO.new
@@ -192,13 +204,16 @@ RSpec.describe Kos::Initialize::Application do
         JSON.parse(STDIN.read).merge("id" => repository_id)
       when ["publication-preflight", "get"], ["publication-preflight", "prepare"],
            ["publication-preflight", "reconcile"], ["publication", "prepare-observed"],
-           ["publication", "recover-base-moved"], ["effect", "reconcile-rebase"]
+           ["publication", "recover-base-moved"], ["publication-result", "get"],
+           ["publication-result", "record"], ["effect", "reconcile-rebase"]
         identifier = { ["publication-preflight", "get"] => "publication_preflight.get",
                        ["publication-preflight", "prepare"] => "publication_preflight.prepare",
                        ["publication-preflight", "reconcile"] => "publication_preflight.reconcile",
-                       ["publication", "prepare-observed"] => "publication.prepare_observed",
-                       ["publication", "recover-base-moved"] => "publication.recover_base_moved",
-                       ["effect", "reconcile-rebase"] => "effect.reconcile_rebase" }.fetch(command)
+                        ["publication", "prepare-observed"] => "publication.prepare_observed",
+                        ["publication", "recover-base-moved"] => "publication.recover_base_moved",
+                        ["publication-result", "get"] => "publication_result.get",
+                        ["publication-result", "record"] => "publication_result.record",
+                        ["effect", "reconcile-rebase"] => "effect.reconcile_rebase" }.fetch(command)
         puts JSON.generate("schema_version" => "2", "request_id" => "33333333-3333-4333-8333-333333333333",
           "command" => identifier, "error" => {"category" => "authorization",
             "code" => "repository_access_denied", "message" => "Repository access denied", "retryable" => false})

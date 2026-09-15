@@ -14,6 +14,8 @@ module CliV2Contract
     publication_preflight.reconcile
     publication.prepare_observed
     publication.recover_base_moved
+    publication_result.get
+    publication_result.record
     effect.reconcile_rebase
   ].freeze
   REQUEST_ID = "99999999-9999-4999-8999-999999999999"
@@ -22,6 +24,9 @@ module CliV2Contract
   ATTEMPT_ID = "22222222-2222-4222-8222-222222222222"
   PREFLIGHT_ID = "77777777-7777-4777-8777-777777777777"
   PUBLICATION_ID = "44444444-4444-4444-8444-444444444444"
+  PUBLICATION_RESULT_ID = "55555555-5555-4555-8555-555555555555"
+  REVIEW_ARTIFACT_ID = "66666666-6666-4666-8666-666666666666"
+  TEST_ARTIFACT_ID = "88888888-8888-4888-8888-888888888888"
   SHA = "1111111111111111111111111111111111111111"
   DIGEST = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   TIMESTAMP = "2026-09-15T12:00:00Z"
@@ -64,6 +69,25 @@ module CliV2Contract
       "updated_at" => TIMESTAMP }
   end
 
+  def publication_manifest
+    { "schema_version" => "1", "attempt_id" => ATTEMPT_ID, "input_context_digest" => DIGEST,
+      "outcome" => "succeeded", "artifacts" => [ { "schema_version" => "1", "type" => "publication",
+        "state" => "published", "producer" => "workflow-step", "metadata" => {
+          "kind" => "publication", "publication_id" => PUBLICATION_ID, "candidate_sha" => SHA,
+          "remote" => "origin", "base_ref" => "refs/heads/main", "observed_remote_tip" => SHA,
+          "reachable" => true, "observed_at" => TIMESTAMP } } ], "summary" => "Published candidate." }
+  end
+
+  def publication_result
+    { "schema_version" => "2", "id" => PUBLICATION_RESULT_ID, "publication_id" => PUBLICATION_ID,
+      "repository_id" => REPOSITORY_ID, "task_id" => TASK_ID, "producing_attempt_id" => ATTEMPT_ID,
+      "input_context_digest" => DIGEST, "result_manifest" => publication_manifest,
+      "candidate_sha" => SHA, "remote" => "origin",
+      "base_ref" => "refs/heads/main", "observed_remote_tip" => SHA, "observed_at" => TIMESTAMP,
+      "observation_digest" => DIGEST, "approved_review_artifact_id" => REVIEW_ARTIFACT_ID,
+      "passed_test_artifact_ids" => [ TEST_ARTIFACT_ID ], "recorded_at" => TIMESTAMP }
+  end
+
   def recovery
     { "schema_version" => "2", "task_id" => TASK_ID, "task_number" => "KOS-000123",
       "publication_id" => PUBLICATION_ID, "attempt_id" => ATTEMPT_ID, "candidate_sha" => SHA,
@@ -90,6 +114,11 @@ module CliV2Contract
       { "preflight_id" => PREFLIGHT_ID, "preconditions" => preconditions }
     when "publication.recover_base_moved"
       { "publication_id" => PUBLICATION_ID, "preconditions" => preconditions }
+    when "publication_result.get"
+      { "publication_id" => PUBLICATION_ID }
+    when "publication_result.record"
+      { "publication_id" => PUBLICATION_ID, "result_manifest" => publication_manifest,
+        "preconditions" => preconditions }
     when "effect.reconcile_rebase"
       { "effect_id" => PUBLICATION_ID, "head_sha" => SHA, "rebase_evidence_digest" => DIGEST,
         "worktree_evidence_digest" => DIGEST, "preconditions" => preconditions }
@@ -105,6 +134,7 @@ module CliV2Contract
     data = case command
     when "publication.prepare_observed" then publication
     when "publication.recover_base_moved" then recovery
+    when "publication_result.get", "publication_result.record" then publication_result
     when "effect.reconcile_rebase" then rebase_reconciliation
     when "publication_preflight.reconcile" then preflight("reconciled")
     else preflight
@@ -233,16 +263,26 @@ RSpec.describe CliV2Contract do
       schema.valid?(request.except("repository_id")) ]).to eq([ true, false, false ])
   end
 
-  it "catalogs only the six repository-scoped api v2 commands" do
+  it "catalogs only the repository-scoped api v2 commands" do
     expect(described_class.catalog_contract).to eq([ described_class::COMMANDS.sort, true, true ])
   end
 
   it "requires complete leased mutation preconditions and exact cli syntax" do
     expected_syntax = [ "effect reconcile-rebase", "publication prepare-observed", "publication-preflight get",
-      "publication-preflight prepare", "publication-preflight reconcile", "publication recover-base-moved" ].sort
+      "publication-preflight prepare", "publication-preflight reconcile", "publication recover-base-moved",
+      "publication-result get", "publication-result record" ].sort
 
     expect(described_class.mutation_catalog_contract)
       .to eq([ [ %w[idempotency lock attempt fencing] ], expected_syntax ])
+  end
+
+  it "requires publication-result record path identity in its closed body" do
+    schema = described_class.definition("commands.json", "publication_result_record_body")
+    body = described_class.body("publication_result.record")
+
+    expect([ schema.valid?(body), schema.valid?(body.except("publication_id")),
+      schema.valid?(body.merge("result_manifest" => described_class.publication_manifest.merge("extra" => true))) ])
+      .to eq([ true, false, false ])
   end
 
   it "keeps the observed OID server-derived from the consumed preflight" do

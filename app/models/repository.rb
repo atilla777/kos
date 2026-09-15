@@ -11,6 +11,7 @@ class Repository < ApplicationRecord
   has_many :repository_effects, dependent: :restrict_with_exception
   has_many :publications, dependent: :restrict_with_exception
   has_many :publication_preflights, dependent: :restrict_with_exception
+  has_many :publication_results, dependent: :restrict_with_exception
 
   validates :git_common_dir, :trusted_remote, :trusted_remote_url, :base_ref, presence: true
   validates :task_prefix, presence: true, format: { with: TASK_PREFIX_FORMAT }

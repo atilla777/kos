@@ -3,7 +3,7 @@
   "$id": "https://kos.local/schemas/cli/v2/envelopes.json",
   "$defs": {
     "error_category": { "enum": ["validation", "authentication", "authorization", "conflict", "lease_lost", "not_found", "transient", "internal"] },
-    "error_code": { "enum": ["malformed_input", "unsupported_schema_version", "unknown_command", "authentication_required", "invalid_token", "forbidden", "repository_access_denied", "stale_lock_version", "invalid_transition", "idempotency_conflict", "idempotency_in_progress", "dependency_unsatisfied", "context_unavailable", "lease_expired", "fencing_token_stale", "task_not_found", "attempt_not_found", "publication_preflight_not_found", "publication_not_found", "effect_not_found", "transport_unavailable", "request_timeout", "internal_error"] },
+    "error_code": { "enum": ["malformed_input", "unsupported_schema_version", "unknown_command", "invalid_artifact", "authentication_required", "invalid_token", "forbidden", "repository_access_denied", "stale_lock_version", "invalid_transition", "idempotency_conflict", "idempotency_in_progress", "dependency_unsatisfied", "context_unavailable", "lease_expired", "fencing_token_stale", "task_not_found", "attempt_not_found", "publication_preflight_not_found", "publication_not_found", "publication_result_not_found", "effect_not_found", "transport_unavailable", "request_timeout", "internal_error"] },
     "safe_error": {
       "type": "object",
       "properties": {
@@ -25,12 +25,12 @@
       },
       "required": ["category", "code", "message", "retryable"],
       "oneOf": [
-          { "properties": { "category": { "const": "validation" }, "code": { "enum": ["malformed_input", "unsupported_schema_version", "unknown_command"] }, "retryable": { "const": false } } },
+          { "properties": { "category": { "const": "validation" }, "code": { "enum": ["malformed_input", "unsupported_schema_version", "unknown_command", "invalid_artifact"] }, "retryable": { "const": false } } },
           { "properties": { "category": { "const": "authentication" }, "code": { "enum": ["authentication_required", "invalid_token"] }, "retryable": { "const": false } } },
           { "properties": { "category": { "const": "authorization" }, "code": { "enum": ["forbidden", "repository_access_denied"] }, "retryable": { "const": false } } },
           { "properties": { "category": { "const": "conflict" }, "code": { "enum": ["stale_lock_version", "invalid_transition", "idempotency_conflict", "idempotency_in_progress", "dependency_unsatisfied", "context_unavailable"] }, "retryable": { "const": false } } },
           { "properties": { "category": { "const": "lease_lost" }, "code": { "enum": ["lease_expired", "fencing_token_stale"] }, "retryable": { "const": false } } },
-          { "properties": { "category": { "const": "not_found" }, "code": { "enum": ["task_not_found", "attempt_not_found", "publication_preflight_not_found", "publication_not_found", "effect_not_found"] }, "retryable": { "const": false } } },
+          { "properties": { "category": { "const": "not_found" }, "code": { "enum": ["task_not_found", "attempt_not_found", "publication_preflight_not_found", "publication_not_found", "publication_result_not_found", "effect_not_found"] }, "retryable": { "const": false } } },
           { "properties": { "category": { "const": "transient" }, "code": { "enum": ["transport_unavailable", "request_timeout"] }, "retryable": { "const": true } } },
           { "properties": { "category": { "const": "internal" }, "code": { "const": "internal_error" }, "retryable": { "const": false } } }
       ],

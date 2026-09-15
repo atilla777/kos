@@ -67,6 +67,69 @@
       ],
       "additionalProperties": false
     },
+    "publication_result_artifact": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "1" },
+        "type": { "const": "publication" },
+        "state": { "const": "published" },
+        "producer": { "$ref": "common.json#/$defs/identifier" },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "publication" },
+            "publication_id": { "$ref": "common.json#/$defs/uuid" },
+            "candidate_sha": { "$ref": "common.json#/$defs/git_oid" },
+            "remote": { "$ref": "common.json#/$defs/identifier" },
+            "base_ref": { "$ref": "common.json#/$defs/base_ref" },
+            "observed_remote_tip": { "$ref": "common.json#/$defs/git_oid" },
+            "reachable": { "const": true },
+            "observed_at": { "$ref": "common.json#/$defs/timestamp" }
+          },
+          "required": ["kind", "publication_id", "candidate_sha", "remote", "base_ref", "observed_remote_tip", "reachable", "observed_at"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["schema_version", "type", "state", "producer", "metadata"],
+      "additionalProperties": false
+    },
+    "publication_result_manifest": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "1" },
+        "attempt_id": { "$ref": "common.json#/$defs/uuid" },
+        "input_context_digest": { "$ref": "common.json#/$defs/digest" },
+        "outcome": { "const": "succeeded" },
+        "artifacts": { "type": "array", "items": { "$ref": "#/$defs/publication_result_artifact" }, "minItems": 1, "maxItems": 1 },
+        "summary": { "type": "string", "minLength": 1 }
+      },
+      "required": ["schema_version", "attempt_id", "input_context_digest", "outcome", "artifacts"],
+      "additionalProperties": false
+    },
+    "publication_result": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "common.json#/$defs/schema_version" },
+        "id": { "$ref": "common.json#/$defs/uuid" },
+        "publication_id": { "$ref": "common.json#/$defs/uuid" },
+        "repository_id": { "$ref": "common.json#/$defs/uuid" },
+        "task_id": { "$ref": "common.json#/$defs/uuid" },
+        "producing_attempt_id": { "$ref": "common.json#/$defs/uuid" },
+        "input_context_digest": { "$ref": "common.json#/$defs/digest" },
+        "result_manifest": { "$ref": "#/$defs/publication_result_manifest" },
+        "candidate_sha": { "$ref": "common.json#/$defs/git_oid" },
+        "remote": { "$ref": "common.json#/$defs/identifier" },
+        "base_ref": { "$ref": "common.json#/$defs/base_ref" },
+        "observed_remote_tip": { "$ref": "common.json#/$defs/git_oid" },
+        "observed_at": { "$ref": "common.json#/$defs/timestamp" },
+        "observation_digest": { "$ref": "common.json#/$defs/digest" },
+        "approved_review_artifact_id": { "$ref": "common.json#/$defs/uuid" },
+        "passed_test_artifact_ids": { "type": "array", "items": { "$ref": "common.json#/$defs/uuid" }, "minItems": 1, "uniqueItems": true },
+        "recorded_at": { "$ref": "common.json#/$defs/timestamp" }
+      },
+      "required": ["schema_version", "id", "publication_id", "repository_id", "task_id", "producing_attempt_id", "input_context_digest", "result_manifest", "candidate_sha", "remote", "base_ref", "observed_remote_tip", "observed_at", "observation_digest", "approved_review_artifact_id", "passed_test_artifact_ids", "recorded_at"],
+      "additionalProperties": false
+    },
     "base_moved_recovery": {
       "type": "object",
       "properties": {

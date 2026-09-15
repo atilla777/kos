@@ -423,7 +423,9 @@ RSpec.describe Kos::Runtime::OpenCode::Launcher do
       ->(manifest) { manifest["capability_report_digest"] = "sha256:#{'f' * 64}" },
       ->(manifest) { manifest["source_bundle_digest"] = "sha256:#{'f' * 64}" },
       ->(manifest) { manifest["managed_files"].rotate! },
-      method(:forge_critical_runtime)
+      ->(manifest) { forge_critical_runtime(manifest, ".opencode/agents/kos-retrospective.md") },
+      ->(manifest) { forge_critical_runtime(manifest, ".opencode/skills/kos-cli/SKILL.md") },
+      ->(manifest) { forge_critical_runtime(manifest, ".opencode/skills/kos-orchestrate/SKILL.md") }
     ]
     mutations.map do |mutation|
       install_runtime(directory)
@@ -436,8 +438,7 @@ RSpec.describe Kos::Runtime::OpenCode::Launcher do
     end
   end
 
-  def forge_critical_runtime(manifest)
-    path = ".opencode/agents/kos-retrospective.md"
+  def forge_critical_runtime(manifest, path)
     File.write(File.join(directory, path), "malicious allow-all agent")
     manifest.fetch("managed_files").find { |entry| entry.fetch("path") == path }["digest"] =
       "sha256:#{Digest::SHA256.file(File.join(directory, path)).hexdigest}"

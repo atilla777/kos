@@ -30,6 +30,28 @@ module Api
           Api::V1::Serializer.publication(record).merge("schema_version" => "2")
         end
 
+        def publication_result(record)
+          {
+            "schema_version" => "2",
+            "id" => record.id,
+            "publication_id" => record.publication_id,
+            "repository_id" => record.repository_id,
+            "task_id" => record.task_id,
+            "producing_attempt_id" => record.producing_attempt_id,
+            "input_context_digest" => record.input_context_digest,
+            "result_manifest" => record.result_manifest,
+            "candidate_sha" => record.candidate_sha,
+            "remote" => record.remote,
+            "base_ref" => record.base_ref,
+            "observed_remote_tip" => record.observed_remote_tip,
+            "observed_at" => record.observed_at,
+            "observation_digest" => record.observation_digest,
+            "approved_review_artifact_id" => record.approved_review_artifact_id,
+            "passed_test_artifact_ids" => record.passed_test_artifact_ids,
+            "recorded_at" => timestamp(record.recorded_at)
+          }
+        end
+
         def base_moved_recovery(result)
           {
             "schema_version" => "2",

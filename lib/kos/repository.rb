@@ -11,6 +11,7 @@ require "tmpdir"
 require_relative "json_parser"
 require_relative "git_url"
 require_relative "publication_preflight_evidence"
+require_relative "push_evidence"
 require_relative "rebase_evidence"
 require_relative "worktree_observation"
 
@@ -1443,12 +1444,10 @@ module Kos
 
       def success(observed_tip, reachable)
         observed_at = Time.now.utc.iso8601(6)
-        evidence = { "schema_version" => "1", "repository" => repository, "publication" => publication,
-          "candidate_sha" => candidate_sha, "remote" => remote, "base_ref" => base_ref,
-          "observed_remote_tip" => observed_tip, "candidate_reachable" => reachable, "observed_at" => observed_at }
         { "candidate_sha" => candidate_sha, "observed_remote_tip" => observed_tip,
           "candidate_reachable" => reachable, "observed_at" => observed_at,
-          "evidence_digest" => digest(canonical_json(evidence)) }
+          "evidence_digest" => Kos::PushEvidence.digest(repository:, publication:, candidate_sha:, remote:,
+            base_ref:, observed_remote_tip: observed_tip, candidate_reachable: reachable, observed_at:) }
       end
 
       def publication

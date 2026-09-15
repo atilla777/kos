@@ -11,6 +11,7 @@ class Publication < ApplicationRecord
   belongs_to :observation_owner_attempt, class_name: "WorkflowAttempt", optional: true
 
   has_one :publication_preflight, dependent: :restrict_with_exception
+  has_one :publication_result, dependent: :restrict_with_exception
 
   validates :candidate_sha, :remote, :base_ref, :expected_remote_oid, :prepared_at, presence: true
   validates :state, inclusion: { in: STATES }

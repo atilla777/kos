@@ -42,7 +42,8 @@ module WorkflowAttempts
     def self.validate_effect_observation!(attempt, observed_state)
       if attempt.owned_repository_effects.unresolved.exists?
         return if observed_state == "repository_effect_pending"
-      elsif attempt.owned_publications.unresolved.exists?
+      elsif attempt.owned_publications.unresolved.left_outer_joins(:publication_result)
+          .where(publication_results: { id: nil }).exists?
         return if observed_state == "publication_unknown"
       elsif attempt.owned_publication_preflights.active.exists?
         return if observed_state == "publication_unknown"

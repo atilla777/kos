@@ -12,6 +12,11 @@ module WorktreeReservations
         if observed_state == "absent" && reservation.state != "release_pending"
           raise OperationError.new("invalid_transition", "Worktree release was not prepared")
         end
+        if observed_state == "clean" && task.workflow_state.identifier == "publication" &&
+            !task.publication_results.exists?(publication_id: task.active_publication_id,
+              candidate_sha: reservation.head_sha)
+          raise OperationError.new("invalid_transition", "Publication result must be recorded before worktree release")
+        end
 
         record_observation!(reservation, observed_state, head_sha, evidence_digest, now, release: true)
       end

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://kos.local/schemas/cli/v2/commands.json",
   "$defs": {
-    "command_identifier": { "enum": ["publication_preflight.get", "publication_preflight.prepare", "publication_preflight.reconcile", "publication.prepare_observed", "publication.recover_base_moved", "effect.reconcile_rebase"] },
+    "command_identifier": { "enum": ["publication_preflight.get", "publication_preflight.prepare", "publication_preflight.reconcile", "publication.prepare_observed", "publication.recover_base_moved", "publication_result.get", "publication_result.record", "effect.reconcile_rebase"] },
     "request_base": { "type": "object", "properties": { "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "command": { "$ref": "#/$defs/command_identifier" }, "repository_id": { "$ref": "common.json#/$defs/uuid" }, "body": { "type": "object" } }, "required": ["schema_version", "command", "repository_id", "body"] },
     "preflight_locator": { "type": "object", "properties": { "preflight_id": { "$ref": "common.json#/$defs/uuid" } }, "required": ["preflight_id"], "additionalProperties": false },
     "publication_preflight_prepare_body": {
@@ -33,6 +33,14 @@
       "x-server-preconditions": ["durable_base_moved", "current_candidate_generation", "declared_recovery_transition"],
       "additionalProperties": false
     },
+    "publication_result_locator": { "type": "object", "properties": { "publication_id": { "$ref": "common.json#/$defs/uuid" } }, "required": ["publication_id"], "additionalProperties": false },
+    "publication_result_record_body": {
+      "type": "object",
+      "properties": { "publication_id": { "$ref": "common.json#/$defs/uuid" }, "result_manifest": { "$ref": "resources.json#/$defs/publication_result_manifest" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } },
+      "required": ["publication_id", "result_manifest", "preconditions"],
+      "x-server-preconditions": ["reachable_publication", "current_candidate_generation", "approved_independent_review", "passed_candidate_checks", "canonical_push_evidence"],
+      "additionalProperties": false
+    },
     "effect_reconcile_rebase_body": {
       "type": "object",
       "properties": { "effect_id": { "$ref": "common.json#/$defs/uuid" }, "head_sha": { "$ref": "common.json#/$defs/git_oid" }, "rebase_evidence_digest": { "$ref": "common.json#/$defs/digest" }, "worktree_evidence_digest": { "$ref": "common.json#/$defs/digest" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } },
@@ -49,6 +57,8 @@
           { "properties": { "command": { "const": "publication_preflight.reconcile" }, "body": { "$ref": "#/$defs/publication_preflight_reconcile_body" } } },
           { "properties": { "command": { "const": "publication.prepare_observed" }, "body": { "$ref": "#/$defs/publication_prepare_observed_body" } } },
           { "properties": { "command": { "const": "publication.recover_base_moved" }, "body": { "$ref": "#/$defs/publication_recover_base_moved_body" } } },
+          { "properties": { "command": { "const": "publication_result.get" }, "body": { "$ref": "#/$defs/publication_result_locator" } } },
+          { "properties": { "command": { "const": "publication_result.record" }, "body": { "$ref": "#/$defs/publication_result_record_body" } } },
           { "properties": { "command": { "const": "effect.reconcile_rebase" }, "body": { "$ref": "#/$defs/effect_reconcile_rebase_body" } } }
         ] }
       ],
@@ -63,6 +73,7 @@
           { "properties": { "command": { "const": "publication_preflight.reconcile" }, "data": { "allOf": [{ "$ref": "resources.json#/$defs/publication_preflight" }, { "properties": { "state": { "enum": ["unknown", "reconciled"] } } }] } } },
           { "properties": { "command": { "const": "publication.prepare_observed" }, "data": { "allOf": [{ "$ref": "resources.json#/$defs/publication" }, { "properties": { "state": { "const": "prepared" } } }] } } },
           { "properties": { "command": { "const": "publication.recover_base_moved" }, "data": { "$ref": "resources.json#/$defs/base_moved_recovery" } } },
+          { "properties": { "command": { "enum": ["publication_result.get", "publication_result.record"] }, "data": { "$ref": "resources.json#/$defs/publication_result" } } },
           { "properties": { "command": { "const": "effect.reconcile_rebase" }, "data": { "$ref": "resources.json#/$defs/rebase_reconciliation" } } }
         ] }
       ],

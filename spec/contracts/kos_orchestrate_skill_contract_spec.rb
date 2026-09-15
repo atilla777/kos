@@ -22,12 +22,13 @@ module KosOrchestrateSkillContract
     "push" => [ "push", "publication reconcile" ]
   }.freeze
   REQUIRED_COMMANDS = %w[
-    repository.get task.get workflow.get attempt.get worktree.get effect.get publication.get artifact.list
+    repository.get task.get workflow.get attempt.get worktree.get effect.get publication.get publication_result.get
+    artifact.list
     attempt.claim attempt.renew attempt.fail attempt.needs_human attempt.reconcile step.context step.complete
     worktree.reserve worktree.confirm worktree.reconcile worktree.release
     effect.prepare effect.reconcile effect.reconcile_rebase publication.prepare publication.reconcile
     publication_preflight.get publication_preflight.prepare publication_preflight.reconcile
-    publication.prepare_observed publication.recover_base_moved
+    publication.prepare_observed publication.recover_base_moved publication_result.record
   ].freeze
   REQUIRED_GUIDANCE = {
     "Authority Boundary" => [
@@ -38,7 +39,8 @@ module KosOrchestrateSkillContract
     "Read Authoritative State" => [
       "`repository get`", "immutable `workflow_version_id`", "Never use an active replacement workflow",
       "Reread all operation-specific state immediately before", "lifecycle-appropriate `worktree get`",
-      "Never source a Git common directory", "cursor to exhaustion without loops"
+      "Never source a Git common directory", "cursor to exhaustion without loops", "`publication-result get`",
+      "may retain the original producing attempt"
     ],
     "Own The Attempt" => [
       "expired unreconciled attempt", "undiscoverable generic effect", "one idempotency key", "Never use a new key",
@@ -72,7 +74,11 @@ module KosOrchestrateSkillContract
       "preserve its substantive outcome, artifacts, summary, and evidence unchanged",
       "only when exactly one transition is fully evidenced", "Do not infer a `decision` value",
       "For a review result", "with the frozen `input_context_digest`", "Never reuse the pre-context observation",
-       "publication complete", "never pass publication evidence to `step complete`",
+       "publication-result record", "server-recomputed reachable publication evidence",
+       "Do not prepare or begin worktree release before this record is durable",
+       "publication-result get", "Do not launch or resume a child, request another push",
+       "resume only the existing conservative worktree cleanup", "from `release_pending`",
+       "publication complete", "never pass the publication artifact or publication evidence to `step complete`",
        "For a base-synchronization result", "fresh passed tests"
     ],
     "Deliver Retrospective Separately" => [

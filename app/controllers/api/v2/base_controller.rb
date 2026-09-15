@@ -7,6 +7,8 @@ module Api
         "publication_preflights#reconcile" => "publication_preflight.reconcile",
         "publications#prepare_observed" => "publication.prepare_observed",
         "publications#recover_base_moved" => "publication.recover_base_moved",
+        "publication_results#show" => "publication_result.get",
+        "publication_results#record" => "publication_result.record",
         "repository_effects#reconcile_rebase" => "effect.reconcile_rebase"
       }.freeze
 

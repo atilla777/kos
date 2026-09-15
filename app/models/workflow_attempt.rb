@@ -30,6 +30,8 @@ class WorkflowAttempt < ApplicationRecord
   has_many :observed_publication_preflights, class_name: "PublicationPreflight",
     foreign_key: :observation_owner_attempt_id, inverse_of: :observation_owner_attempt,
     dependent: :restrict_with_exception
+  has_many :produced_publication_results, class_name: "PublicationResult", foreign_key: :producing_attempt_id,
+    inverse_of: :producing_attempt, dependent: :restrict_with_exception
 
   validates :owner_id, :idempotency_key, :started_at, presence: true
   validates :owner_id, format: { with: IDENTIFIER_FORMAT }

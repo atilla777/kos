@@ -36,11 +36,11 @@ module Kos
           "sha256:7c89e36d7d333e217b8f08f5d772efae415224a88dc757808158100d956f1762".freeze
         RELEASE_DIGESTS = {
           ".opencode/skills/kos-cli/SKILL.md" =>
-            "sha256:3c95264f48b52e6af6d62b31245a48bb7f50b3bbdb1b4dac3e44788cfb56abde",
+            "sha256:41d8a32c626fd74f218ab474597704e5c096c39026f7d3b463b4bb4412b387e4",
           ".opencode/skills/kos-initialize/SKILL.md" =>
             "sha256:b03e1f66dccf03ae2832c80e7616cb84d9b766b597cf6ac9fbe31abfcb5d2aba",
           ".opencode/skills/kos-orchestrate/SKILL.md" =>
-            "sha256:e8fca60369b2ce9630c8a29e23486d9af2b9a7d37bba0625de0be62553ac155c",
+            "sha256:0fe2efd70fa47226936e7885b8f05bfdab203d15d44224e622e164ff4d0e3709",
           ".opencode/skills/kos-repository/SKILL.md" =>
             "sha256:049b75630b10a4922446347a6cd83f1f23a8eb60b16d4a9084a85d415ab91d76",
           ".opencode/skills/kos-retrospective/SKILL.md" =>
@@ -59,6 +59,8 @@ module Kos
         CRITICAL_RELEASE_PATHS = %w[
           .opencode/plugins/kos-session-guard.js
           .opencode/agents/kos-retrospective.md
+          .opencode/skills/kos-cli/SKILL.md
+          .opencode/skills/kos-orchestrate/SKILL.md
           .opencode/skills/kos-retrospective/SKILL.md
         ].freeze
         RETROSPECTIVE_ENVIRONMENT_KEYS = %w[

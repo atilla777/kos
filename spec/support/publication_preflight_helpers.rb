@@ -8,6 +8,10 @@ module PublicationPreflightHelpers
     TaskArtifact.create!(repository: task.repository, task:, workflow_attempt: candidate_attempt,
       artifact_type: "candidate", state: "produced", producer: "workflow-step",
       metadata: { "kind" => "candidate", "candidate_sha" => candidate_sha, "task_trailer" => task.number })
+    TaskArtifact.create!(repository: task.repository, task:, workflow_attempt: candidate_attempt,
+      artifact_type: "test", state: "passed", producer: "workflow-step",
+      metadata: { "kind" => "test", "candidate_sha" => candidate_sha, "command" => "mise run test",
+        "exit_code" => 0, "log_digest" => "sha256:#{'d' * 64}" })
     review_attempt = complete_attempt(task:, state: review, target: publication, token: 2, now:)
     TaskArtifact.create!(repository: task.repository, task:, workflow_attempt: review_attempt,
       artifact_type: "review", state: "approved", producer: "workflow-step",

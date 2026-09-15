@@ -65,6 +65,9 @@ module Kos
           { "preflight_id" => "--preflight" }, false, "2" ],
         %w[publication-preflight prepare] => [ "publication_preflight.prepare", "repository", {}, true, "2" ],
         %w[publication-preflight reconcile] => [ "publication_preflight.reconcile", "repository", {}, true, "2" ],
+        %w[publication-result get] => [ "publication_result.get", "repository",
+          { "publication_id" => "--publication" }, false, "2" ],
+        %w[publication-result record] => [ "publication_result.record", "repository", {}, true, "2" ],
         %w[artifact list] => [ "artifact.list", "repository",
           { "task_number" => "--task", "limit" => "--limit", "cursor" => "--cursor" } ]
       }.freeze
@@ -86,6 +89,10 @@ module Kos
         raise Error.new("validation", "malformed_input", "--json is required") unless options.delete("--json")
 
         body = mutation ? mutation_body(options) : read_body(options, option_definitions)
+        path_values = read_body(options, option_definitions) if mutation
+        if mutation && path_values.length != option_definitions.length
+          raise Error.new("validation", "malformed_input", "Arguments are malformed")
+        end
         idempotency_key = options.delete("--idempotency-key") if mutation
         repository_id = options.delete("--repository")
         if scope == "repository" && !repository_id
@@ -109,6 +116,7 @@ module Kos
         if mutation
           request["_mutation"] = true
           request["_idempotency_key"] = idempotency_key
+          request["_path"] = path_values unless path_values.empty?
         end
         request
       end
@@ -217,6 +225,10 @@ module Kos
           "/api/v2/repositories/%<repository_id>s/tasks/%<task_number>s/publication-preflights",
         "publication_preflight.reconcile" =>
           "/api/v2/repositories/%<repository_id>s/publication-preflights/%<preflight_id>s/reconcile",
+        "publication_result.get" =>
+          "/api/v2/repositories/%<repository_id>s/publications/%<publication_id>s/result",
+        "publication_result.record" =>
+          "/api/v2/repositories/%<repository_id>s/publications/%<publication_id>s/result",
         "artifact.list" => "/api/v1/repositories/%<repository_id>s/tasks/%<task_number>s/artifacts"
       }.freeze
 
@@ -266,7 +278,8 @@ module Kos
         end
 
         body = logical_request.fetch("body")
-        values = body.merge(body.fetch("preconditions", {}), "repository_id" => logical_request["repository_id"])
+        values = body.merge(body.fetch("preconditions", {}), logical_request.fetch("_path", {}),
+          "repository_id" => logical_request["repository_id"])
         path = format(PATHS.fetch(logical_request.fetch("command")), **values.transform_keys(&:to_sym))
         uri = URI.parse(base.delete_suffix("/") + path)
         query = logical_request.fetch("body").slice("limit", "cursor")

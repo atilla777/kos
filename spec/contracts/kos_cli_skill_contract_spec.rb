@@ -24,7 +24,12 @@ module KosCliSkillContract
     "never generate a new key merely because a response was lost or timed out",
     "at most three total attempts",
     "same-command, same-body, same-key replay",
-    "Never blindly resubmit an `unknown` repository or publication effect"
+    "Never blindly resubmit an `unknown` repository or publication effect",
+    "`publication-result record` immediately after `publication reconcile`",
+    "before any `worktree release`", "exact unchanged manifest", "server recomputes it from the durable observation",
+    "`publication-result get --publication <publication-id>`", "resumes cleanup only",
+    "must not run a child, push again, or record a replacement result",
+    "never pass a publication artifact or publication evidence to `step complete`"
   ].freeze
   ERROR_ACTIONS = {
     1 => [ "internal", "Do not retry automatically" ],

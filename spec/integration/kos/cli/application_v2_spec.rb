@@ -9,6 +9,23 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
   def preflight_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
   def publication_id = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
 
+  def publication_manifest
+    { "schema_version" => "1", "attempt_id" => "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      "input_context_digest" => "sha256:#{'a' * 64}", "outcome" => "succeeded", "artifacts" => [
+        { "schema_version" => "1", "type" => "publication", "state" => "published",
+          "producer" => "workflow-step", "metadata" => { "kind" => "publication",
+            "publication_id" => publication_id, "candidate_sha" => "a" * 40, "remote" => "origin",
+            "base_ref" => "refs/heads/main", "observed_remote_tip" => "b" * 40, "reachable" => true,
+            "observed_at" => "2026-09-15T12:00:00Z" } }
+      ], "summary" => "Published candidate." }
+  end
+
+  def publication_result_record_body
+    { "publication_id" => publication_id, "result_manifest" => publication_manifest, "preconditions" => {
+      "expected_lock_version" => 4, "attempt_id" => "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      "fencing_token" => 5 } }
+  end
+
   def preflight
     { "schema_version" => "2", "id" => preflight_id, "repository_id" => repository_id,
       "task_id" => "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
@@ -105,6 +122,45 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
   it "forms the atomic rebase reconciliation mutation at the effect path" do
     expect(rebase_reconciliation_dispatch).to eq([ "2", "effect.reconcile_rebase", publication_id,
       "/api/v2/repositories/%<repository_id>s/repository-effects/%<effect_id>s/reconcile-rebase" ])
+  end
+
+  def publication_result_read_dispatch
+    request = Kos::Cli::Parser.new.parse([ "publication-result", "get", "--repository", repository_id,
+      "--publication", publication_id, "--json" ])
+
+    [ request.fetch("schema_version"), request.fetch("command"), request.fetch("body"),
+      Kos::Cli::Client::PATHS.fetch(request.fetch("command")) ]
+  end
+
+  it "maps publication-result read by publication id" do
+    expect(publication_result_read_dispatch).to eq([ "2", "publication_result.get",
+      { "publication_id" => publication_id },
+      "/api/v2/repositories/%<repository_id>s/publications/%<publication_id>s/result" ])
+  end
+
+  def publication_result_record_dispatch
+    body = publication_result_record_body
+    request = Kos::Cli::Parser.new(input: StringIO.new(JSON.generate(body))).parse(
+      [ "publication-result", "record", "--repository", repository_id, "--input", "-",
+        "--idempotency-key", "publication-result-key", "--json" ]
+    )
+
+    [ request.fetch("schema_version"), request.fetch("command"), request.fetch("body"),
+      Kos::Cli::Client::PATHS.fetch(request.fetch("command")) ]
+  end
+
+  it "forms publication-result record with its path identity in the body" do
+    expect(publication_result_record_dispatch).to eq([ "2", "publication_result.record",
+      publication_result_record_body,
+      "/api/v2/repositories/%<repository_id>s/publications/%<publication_id>s/result" ])
+  end
+
+  it "rejects a publication path option when recording" do
+    parser = Kos::Cli::Parser.new(input: StringIO.new(JSON.generate(publication_result_record_body)))
+    arguments = [ "publication-result", "record", "--repository", repository_id,
+      "--publication", publication_id, "--input", "-", "--idempotency-key", "publication-result-key", "--json" ]
+
+    expect { parser.parse(arguments) }.to raise_error(Kos::Cli::Error, "Arguments are malformed")
   end
 
   def rebase_reconciliation_dispatch

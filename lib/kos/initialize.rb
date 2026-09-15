@@ -535,7 +535,7 @@ module Kos
         unless workflow["id"] == workflow_id && workflow["task_type"] == "quick-fix" && workflow["definition"].is_a?(Hash)
           raise Error.new("workflow_unavailable", "Active quick-fix workflow is not readable")
         end
-        verify_publication_preflight_cli!(kos)
+        verify_publication_runtime_cli!(kos)
         verify_publication_preflight_adapter!(repository, repository_snapshot)
         {
           "kos_executable" => kos, "repository_executable" => repository,
@@ -549,10 +549,11 @@ module Kos
         raise Error.new("workflow_unavailable", "KOS returned malformed workflow readiness data")
       end
 
-      def verify_publication_preflight_cli!(kos)
+      def verify_publication_runtime_cli!(kos)
         repository_id = SecureRandom.uuid
         preflight_id = SecureRandom.uuid
         attempt_id = SecureRandom.uuid
+        publication_id = SecureRandom.uuid
         preconditions = { "expected_lock_version" => 0, "attempt_id" => attempt_id, "fencing_token" => 1 }
         probes = [ [ %w[publication-preflight get], [ "--preflight", preflight_id ], nil ],
           [ %w[publication-preflight prepare], [], { "task_number" => "KOS-000001", "candidate_sha" => "a" * 40,
@@ -563,6 +564,10 @@ module Kos
           [ %w[publication prepare-observed], [], { "preflight_id" => preflight_id,
             "preconditions" => preconditions } ],
           [ %w[publication recover-base-moved], [], { "publication_id" => SecureRandom.uuid,
+            "preconditions" => preconditions } ],
+          [ %w[publication-result get], [ "--publication", SecureRandom.uuid ], nil ],
+          [ %w[publication-result record], [], { "publication_id" => publication_id,
+            "result_manifest" => capability_result_manifest(publication_id:, attempt_id:),
             "preconditions" => preconditions } ],
           [ %w[effect reconcile-rebase], [], { "effect_id" => SecureRandom.uuid, "head_sha" => "b" * 40,
             "rebase_evidence_digest" => "sha256:#{'a' * 64}",
@@ -577,6 +582,18 @@ module Kos
             definition: "failure", exit_status: 4, identity_field: "command", identity: command_identifier(parts),
             code: "repository_access_denied")
         end
+      end
+
+      def capability_result_manifest(publication_id:, attempt_id:)
+        candidate_sha = "a" * 40
+        observed_at = "2026-01-01T00:00:00.000000Z"
+        publication = { "schema_version" => "1", "type" => "publication", "state" => "published",
+          "producer" => "kos-workflow-step", "metadata" => { "kind" => "publication",
+            "publication_id" => publication_id, "candidate_sha" => candidate_sha, "remote" => "origin",
+            "base_ref" => "refs/heads/main", "observed_remote_tip" => candidate_sha, "reachable" => true,
+            "observed_at" => observed_at } }
+        { "schema_version" => "1", "attempt_id" => attempt_id,
+          "input_context_digest" => "sha256:#{'c' * 64}", "outcome" => "succeeded", "artifacts" => [ publication ] }
       end
 
       def verify_publication_preflight_adapter!(repository, snapshot)
@@ -601,9 +618,9 @@ module Kos
         valid = !result.timed_out && result.status.exitstatus == exit_status && document.is_a?(Hash) &&
           schema_valid?(schema, definition, document) && document[identity_field] == identity &&
           document.dig("error", "code") == code
-        raise Error.new("runtime_incompatible", "Installed KOS executables lack publication preflight") unless valid
+        raise Error.new("runtime_incompatible", "Installed KOS executables lack required publication protocols") unless valid
       rescue JSON::ParserError
-        raise Error.new("runtime_incompatible", "Installed KOS executables lack publication preflight")
+        raise Error.new("runtime_incompatible", "Installed KOS executables lack required publication protocols")
       end
 
       def schema_valid?(schema, definition, document)
@@ -624,6 +641,8 @@ module Kos
           %w[publication-preflight reconcile] => "publication_preflight.reconcile",
           %w[publication prepare-observed] => "publication.prepare_observed",
           %w[publication recover-base-moved] => "publication.recover_base_moved",
+          %w[publication-result get] => "publication_result.get",
+          %w[publication-result record] => "publication_result.record",
           %w[effect reconcile-rebase] => "effect.reconcile_rebase" }.fetch(parts)
       end
 

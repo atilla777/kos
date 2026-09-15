@@ -9,6 +9,9 @@ module Publications
         publication, task = publication_and_locked_task!(repository, publication_id)
         check_lock!(task, expected_lock_version)
         attempt = owning_attempt!(repository, publication, task, attempt_id, fencing_token, now)
+        if publication.publication_result
+          raise OperationError.new("invalid_transition", "Publication already has an immutable result")
+        end
         unless publication.state.in?(Publication::UNRESOLVED_STATES) &&
             task.active_publication_id == publication.id
           raise OperationError.new("invalid_transition", "Publication is already terminal")
