@@ -65,12 +65,27 @@ RSpec.describe RepositoryV1Contract do
         "remote" => "origin", "base_ref" => "refs/heads/main", "expected_remote_oid" => sha } }
   end
 
+  def context_bound_observation_contract
+    context_digest = "sha256:#{'c' * 64}"
+    observe = request.merge("operation" => "observe", "input_context_digest" => context_digest)
+    observation = { "state" => "clean", "head_sha" => sha,
+      "git_common_dir_digest" => "sha256:#{'a' * 64}", "input_context_digest" => context_digest,
+      "evidence_digest" => "sha256:#{'b' * 64}" }
+    [ schema.ref("#/$defs/request").valid?(observe),
+      schema.ref("#/$defs/request").valid?(request.merge("input_context_digest" => context_digest)),
+      schema.ref("#/$defs/observation").valid?(observation) ]
+  end
+
   it "accepts a materialize request" do
     expect(schema.ref("#/$defs/request")).to be_valid(request)
   end
 
   it "accepts an observe request" do
     expect(schema.ref("#/$defs/request")).to be_valid(request.merge("operation" => "observe"))
+  end
+
+  it "binds only observe requests and observations to a frozen input context", :aggregate_failures do
+    expect(context_bound_observation_contract).to eq([ true, false, true ])
   end
 
   it "accepts a remove request" do

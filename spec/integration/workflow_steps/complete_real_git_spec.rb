@@ -30,15 +30,63 @@ RSpec.describe WorkflowSteps::Complete, :aggregate_failures do
 
   after { FileUtils.remove_entry(directory) if File.exist?(directory) }
 
-  it "reaches review with synchronized planning and candidate evidence" do
-    expect(exercise_flow).to be(true)
+  { "approved" => "publication", "changes_requested" => "development" }.each do |verdict, target|
+    it "reviews the exact clean candidate and routes #{verdict} to #{target}" do
+      expect(exercise_flow(verdict, target)).to be(true)
+    end
+  end
+
+
+  it "rejects review completion after the reviewer changes the worktree" do
+    expect(dirty_review_completion_code).to eq("invalid_artifact")
+  end
+
+  def dirty_review_completion_code
+    candidate, review_attempt, reservation = prepare_review
+    File.binwrite(File.join(worktree_path, "README.md"), "review mutation\n")
+    reconcile_worktree(review_attempt, reservation, candidate, expected_state: "dirty",
+      input_context_digest: review_attempt.input_context_digest)
+    completion_code(review_attempt, "publication", [ review_artifact(review_attempt, candidate, "approved") ])
   end
 
   it "rejects clean planning evidence without its successful commit effect" do
     expect(completion_without_successful_effect).to eq(%w[invalid_artifact invalid_artifact])
   end
 
-  def exercise_flow
+  def exercise_flow(verdict, target)
+    candidate, review_attempt, reservation = prepare_review
+    reconcile_worktree(review_attempt, reservation, candidate,
+      input_context_digest: review_attempt.input_context_digest)
+    complete(review_attempt, target, [ review_artifact(review_attempt, candidate, verdict) ])
+
+    review = task.task_artifacts.find_by!(artifact_type: "review")
+    expect(task.reload.workflow_state.identifier).to eq(target)
+    expect(review.attributes.values_at("state", "workflow_attempt_id")).to eq([ verdict, review_attempt.id ])
+    expect(review.metadata.fetch("candidate_sha")).to eq(candidate)
+    expect(review_attempt.reload.state).to eq("succeeded")
+    expect(review_attempt.owned_repository_effects).to be_empty
+    expect(reservation.reload.attributes.values_at("head_sha", "observed_state"))
+      .to eq([ candidate, "clean" ])
+    true
+  end
+
+  def prepare_review
+    candidate, reservation = reach_review
+    review_attempt = claim("review")
+    expect { capture(review_attempt) }.to raise_error(OperationError) { |error|
+      expect(error.code).to eq("context_unavailable")
+    }
+    reconcile_worktree(review_attempt, reservation, candidate)
+    context = capture(review_attempt)
+    review_attempt.reload
+    expect(context.values_at("candidate_sha", "allowed_repository_effects"))
+      .to eq([ candidate, [] ])
+    expect(context.fetch("review_observation_nonce")).to match(/\A[0-9a-f-]{36}\z/)
+    expect(context.dig("worktree", "head_sha")).to eq(candidate)
+    [ candidate, review_attempt, reservation ]
+  end
+
+  def reach_review
     planning_attempt = claim("planning")
     reservation = confirmed_worktree(planning_attempt)
     planning_context = capture(planning_attempt)
@@ -81,7 +129,7 @@ RSpec.describe WorkflowSteps::Complete, :aggregate_failures do
     expect(task.workflow_attempts.order(:started_at).pluck(:state)).to eq(%w[succeeded succeeded])
     expect(task.repository_effects.pluck(:state)).to eq(%w[succeeded succeeded])
     expect(task.repository_effects.unresolved).to be_empty
-    true
+    [ candidate, reservation ]
   end
 
   def claim(stage)
@@ -183,18 +231,29 @@ RSpec.describe WorkflowSteps::Complete, :aggregate_failures do
       "message" => message, "task_number" => task.number }
   end
 
-  def adapter_request(operation, attempt, reservation, expected_head)
-    { "schema_version" => "1", "operation" => operation,
+  def adapter_request(operation, attempt, reservation, expected_head, input_context_digest: nil)
+    request = { "schema_version" => "1", "operation" => operation,
       "repository" => { "id" => repository.id, "git_common_dir" => repository.git_common_dir,
         "base_ref" => repository.base_ref },
       "reservation" => { "id" => reservation.id, "repository_id" => repository.id,
         "state" => reservation.state, "path" => reservation.path, "branch" => reservation.branch,
         "fencing_token" => attempt.fencing_token }, "expected_head_sha" => expected_head }
+    request["input_context_digest"] = input_context_digest if input_context_digest
+    request
   end
 
-  def reconcile_worktree(attempt, reservation, head)
-    observation = Kos::Repository::Worktree.new(adapter_request("observe", attempt, reservation, head)).call
-    expect(observation.fetch("state")).to eq("clean")
+  def reconcile_worktree(attempt, reservation, head, expected_state: "clean", input_context_digest: nil)
+    request = adapter_request("observe", attempt, reservation, head, input_context_digest:)
+    observation = Kos::Repository::Worktree.new(request).call
+    expect(observation.fetch("state")).to eq(expected_state)
+    expect(observation["input_context_digest"]).to eq(input_context_digest) if input_context_digest
+    if input_context_digest && expected_state == "clean"
+      expected_digest = Kos::WorktreeObservation.digest(repository_id: repository.id,
+        reservation_id: reservation.id, fencing_token: attempt.fencing_token, path: reservation.path,
+        branch: reservation.branch, state: "clean", head_sha: head,
+        git_common_dir_digest: observation.fetch("git_common_dir_digest"), input_context_digest:)
+      expect(observation.fetch("evidence_digest")).to eq(expected_digest)
+    end
     WorktreeReservations::Reconcile.call(repository:, reservation_id: reservation.id,
       observed_state: observation.fetch("state"), head_sha: observation.fetch("head_sha"),
       evidence_digest: observation.fetch("evidence_digest"), attempt_id: attempt.id,
@@ -238,9 +297,14 @@ RSpec.describe WorkflowSteps::Complete, :aggregate_failures do
       "command" => command, "exit_code" => 0, "log_digest" => digest(output) })
   end
 
+  def review_artifact(attempt, candidate, verdict)
+    artifact("review", verdict, { "kind" => "review", "candidate_sha" => candidate,
+      "verdict" => verdict, "review_attempt_id" => attempt.id })
+  end
+
   def artifact(type, state, metadata)
-    { "schema_version" => "1", "type" => type, "state" => state,
-      "producer" => "workflow-step", "metadata" => metadata }
+    JSON.parse(JSON.generate({ "schema_version" => "1", "type" => type, "state" => state,
+      "producer" => "workflow-step", "metadata" => metadata }))
   end
 
   def digest(value)

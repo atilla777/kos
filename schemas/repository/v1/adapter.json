@@ -42,7 +42,8 @@
         "operation": { "enum": ["materialize", "observe", "remove"] },
         "repository": { "$ref": "#/$defs/repository" },
         "reservation": { "$ref": "#/$defs/reservation" },
-        "expected_head_sha": { "$ref": "#/$defs/git_oid" }
+        "expected_head_sha": { "$ref": "#/$defs/git_oid" },
+        "input_context_digest": { "$ref": "#/$defs/digest" }
       },
       "required": ["schema_version", "operation", "repository", "reservation", "expected_head_sha"],
       "additionalProperties": false
@@ -50,7 +51,7 @@
     "materialize_request": {
       "allOf": [
         { "$ref": "#/$defs/request_base" },
-        { "properties": { "operation": { "const": "materialize" }, "reservation": { "properties": { "state": { "const": "reserved" } } } } }
+        { "properties": { "operation": { "const": "materialize" }, "reservation": { "properties": { "state": { "const": "reserved" } } } }, "not": { "required": ["input_context_digest"] } }
       ]
     },
     "observe_request": {
@@ -62,7 +63,7 @@
     "remove_request": {
       "allOf": [
         { "$ref": "#/$defs/request_base" },
-        { "properties": { "operation": { "const": "remove" }, "reservation": { "properties": { "state": { "const": "release_pending" } } } } }
+        { "properties": { "operation": { "const": "remove" }, "reservation": { "properties": { "state": { "const": "release_pending" } } } }, "not": { "required": ["input_context_digest"] } }
       ]
     },
     "commit_request": {
@@ -231,6 +232,7 @@
         "state": { "enum": ["absent", "clean", "dirty", "mismatched"] },
         "head_sha": { "$ref": "#/$defs/git_oid" },
         "git_common_dir_digest": { "$ref": "#/$defs/digest" },
+        "input_context_digest": { "$ref": "#/$defs/digest" },
         "evidence_digest": { "$ref": "#/$defs/digest" }
       },
       "required": ["state", "evidence_digest"],

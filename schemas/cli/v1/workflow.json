@@ -42,6 +42,7 @@
         "fencing_token": { "type": "integer", "minimum": 1 },
         "base_ref": { "$ref": "common.json#/$defs/base_ref" },
         "candidate_sha": { "$ref": "common.json#/$defs/git_oid" },
+        "review_observation_nonce": { "$ref": "common.json#/$defs/uuid" },
         "publication": { "$ref": "#/$defs/publication_context" },
         "worktree": { "$ref": "#/$defs/worktree_context" },
         "required_artifacts": { "type": "array", "items": { "$ref": "#/$defs/required_artifact" }, "x-unique-by": "type" },

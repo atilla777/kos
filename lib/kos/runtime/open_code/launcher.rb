@@ -40,7 +40,7 @@ module Kos
           ".opencode/skills/kos-initialize/SKILL.md" =>
             "sha256:b03e1f66dccf03ae2832c80e7616cb84d9b766b597cf6ac9fbe31abfcb5d2aba",
           ".opencode/skills/kos-orchestrate/SKILL.md" =>
-            "sha256:5c7a28e9d3a3739521c5f59677c7a9e7133a70fa54d2cc1d4e3b5f40dd3677a1",
+            "sha256:05112e9ca3605854f442b0fded42b77fcca50b26d47b139105e3d22d48bba4d4",
           ".opencode/skills/kos-repository/SKILL.md" =>
             "sha256:3e5d0ef4ea009ef25291768af4deacb89dd9ed6ee5377d55f6d3d132fa6afa19",
           ".opencode/skills/kos-retrospective/SKILL.md" =>

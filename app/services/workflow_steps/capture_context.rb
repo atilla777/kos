@@ -1,4 +1,5 @@
 require "digest"
+require "securerandom"
 
 module WorkflowSteps
   class CaptureContext < WorkflowAttempts::Base
@@ -17,6 +18,7 @@ module WorkflowSteps
         context["input_context_digest"] = digest
         validate_context!(context)
         attempt.update!(input_context: context, input_context_digest: digest)
+        consume_review_observation!(task) if task.workflow_state.identifier == "review"
         attempt.input_context
       end
     end
@@ -56,6 +58,10 @@ module WorkflowSteps
       add_worktree!(context, task, status)
       candidate = CurrentCandidate.call(task)
       context["candidate_sha"] = candidate.metadata.fetch("candidate_sha") if candidate
+      if status.fetch("id") == "review"
+        validate_review_context!(context, task, attempt)
+        context["review_observation_nonce"] = SecureRandom.uuid
+      end
       add_publication!(context, task, attempt) if task.workflow_state.identifier == "publication"
       JSON.parse(JSON.generate(context))
     end
@@ -89,6 +95,20 @@ module WorkflowSteps
       }
     end
     private_class_method :add_worktree!
+
+    def self.validate_review_context!(context, task, attempt)
+      candidate_sha = context["candidate_sha"]
+      reservation = task.worktree_reservation
+      valid = candidate_sha.present? && context.dig("worktree", "head_sha") == candidate_sha &&
+        ReviewWorktree.current_clean?(reservation, attempt, candidate_sha)
+      unavailable!("Review context requires a freshly observed clean candidate") unless valid
+    end
+    private_class_method :validate_review_context!
+
+    def self.consume_review_observation!(task)
+      task.worktree_reservation.update!(observed_state: nil, observation_digest: nil)
+    end
+    private_class_method :consume_review_observation!
 
     def self.add_publication!(context, task, attempt)
       publication = task.active_publication

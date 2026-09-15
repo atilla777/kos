@@ -29,6 +29,7 @@ module WorkflowSteps
         transition = transition!(task, attempt, to_status)
         validate_contract!(task, attempt, transition, artifacts)
         validate_synchronized_worktree!(task, attempt, artifacts)
+        validate_review_worktree!(task, attempt, artifacts)
 
         records = register_artifacts!(task, attempt, repository, artifacts)
         task.update!(active_attempt: nil, workflow_state: transition.to_state)
@@ -160,6 +161,24 @@ module WorkflowSteps
       invalid!("Worktree HEAD is not synchronized with transition evidence") unless valid
     end
     private_class_method :validate_synchronized_worktree!
+
+    def self.validate_review_worktree!(task, attempt, artifacts)
+      return unless task.workflow_state.identifier == "review"
+
+      review = artifacts.find { _1.fetch("type") == "review" }
+      candidate_sha = review&.dig("metadata", "candidate_sha")
+      context = attempt.input_context
+      reservation = task.worktree_reservation
+      valid = context&.fetch("review_observation_nonce", nil).present? &&
+        context&.fetch("candidate_sha", nil) == candidate_sha &&
+        context&.dig("worktree", "reservation_id") == reservation&.id &&
+        context&.dig("worktree", "head_sha") == candidate_sha &&
+        attempt.owned_repository_effects.none? &&
+        ReviewWorktree.current_clean?(reservation, attempt, candidate_sha,
+          input_context_digest: attempt.input_context_digest)
+      invalid!("Review does not match the freshly observed clean candidate") unless valid
+    end
+    private_class_method :validate_review_worktree!
 
     def self.invalid!(message)
       raise OperationError.new("invalid_artifact", message)

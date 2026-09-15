@@ -10,6 +10,7 @@ require "tmpdir"
 
 require_relative "json_parser"
 require_relative "git_url"
+require_relative "worktree_observation"
 
 module Kos
   module Repository
@@ -268,6 +269,7 @@ module Kos
         super
         @reservation = request.fetch("reservation")
         @expected_head = request["expected_head_sha"] || request.dig("effect", "request", "effect", "expected_head_sha")
+        @input_context_digest = request["input_context_digest"]
       end
 
       def call
@@ -473,10 +475,11 @@ module Kos
       end
 
       def evidence(state, fields = {})
-        document = { "schema_version" => "1", "repository_id" => repository.fetch("id"),
-          "reservation_id" => reservation.fetch("id"), "fencing_token" => reservation.fetch("fencing_token"),
-          "path" => reservation.fetch("path"), "branch" => reservation.fetch("branch"), "state" => state }.merge(fields)
-        fields.merge("state" => state, "evidence_digest" => "sha256:#{Digest::SHA256.hexdigest(canonical_json(document))}")
+        fields = fields.merge("input_context_digest" => @input_context_digest).compact
+        digest = Kos::WorktreeObservation.digest(repository_id: repository.fetch("id"),
+          reservation_id: reservation.fetch("id"), fencing_token: reservation.fetch("fencing_token"),
+          path: reservation.fetch("path"), branch: reservation.fetch("branch"), state:, **fields)
+        fields.merge("state" => state, "evidence_digest" => digest)
       end
 
       def git_failure!(code, result)

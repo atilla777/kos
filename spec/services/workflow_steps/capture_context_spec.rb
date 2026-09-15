@@ -31,15 +31,25 @@ RSpec.describe WorkflowSteps::CaptureContext, :aggregate_failures do
     reservation
   end
 
+  def observe_clean(attempt, reservation, head_sha, input_context_digest: nil)
+    reservation.reload
+    reservation.update!(head_sha:, observed_state: "clean",
+      observation_digest: Kos::WorktreeObservation.digest(repository_id: repository.id,
+        reservation_id: reservation.id, fencing_token: attempt.fencing_token, path: reservation.path,
+        branch: reservation.branch, state: "clean", head_sha:,
+        git_common_dir_digest: reservation.git_common_dir_digest, input_context_digest:))
+  end
+
   def capture(attempt, **overrides)
     described_class.call(repository:, attempt_id: attempt.id, fencing_token: attempt.fencing_token,
       expected_lock_version: task.reload.lock_version, now: now + 1, **overrides)
   end
 
   def complete_step(attempt, to_status, artifacts)
-    digest = "sha256:#{'d' * 64}"
     artifacts = JSON.parse(JSON.generate(artifacts))
-    attempt.update!(input_context: { "schema_version" => "1" }, input_context_digest: digest)
+    attempt.update!(input_context: { "schema_version" => "1" },
+      input_context_digest: "sha256:#{'d' * 64}") unless attempt.input_context
+    digest = attempt.reload.input_context_digest
     manifest = { "schema_version" => "1", "attempt_id" => attempt.id, "input_context_digest" => digest,
       "outcome" => "succeeded", "artifacts" => artifacts }
     canonical = WorkflowCatalog::CanonicalDefinition.canonical_json(artifacts)
@@ -96,7 +106,7 @@ RSpec.describe WorkflowSteps::CaptureContext, :aggregate_failures do
       replacement.fencing_token ]
   end
 
-  def candidate_context_summary
+  def candidate_context_summary(capture_context: true)
     document = { "schema_version" => "1", "type" => "document", "state" => "produced",
       "producer" => "workflow-step", "metadata" => { "kind" => "document",
         "path" => "tasks/#{task.number}/implementation-plan.md", "commit_sha" => "a" * 40,
@@ -111,6 +121,11 @@ RSpec.describe WorkflowSteps::CaptureContext, :aggregate_failures do
         "command" => "bundle exec rspec", "exit_code" => 0, "log_digest" => "sha256:#{'a' * 64}" } }
     complete_step(claim(key: "development-context-claim"), "review", [ candidate, test ])
     review = claim(key: "changes-requested-context-claim")
+    reservation = confirm_worktree(review)
+    observe_clean(review, reservation, old_candidate_sha)
+    context = capture(review)
+    review.update!(input_context: context, input_context_digest: context.fetch("input_context_digest"))
+    observe_clean(review, reservation, old_candidate_sha, input_context_digest: context.fetch("input_context_digest"))
     review_artifact = { "schema_version" => "1", "type" => "review", "state" => "changes_requested",
       "producer" => "workflow-step", "metadata" => { "kind" => "review", "candidate_sha" => old_candidate_sha,
         "verdict" => "changes_requested", "review_attempt_id" => review.id } }
@@ -120,7 +135,10 @@ RSpec.describe WorkflowSteps::CaptureContext, :aggregate_failures do
     test["metadata"]["candidate_sha"] = candidate_sha
     complete_step(claim(key: "replacement-development-claim"), "review", [ candidate, test ])
     review = claim(key: "review-context-claim")
-    confirm_worktree(review)
+    reservation = task.reload.worktree_reservation
+    observe_clean(review, reservation, candidate_sha)
+    return [ review, candidate_sha, reservation ] unless capture_context
+
     [ capture(review).fetch("candidate_sha"), candidate_sha ]
   end
 
@@ -131,6 +149,17 @@ RSpec.describe WorkflowSteps::CaptureContext, :aggregate_failures do
     capture(attempt)
   rescue OperationError => error
     error.code
+  end
+
+  def stale_review_observation_summary
+    attempt, candidate_sha, reservation = candidate_context_summary(capture_context: false)
+    reservation.update!(observation_digest: "sha256:#{'f' * 64}")
+    code = begin
+      capture(attempt)
+    rescue OperationError => error
+      error.code
+    end
+    [ code, candidate_sha, reservation.head_sha ]
   end
 
   def frozen_legacy_context_summary
@@ -166,6 +195,14 @@ RSpec.describe WorkflowSteps::CaptureContext, :aggregate_failures do
   it "includes the candidate from the latest succeeded producer attempt" do
     summary = candidate_context_summary
     expect(summary).to eq([ summary.last, summary.last ])
+    expect(task.worktree_reservation.attributes.values_at("observed_state", "observation_digest"))
+      .to eq([ nil, nil ])
+  end
+
+
+  it "rejects review context until the current attempt owns a clean candidate observation" do
+    summary = stale_review_observation_summary
+    expect(summary).to eq([ "context_unavailable", summary.last, summary.last ])
   end
 
   it "requires a confirmed worktree without partially storing context" do

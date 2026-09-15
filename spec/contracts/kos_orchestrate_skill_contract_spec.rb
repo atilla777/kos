@@ -47,7 +47,8 @@ module KosOrchestrateSkillContract
     "Prepare The Context" => [
       "no such path-allocation read", "never derive a path", "worktree reserve", "worktree confirm",
       "Dirty or mismatched state is a blocker",
-      "publication prepare", "RFC 8785 canonical JSON serialization", "mix it with another context"
+      "publication prepare", "Before a review context", "development's earlier observation is stale",
+      "RFC 8785 canonical JSON serialization", "mix it with another context"
     ],
     "Dispatch The Pinned Mode" => [
       "not a context field", "runtime-generated completed Task wrapper", "process-event metadata",
@@ -65,6 +66,7 @@ module KosOrchestrateSkillContract
     "Submit The Result" => [
       "preserve its substantive outcome, artifacts, summary, and evidence unchanged",
       "only when exactly one transition is fully evidenced", "Do not infer a `decision` value",
+      "For a review result", "with the frozen `input_context_digest`", "Never reuse the pre-context observation",
       "publication complete", "never pass publication evidence to `step complete`"
     ],
     "Deliver Retrospective Separately" => [

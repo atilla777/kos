@@ -33,6 +33,23 @@ RSpec.describe WorkflowSteps::Complete, :aggregate_failures do
     attempt.update!(input_context: { "schema_version" => "1" }, input_context_digest: digest)
   end
 
+  def freeze_review_context(attempt, candidate_sha)
+    reservation = task.worktree_reservation || WorktreeReservation.create!(repository:, task:,
+      workflow_attempt: attempt, branch: "kos/task-#{task.number}", path: "/tmp/worktrees/#{task.number}",
+      state: "confirmed", fencing_token: attempt.fencing_token, head_sha: candidate_sha,
+      git_common_dir_digest: "sha256:#{'c' * 64}", confirmed_at: Time.utc(2026, 9, 11, 12))
+    task.reload.update!(worktree_reservation: reservation) unless task.worktree_reservation
+    reservation.update!(workflow_attempt: attempt, fencing_token: attempt.fencing_token, head_sha: candidate_sha,
+      observed_state: "clean", observation_digest: Kos::WorktreeObservation.digest(
+        repository_id: repository.id, reservation_id: reservation.id, fencing_token: attempt.fencing_token,
+        path: reservation.path, branch: reservation.branch, state: "clean", head_sha: candidate_sha,
+        git_common_dir_digest: reservation.git_common_dir_digest, input_context_digest: digest))
+    attempt.update!(input_context: { "schema_version" => "1", "candidate_sha" => candidate_sha,
+      "review_observation_nonce" => SecureRandom.uuid,
+      "worktree" => { "reservation_id" => reservation.id, "path" => reservation.path,
+        "branch" => reservation.branch, "head_sha" => candidate_sha } }, input_context_digest: digest)
+  end
+
   def artifact(type, state, metadata)
     JSON.parse(JSON.generate({ "schema_version" => "1", "type" => type, "state" => state,
       "producer" => "workflow-step", "metadata" => metadata }))
@@ -109,7 +126,7 @@ RSpec.describe WorkflowSteps::Complete, :aggregate_failures do
   def review_target(verdict, target)
     sha = advance_to_review
     attempt = claim
-    freeze_context(attempt)
+    freeze_review_context(attempt, sha)
     review = artifact("review", verdict, { "kind" => "review", "candidate_sha" => sha,
       "verdict" => verdict, "review_attempt_id" => attempt.id })
     complete(attempt, target, [ review ]).task.workflow_state.identifier
@@ -122,7 +139,7 @@ RSpec.describe WorkflowSteps::Complete, :aggregate_failures do
   def old_candidate_review_summary
     old_sha = advance_to_review
     review_attempt = claim
-    freeze_context(review_attempt)
+    freeze_review_context(review_attempt, old_sha)
     review = artifact("review", "changes_requested", { "kind" => "review", "candidate_sha" => old_sha,
       "verdict" => "changes_requested", "review_attempt_id" => review_attempt.id })
     complete(review_attempt, "development", [ review ])
@@ -135,7 +152,7 @@ RSpec.describe WorkflowSteps::Complete, :aggregate_failures do
       "command" => "check", "exit_code" => 0, "log_digest" => digest })
     complete(development_attempt, "review", [ candidate, test ])
     current_review = claim
-    freeze_context(current_review)
+    freeze_review_context(current_review, new_sha)
     stale = artifact("review", "approved", { "kind" => "review", "candidate_sha" => old_sha,
       "verdict" => "approved", "review_attempt_id" => current_review.id })
     [ operation_error_code { complete(current_review, "publication", [ stale ]) },
@@ -193,7 +210,7 @@ RSpec.describe WorkflowSteps::Complete, :aggregate_failures do
   def contradictory_review_summary
     sha = advance_to_review
     attempt = claim
-    freeze_context(attempt)
+    freeze_review_context(attempt, sha)
     reviews = %w[approved changes_requested].map do |verdict|
       artifact("review", verdict, { "kind" => "review", "candidate_sha" => sha,
         "verdict" => verdict, "review_attempt_id" => attempt.id })
