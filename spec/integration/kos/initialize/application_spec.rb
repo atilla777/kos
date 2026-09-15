@@ -191,11 +191,14 @@ RSpec.describe Kos::Initialize::Application do
       when ["repository", "register"]
         JSON.parse(STDIN.read).merge("id" => repository_id)
       when ["publication-preflight", "get"], ["publication-preflight", "prepare"],
-           ["publication-preflight", "reconcile"], ["publication", "prepare-observed"]
+           ["publication-preflight", "reconcile"], ["publication", "prepare-observed"],
+           ["publication", "recover-base-moved"], ["effect", "reconcile-rebase"]
         identifier = { ["publication-preflight", "get"] => "publication_preflight.get",
                        ["publication-preflight", "prepare"] => "publication_preflight.prepare",
                        ["publication-preflight", "reconcile"] => "publication_preflight.reconcile",
-                       ["publication", "prepare-observed"] => "publication.prepare_observed" }.fetch(command)
+                       ["publication", "prepare-observed"] => "publication.prepare_observed",
+                       ["publication", "recover-base-moved"] => "publication.recover_base_moved",
+                       ["effect", "reconcile-rebase"] => "effect.reconcile_rebase" }.fetch(command)
         puts JSON.generate("schema_version" => "2", "request_id" => "33333333-3333-4333-8333-333333333333",
           "command" => identifier, "error" => {"category" => "authorization",
             "code" => "repository_access_denied", "message" => "Repository access denied", "retryable" => false})

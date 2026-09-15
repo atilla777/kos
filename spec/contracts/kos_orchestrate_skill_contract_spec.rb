@@ -18,16 +18,16 @@ module KosOrchestrateSkillContract
     "worktree_remove" => [ "worktree release", "release_pending", "remove", "absent", "worktree release" ],
     "commit" => [ "effect prepare", "commit", "effect reconcile" ],
     "fetch" => [ "effect prepare", "fetch", "effect reconcile" ],
-    "rebase" => [ "onto_sha", "effect prepare", "rebase", "effect reconcile" ],
+    "rebase" => [ "onto_sha", "effect prepare", "rebase", "effect reconcile-rebase" ],
     "push" => [ "push", "publication reconcile" ]
   }.freeze
   REQUIRED_COMMANDS = %w[
     repository.get task.get workflow.get attempt.get worktree.get effect.get publication.get artifact.list
     attempt.claim attempt.renew attempt.fail attempt.needs_human attempt.reconcile step.context step.complete
     worktree.reserve worktree.confirm worktree.reconcile worktree.release
-    effect.prepare effect.reconcile publication.prepare publication.reconcile
+    effect.prepare effect.reconcile effect.reconcile_rebase publication.prepare publication.reconcile
     publication_preflight.get publication_preflight.prepare publication_preflight.reconcile
-    publication.prepare_observed
+    publication.prepare_observed publication.recover_base_moved
   ].freeze
   REQUIRED_GUIDANCE = {
     "Authority Boundary" => [
@@ -64,13 +64,16 @@ module KosOrchestrateSkillContract
       "Return it only to the retained child session", "preserve `failed` and `unknown` outcomes exactly",
       "After reconciling a successful `commit`", "adapter `observe`", "through `worktree reconcile`",
       "return success only after an `absent` observation", "`push_state_uncertain`",
-      "cannot complete, fail, or enter `needs_human`", "adopts any active `prepared`, `unknown`, or `reconciled`"
+      "cannot complete, fail, or enter `needs_human`", "adopts any active `prepared`, `unknown`, or `reconciled`",
+      "publication recover-base-moved", "later invocation owns `base-synchronization`",
+      "effect reconcile-rebase", "records rebase success and the new clean reservation HEAD in one transaction"
     ],
     "Submit The Result" => [
       "preserve its substantive outcome, artifacts, summary, and evidence unchanged",
       "only when exactly one transition is fully evidenced", "Do not infer a `decision` value",
       "For a review result", "with the frozen `input_context_digest`", "Never reuse the pre-context observation",
-      "publication complete", "never pass publication evidence to `step complete`"
+       "publication complete", "never pass publication evidence to `step complete`",
+       "For a base-synchronization result", "fresh passed tests"
     ],
     "Deliver Retrospective Separately" => [
       "`KOS_RETROSPECTIVE_ENABLED`", "explicitly invoke `child_retrospective`",

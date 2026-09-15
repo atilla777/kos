@@ -12,6 +12,7 @@ module RepositoryEffects
 
         check_lease!(attempt, task, fencing_token, now)
         validate_request!(task, attempt, effect_request)
+        validate_base_synchronization!(task, attempt, effect_request)
         request = JSON.parse(JSON.generate(effect_request))
         digest = "sha256:#{Digest::SHA256.hexdigest(WorkflowCatalog::CanonicalJson.generate(request))}"
         task.repository_effects.create!(repository:, prepared_attempt: attempt, current_owner_attempt: attempt,
@@ -47,5 +48,29 @@ module RepositoryEffects
       raise OperationError.new("invalid_transition", "Repository effect does not match the worktree context")
     end
     private_class_method :validate_worktree_binding!
+
+    def self.validate_base_synchronization!(task, attempt, request)
+      return unless task.workflow_state.identifier == "base-synchronization"
+
+      effects = attempt.owned_repository_effects.to_a
+      effect = request.fetch("effect")
+      operation = effect.fetch("operation")
+      valid = case operation
+      when "fetch"
+        effects.empty? && effect["remote"] == task.repository.trusted_remote &&
+          effect["ref"] == task.repository.base_ref
+      when "rebase"
+        fetches = effects.select { _1.request.dig("effect", "operation") == "fetch" }
+        fetch = fetches.one? ? fetches.first : nil
+        effects.one? && fetch&.state == "succeeded" &&
+          effect["onto_sha"] == fetch.result&.dig("result", "observed_oid")
+      else
+        false
+      end
+      return if valid
+
+      raise OperationError.new("invalid_transition", "Base synchronization effect sequence is invalid")
+    end
+    private_class_method :validate_base_synchronization!
   end
 end

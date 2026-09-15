@@ -15,7 +15,7 @@ A complete copy of every version 1 command into a new namespace would add substa
 
 ## Decision
 
-KOS introduces a minimal additive CLI and API version 2 contract containing only `publication_preflight.get`, `publication_preflight.prepare`, `publication_preflight.reconcile`, and `publication.prepare_observed`. Their API endpoints are repository-scoped under `/api/v2/repositories/{repository_id}`. All version 2 documents identify `"schema_version": "2"` and are closed JSON Schema draft 2020-12 documents.
+KOS introduces a minimal additive CLI and API version 2 contract initially containing only `publication_preflight.get`, `publication_preflight.prepare`, `publication_preflight.reconcile`, and `publication.prepare_observed`. Their API endpoints are repository-scoped under `/api/v2/repositories/{repository_id}`. All version 2 documents identify `"schema_version": "2"` and are closed JSON Schema draft 2020-12 documents. [ADR-0012](0012-declared-base-movement-recovery.md) later adds only the recovery mutations that cannot safely use an immutable version 1 shape.
 
 Version 1 remains immutable and may coexist with version 2. A protocol major version identifies a document and command surface, not a requirement to duplicate every command from earlier versions. Clients use version 1 for commands not present in the deliberately partial version 2 catalog.
 
@@ -26,7 +26,7 @@ The version 2 preflight resource is the durable observation intent. It binds the
 ## Consequences
 
 - Released version 1 schemas, endpoints, commands, and meanings do not change.
-- Servers and clients can implement the four version 2 commands without porting unrelated version 1 operations.
+- Servers and clients can implement the deliberately narrow version 2 catalog without porting unrelated version 1 operations.
 - A version 2 client may also use version 1; each individual request and response remains wholly within one schema version.
 - Preflight observation is durable, lease-owned, idempotent, adoptable after interruption, and consumed at most once.
 - Publication preparation can no longer trust a caller-supplied remote OID on the version 2 path.

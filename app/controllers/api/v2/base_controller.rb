@@ -5,7 +5,9 @@ module Api
         "publication_preflights#show" => "publication_preflight.get",
         "publication_preflights#prepare" => "publication_preflight.prepare",
         "publication_preflights#reconcile" => "publication_preflight.reconcile",
-        "publications#prepare_observed" => "publication.prepare_observed"
+        "publications#prepare_observed" => "publication.prepare_observed",
+        "publications#recover_base_moved" => "publication.recover_base_moved",
+        "repository_effects#reconcile_rebase" => "effect.reconcile_rebase"
       }.freeze
 
       private

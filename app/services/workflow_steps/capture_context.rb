@@ -111,9 +111,12 @@ module WorkflowSteps
     private_class_method :consume_review_observation!
 
     def self.add_publication!(context, task, attempt)
-      publication = task.active_publication
-      valid = publication&.state.in?(Publication::UNRESOLVED_STATES) &&
-        publication.current_owner_attempt_id == attempt.id && publication.task_id == task.id &&
+      publication = task.active_publication || recoverable_publication(task)
+      owned = publication&.state.in?(Publication::UNRESOLVED_STATES) &&
+        publication.current_owner_attempt_id == attempt.id
+      recoverable = publication&.state == "superseded" && task.active_publication_id.nil? &&
+        Publications::RecoverBaseMoved.recovery_transition(task)
+      valid = (owned || recoverable) && publication.task_id == task.id &&
         publication.repository_id == task.repository_id && context["candidate_sha"] == publication.candidate_sha &&
         task.worktree_reservation&.head_sha == publication.candidate_sha
       unavailable!("Publication context requires an owned publication") unless valid
@@ -127,6 +130,15 @@ module WorkflowSteps
       }
     end
     private_class_method :add_publication!
+
+    def self.recoverable_publication(task)
+      candidate = CurrentCandidate.call(task)
+      return unless candidate
+
+      task.publications.where(state: "superseded", candidate_sha: candidate.metadata.fetch("candidate_sha"))
+        .order(reconciled_at: :desc).first
+    end
+    private_class_method :recoverable_publication
 
     def self.validated_frozen_context!(repository, task, attempt)
       context = attempt.input_context

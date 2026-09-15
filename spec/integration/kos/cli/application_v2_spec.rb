@@ -7,6 +7,7 @@ require_relative "../../../../lib/kos/cli"
 RSpec.describe Kos::Cli::Application, :aggregate_failures do
   def repository_id = "33333333-3333-4333-8333-333333333333"
   def preflight_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+  def publication_id = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
 
   def preflight
     { "schema_version" => "2", "id" => preflight_id, "repository_id" => repository_id,
@@ -81,5 +82,43 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
     logical, path, expected = observed_dispatch_summary
     expect([ logical, path ]).to eq([ expected,
       "/api/v2/repositories/%<repository_id>s/publication-preflights/%<preflight_id>s/publication" ])
+  end
+
+  def recovery_dispatch_summary
+    body = { "publication_id" => publication_id, "preconditions" => {
+      "expected_lock_version" => 4, "attempt_id" => "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      "fencing_token" => 5 } }
+    parser = Kos::Cli::Parser.new(input: StringIO.new(JSON.generate(body)))
+    request = parser.parse([ "publication", "recover-base-moved", "--repository", repository_id,
+      "--input", "-", "--idempotency-key", "recovery-key", "--json" ])
+    [ request.slice("schema_version", "command", "repository_id", "body"),
+      Kos::Cli::Client::PATHS.fetch(request.fetch("command")) ]
+  end
+
+  it "forms the closed base-moved recovery mutation at the publication path" do
+    logical, path = recovery_dispatch_summary
+    expect([ logical.fetch("schema_version"), logical.fetch("command"), logical.dig("body", "publication_id"),
+      path ]).to eq([ "2", "publication.recover_base_moved", publication_id,
+        "/api/v2/repositories/%<repository_id>s/publications/%<publication_id>s/recover-base-moved" ])
+  end
+
+  it "forms the atomic rebase reconciliation mutation at the effect path" do
+    expect(rebase_reconciliation_dispatch).to eq([ "2", "effect.reconcile_rebase", publication_id,
+      "/api/v2/repositories/%<repository_id>s/repository-effects/%<effect_id>s/reconcile-rebase" ])
+  end
+
+  def rebase_reconciliation_dispatch
+    body = { "effect_id" => publication_id, "head_sha" => "a" * 40,
+      "rebase_evidence_digest" => "sha256:#{'a' * 64}",
+      "worktree_evidence_digest" => "sha256:#{'b' * 64}", "preconditions" => {
+        "expected_lock_version" => 4, "attempt_id" => "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "fencing_token" => 5 } }
+    request = Kos::Cli::Parser.new(input: StringIO.new(JSON.generate(body))).parse(
+      [ "effect", "reconcile-rebase", "--repository", repository_id, "--input", "-",
+        "--idempotency-key", "rebase-reconcile-key", "--json" ]
+    )
+
+    [ request.fetch("schema_version"), request.fetch("command"), request.dig("body", "effect_id"),
+      Kos::Cli::Client::PATHS.fetch(request.fetch("command")) ]
   end
 end

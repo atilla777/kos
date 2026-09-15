@@ -74,6 +74,8 @@ Accept only a complete document validated as `workflow.json#/$defs/effect_result
 
 Use a `succeeded` result only as the observation it contains. It does not by itself prove step success or authorize invented artifacts. Preserve a `failed` result as explicit evidence: do not rewrite it as success, retry the Git operation, call the adapter, or fabricate the missing observation. Follow the pinned instruction toward a truthful final outcome; request another allowed effect only after the pending result is fully validated and consumed.
 
+For a pinned base-synchronization status, request exactly one trusted fetch before its one rebase, bind the rebase target to that fetch result, and request no further effect after rebase changes the frozen HEAD. Use only the synchronized rebase result SHA for the candidate and fresh test artifacts.
+
 An `unknown` result leaves its durable effect unresolved. Do not return another effect request or claim that the effect succeeded. End the child exchange with a truthful schema-valid `failed` manifest, or `needs_human` when the pinned instruction genuinely requires a human decision, without fabricated effect artifacts. The orchestrator must retain that unchanged substantive result and enter the effect's authoritative recovery protocol. Recovery may reconcile or adopt the intent, interrupt the attempt, or require a new claim before deciding whether any manifest can be submitted. The owning attempt cannot complete, fail, or enter `needs_human` while the effect remains unresolved.
 
 ## Build Artifacts

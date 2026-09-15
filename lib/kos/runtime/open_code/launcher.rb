@@ -36,17 +36,17 @@ module Kos
           "sha256:7c89e36d7d333e217b8f08f5d772efae415224a88dc757808158100d956f1762".freeze
         RELEASE_DIGESTS = {
           ".opencode/skills/kos-cli/SKILL.md" =>
-            "sha256:f6ed790b847153d92eaa29d64598bbed525ee1e3f0bd8eff7628658fe1dbce5c",
+            "sha256:3c95264f48b52e6af6d62b31245a48bb7f50b3bbdb1b4dac3e44788cfb56abde",
           ".opencode/skills/kos-initialize/SKILL.md" =>
             "sha256:b03e1f66dccf03ae2832c80e7616cb84d9b766b597cf6ac9fbe31abfcb5d2aba",
           ".opencode/skills/kos-orchestrate/SKILL.md" =>
-            "sha256:60483fc808ef6ae028eb8d038e9b752d832c0ac5832941a8cc80ad5247a3df2e",
+            "sha256:e8fca60369b2ce9630c8a29e23486d9af2b9a7d37bba0625de0be62553ac155c",
           ".opencode/skills/kos-repository/SKILL.md" =>
             "sha256:049b75630b10a4922446347a6cd83f1f23a8eb60b16d4a9084a85d415ab91d76",
           ".opencode/skills/kos-retrospective/SKILL.md" =>
             "sha256:95194b6808b48f1ac693d5bd3ea470aa162faf8d3daed069e73668dd633cb245",
           ".opencode/skills/kos-workflow-step/SKILL.md" =>
-            "sha256:aedbc44db0301d4da1d7d24ee49944ba12613900603f12ec716c5453d1d1a05e",
+            "sha256:81a57ea13f488194a03bc919aa6ac6038437534da2c6e18051ed71624c4945b2",
           ".opencode/plugins/kos-session-guard.js" =>
             "sha256:0a3efc7723e07c46e88072fc24d1ea8d6196bb6d10b0eae16859e0b0685c4df8",
           ".opencode/agents/kos-orchestrate.md" =>

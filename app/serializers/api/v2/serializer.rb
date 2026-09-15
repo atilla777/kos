@@ -30,6 +30,32 @@ module Api
           Api::V1::Serializer.publication(record).merge("schema_version" => "2")
         end
 
+        def base_moved_recovery(result)
+          {
+            "schema_version" => "2",
+            "task_id" => result.task.id,
+            "task_number" => result.task.number,
+            "publication_id" => result.publication.id,
+            "attempt_id" => result.attempt.id,
+            "candidate_sha" => result.publication.candidate_sha,
+            "from_status" => result.transition.from_state.identifier,
+            "to_status" => result.transition.to_state.identifier,
+            "recovered_at" => timestamp(result.recovered_at)
+          }
+        end
+
+        def rebase_reconciliation(result)
+          {
+            "schema_version" => "2",
+            "effect_id" => result.effect.id,
+            "reservation_id" => result.reservation.id,
+            "head_sha" => result.reservation.head_sha,
+            "effect_state" => result.effect.state,
+            "worktree_state" => result.reservation.observed_state,
+            "reconciled_at" => timestamp(result.effect.reconciled_at)
+          }
+        end
+
         private
 
         def optional(value)

@@ -18,5 +18,6 @@ This directory contains accepted Architecture Decision Records.
 - [ADR-0009: Runtime Bundle Installation](0009-runtime-bundle-installation.md)
 - [ADR-0010: Durable Approved Task Input](0010-durable-approved-task-input.md)
 - [ADR-0011: Minimal CLI Version 2 Coexistence](0011-minimal-cli-v2-coexistence.md)
+- [ADR-0012: Declared Base-Movement Recovery](0012-declared-base-movement-recovery.md)
 
 Create an ADR for a long-lived decision that crosses tasks or domains, changes an architectural principle, data model, external contract, or substantial mechanism. Each ADR must state its context, decision, consequences, and rejected alternatives.

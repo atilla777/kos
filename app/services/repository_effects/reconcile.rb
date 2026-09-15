@@ -12,6 +12,10 @@ module RepositoryEffects
 
         validate_result!(effect, effect_result, attempt_id)
         outcome = effect_result.fetch("result").fetch("outcome")
+        if task.workflow_state.identifier == "base-synchronization" &&
+            effect.request.dig("effect", "operation") == "rebase" && outcome == "succeeded"
+          raise OperationError.new("invalid_transition", "Base synchronization rebase requires atomic reconciliation")
+        end
         effect.update!(state: outcome, result: JSON.parse(JSON.generate(effect_result)), reconciled_at: now)
         effect
       end

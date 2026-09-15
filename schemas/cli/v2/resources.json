@@ -66,6 +66,36 @@
         { "if": { "properties": { "state": { "const": "superseded" } }, "required": ["state"] }, "then": { "properties": { "candidate_reachable": { "const": false } } } }
       ],
       "additionalProperties": false
+    },
+    "base_moved_recovery": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "common.json#/$defs/schema_version" },
+        "task_id": { "$ref": "common.json#/$defs/uuid" },
+        "task_number": { "$ref": "common.json#/$defs/task_number" },
+        "publication_id": { "$ref": "common.json#/$defs/uuid" },
+        "attempt_id": { "$ref": "common.json#/$defs/uuid" },
+        "candidate_sha": { "$ref": "common.json#/$defs/git_oid" },
+        "from_status": { "const": "publication" },
+        "to_status": { "const": "base-synchronization" },
+        "recovered_at": { "$ref": "common.json#/$defs/timestamp" }
+      },
+      "required": ["schema_version", "task_id", "task_number", "publication_id", "attempt_id", "candidate_sha", "from_status", "to_status", "recovered_at"],
+      "additionalProperties": false
+    },
+    "rebase_reconciliation": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "common.json#/$defs/schema_version" },
+        "effect_id": { "$ref": "common.json#/$defs/uuid" },
+        "reservation_id": { "$ref": "common.json#/$defs/uuid" },
+        "head_sha": { "$ref": "common.json#/$defs/git_oid" },
+        "effect_state": { "const": "succeeded" },
+        "worktree_state": { "const": "clean" },
+        "reconciled_at": { "$ref": "common.json#/$defs/timestamp" }
+      },
+      "required": ["schema_version", "effect_id", "reservation_id", "head_sha", "effect_state", "worktree_state", "reconciled_at"],
+      "additionalProperties": false
     }
   }
 }

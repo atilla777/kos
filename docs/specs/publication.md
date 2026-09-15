@@ -32,6 +32,8 @@ If push outcome is unknown, such as a connection loss after sending data, public
 
 If another task moved the base branch, KOS rejects the push. The task must synchronize with the current base, produce a new candidate SHA, repeat required checks and independent review, and then publish the new generation. Evidence for the old candidate does not satisfy the new candidate.
 
+For workflow versions that declare base-movement recovery, a specialized idempotent operation may take that exact recovery edge only after revalidating the superseded publication, current candidate, active leased attempt, and pinned transition. It closes the publication attempt without fabricating publication evidence. The recovery status obtains the current base through a trusted fetch, performs one verified rebase of the frozen task HEAD, synchronizes the resulting clean HEAD into the durable reservation, and accepts it as a new candidate only with fresh passed checks. Conflict, failure, unknown effect state, an unchanged SHA, or stale evidence leaves the task in recovery. Published workflow versions without this edge remain fail-closed.
+
 The trusted remote name, normalized URL, and full base ref are chosen once during initialization with human confirmation and stored in KOS state. Automatic `main` or `master` detection is allowed only during initialization and still requires explicit human confirmation.
 
 Publication uses the reservation, lease, fencing, and adapter boundaries in [Repository Isolation](repository-isolation.md). [ADR-0004](../decisions/0004-task-git-protocol.md) records the protocol rationale.

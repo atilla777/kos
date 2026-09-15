@@ -13,6 +13,8 @@ module CliV2Contract
     publication_preflight.prepare
     publication_preflight.reconcile
     publication.prepare_observed
+    publication.recover_base_moved
+    effect.reconcile_rebase
   ].freeze
   REQUEST_ID = "99999999-9999-4999-8999-999999999999"
   REPOSITORY_ID = "33333333-3333-4333-8333-333333333333"
@@ -62,6 +64,18 @@ module CliV2Contract
       "updated_at" => TIMESTAMP }
   end
 
+  def recovery
+    { "schema_version" => "2", "task_id" => TASK_ID, "task_number" => "KOS-000123",
+      "publication_id" => PUBLICATION_ID, "attempt_id" => ATTEMPT_ID, "candidate_sha" => SHA,
+      "from_status" => "publication", "to_status" => "base-synchronization", "recovered_at" => TIMESTAMP }
+  end
+
+  def rebase_reconciliation
+    { "schema_version" => "2", "effect_id" => PUBLICATION_ID, "reservation_id" => PREFLIGHT_ID,
+      "head_sha" => SHA, "effect_state" => "succeeded", "worktree_state" => "clean",
+      "reconciled_at" => TIMESTAMP }
+  end
+
   def body(command)
     case command
     when "publication_preflight.get"
@@ -74,6 +88,11 @@ module CliV2Contract
         "evidence_digest" => DIGEST, "preconditions" => preconditions }
     when "publication.prepare_observed"
       { "preflight_id" => PREFLIGHT_ID, "preconditions" => preconditions }
+    when "publication.recover_base_moved"
+      { "publication_id" => PUBLICATION_ID, "preconditions" => preconditions }
+    when "effect.reconcile_rebase"
+      { "effect_id" => PUBLICATION_ID, "head_sha" => SHA, "rebase_evidence_digest" => DIGEST,
+        "worktree_evidence_digest" => DIGEST, "preconditions" => preconditions }
     end
   end
 
@@ -85,6 +104,8 @@ module CliV2Contract
   def result(command)
     data = case command
     when "publication.prepare_observed" then publication
+    when "publication.recover_base_moved" then recovery
+    when "effect.reconcile_rebase" then rebase_reconciliation
     when "publication_preflight.reconcile" then preflight("reconciled")
     else preflight
     end
@@ -212,13 +233,13 @@ RSpec.describe CliV2Contract do
       schema.valid?(request.except("repository_id")) ]).to eq([ true, false, false ])
   end
 
-  it "catalogs only the four repository-scoped api v2 commands" do
+  it "catalogs only the six repository-scoped api v2 commands" do
     expect(described_class.catalog_contract).to eq([ described_class::COMMANDS.sort, true, true ])
   end
 
   it "requires complete leased mutation preconditions and exact cli syntax" do
-    expected_syntax = [ "publication prepare-observed", "publication-preflight get",
-      "publication-preflight prepare", "publication-preflight reconcile" ]
+    expected_syntax = [ "effect reconcile-rebase", "publication prepare-observed", "publication-preflight get",
+      "publication-preflight prepare", "publication-preflight reconcile", "publication recover-base-moved" ].sort
 
     expect(described_class.mutation_catalog_contract)
       .to eq([ [ %w[idempotency lock attempt fencing] ], expected_syntax ])

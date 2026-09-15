@@ -8,7 +8,7 @@
       "properties": {
         "identifier": { "$ref": "commands.json#/$defs/command_identifier" },
         "scope": { "const": "repository" },
-        "cli_suffix": { "enum": ["publication-preflight get", "publication-preflight prepare", "publication-preflight reconcile", "publication prepare-observed"] },
+        "cli_suffix": { "enum": ["publication-preflight get", "publication-preflight prepare", "publication-preflight reconcile", "publication prepare-observed", "publication recover-base-moved", "effect reconcile-rebase"] },
         "http_method": { "enum": ["GET", "POST"] },
         "http_path": { "type": "string", "pattern": "^/api/v2/repositories/\\{repository_id\\}/" },
         "success_status": { "enum": [200, 201] },
@@ -24,7 +24,9 @@
     { "identifier": "publication_preflight.get", "scope": "repository", "cli_suffix": "publication-preflight get", "http_method": "GET", "http_path": "/api/v2/repositories/{repository_id}/publication-preflights/{preflight_id}", "success_status": 200, "mutation": false, "required_preconditions": [] },
     { "identifier": "publication_preflight.prepare", "scope": "repository", "cli_suffix": "publication-preflight prepare", "http_method": "POST", "http_path": "/api/v2/repositories/{repository_id}/tasks/{task_number}/publication-preflights", "success_status": 201, "mutation": true, "required_preconditions": ["idempotency", "lock", "attempt", "fencing"] },
     { "identifier": "publication_preflight.reconcile", "scope": "repository", "cli_suffix": "publication-preflight reconcile", "http_method": "POST", "http_path": "/api/v2/repositories/{repository_id}/publication-preflights/{preflight_id}/reconcile", "success_status": 200, "mutation": true, "required_preconditions": ["idempotency", "lock", "attempt", "fencing"] },
-    { "identifier": "publication.prepare_observed", "scope": "repository", "cli_suffix": "publication prepare-observed", "http_method": "POST", "http_path": "/api/v2/repositories/{repository_id}/publication-preflights/{preflight_id}/publication", "success_status": 201, "mutation": true, "required_preconditions": ["idempotency", "lock", "attempt", "fencing"] }
+    { "identifier": "publication.prepare_observed", "scope": "repository", "cli_suffix": "publication prepare-observed", "http_method": "POST", "http_path": "/api/v2/repositories/{repository_id}/publication-preflights/{preflight_id}/publication", "success_status": 201, "mutation": true, "required_preconditions": ["idempotency", "lock", "attempt", "fencing"] },
+    { "identifier": "publication.recover_base_moved", "scope": "repository", "cli_suffix": "publication recover-base-moved", "http_method": "POST", "http_path": "/api/v2/repositories/{repository_id}/publications/{publication_id}/recover-base-moved", "success_status": 200, "mutation": true, "required_preconditions": ["idempotency", "lock", "attempt", "fencing"] },
+    { "identifier": "effect.reconcile_rebase", "scope": "repository", "cli_suffix": "effect reconcile-rebase", "http_method": "POST", "http_path": "/api/v2/repositories/{repository_id}/repository-effects/{effect_id}/reconcile-rebase", "success_status": 200, "mutation": true, "required_preconditions": ["idempotency", "lock", "attempt", "fencing"] }
   ],
   "x-error-catalog": [
     { "code": "malformed_input", "category": "validation", "http_status": 400, "cli_exit": 2, "retryable": false },
@@ -37,6 +39,9 @@
     { "code": "task_not_found", "category": "not_found", "http_status": 404, "cli_exit": 5, "retryable": false },
     { "code": "attempt_not_found", "category": "not_found", "http_status": 404, "cli_exit": 5, "retryable": false },
     { "code": "publication_preflight_not_found", "category": "not_found", "http_status": 404, "cli_exit": 5, "retryable": false },
+    { "code": "publication_not_found", "category": "not_found", "http_status": 404, "cli_exit": 5, "retryable": false },
+    { "code": "effect_not_found", "category": "not_found", "http_status": 404, "cli_exit": 5, "retryable": false },
+    { "code": "context_unavailable", "category": "conflict", "http_status": 409, "cli_exit": 6, "retryable": false },
     { "code": "stale_lock_version", "category": "conflict", "http_status": 409, "cli_exit": 6, "retryable": false },
     { "code": "invalid_transition", "category": "conflict", "http_status": 409, "cli_exit": 6, "retryable": false },
     { "code": "idempotency_conflict", "category": "conflict", "http_status": 409, "cli_exit": 6, "retryable": false },

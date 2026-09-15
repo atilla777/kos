@@ -55,10 +55,12 @@ module Kos
         %w[effect get] => [ "effect.get", "repository", { "effect_id" => "--effect" } ],
         %w[effect prepare] => [ "effect.prepare", "repository", {}, true ],
         %w[effect reconcile] => [ "effect.reconcile", "repository", {}, true ],
+        %w[effect reconcile-rebase] => [ "effect.reconcile_rebase", "repository", {}, true, "2" ],
         %w[publication get] => [ "publication.get", "repository", { "publication_id" => "--publication" } ],
         %w[publication prepare] => [ "publication.prepare", "repository", {}, true ],
         %w[publication reconcile] => [ "publication.reconcile", "repository", {}, true ],
         %w[publication prepare-observed] => [ "publication.prepare_observed", "repository", {}, true, "2" ],
+        %w[publication recover-base-moved] => [ "publication.recover_base_moved", "repository", {}, true, "2" ],
         %w[publication-preflight get] => [ "publication_preflight.get", "repository",
           { "preflight_id" => "--preflight" }, false, "2" ],
         %w[publication-preflight prepare] => [ "publication_preflight.prepare", "repository", {}, true, "2" ],
@@ -200,11 +202,15 @@ module Kos
         "effect.get" => "/api/v1/repositories/%<repository_id>s/repository-effects/%<effect_id>s",
         "effect.prepare" => "/api/v1/repositories/%<repository_id>s/tasks/%<task_number>s/repository-effects",
         "effect.reconcile" => "/api/v1/repositories/%<repository_id>s/repository-effects/%<effect_id>s/reconcile",
+        "effect.reconcile_rebase" =>
+          "/api/v2/repositories/%<repository_id>s/repository-effects/%<effect_id>s/reconcile-rebase",
         "publication.get" => "/api/v1/repositories/%<repository_id>s/publications/%<publication_id>s",
         "publication.prepare" => "/api/v1/repositories/%<repository_id>s/tasks/%<task_number>s/publications",
         "publication.reconcile" => "/api/v1/repositories/%<repository_id>s/publications/%<publication_id>s/reconcile",
         "publication.prepare_observed" =>
           "/api/v2/repositories/%<repository_id>s/publication-preflights/%<preflight_id>s/publication",
+        "publication.recover_base_moved" =>
+          "/api/v2/repositories/%<repository_id>s/publications/%<publication_id>s/recover-base-moved",
         "publication_preflight.get" =>
           "/api/v2/repositories/%<repository_id>s/publication-preflights/%<preflight_id>s",
         "publication_preflight.prepare" =>

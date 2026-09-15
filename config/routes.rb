@@ -62,6 +62,12 @@ Rails.application.routes.draw do
           post :reconcile, on: :member
         end
         post "publication-preflights/:preflight_id/publication", to: "publications#prepare_observed"
+        resources :publications, only: [] do
+          post :recover_base_moved, path: "recover-base-moved", on: :member
+        end
+        resources :repository_effects, only: [], path: "repository-effects" do
+          post :reconcile_rebase, path: "reconcile-rebase", on: :member
+        end
       end
     end
   end

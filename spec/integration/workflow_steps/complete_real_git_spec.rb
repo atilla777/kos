@@ -14,10 +14,11 @@ RSpec.describe WorkflowSteps::Complete, :aggregate_failures do
   let(:worktree_path) { File.join(directory, "worktrees", "task") }
   let(:repository) do
     Repository.create!(git_common_dir: File.join(repository_path, ".git"), task_prefix: "KOS",
-      trusted_remote: "origin", trusted_remote_url: "file:///tmp/remote.git", base_ref: "refs/heads/main")
+      trusted_remote: "origin", trusted_remote_url: "file://#{remote_path}", base_ref: "refs/heads/main")
   end
   let(:task) do
-    workflow_version = publish_workflow
+    definition = JSON.parse(File.read(Rails.root.join("workflows/quick-fix/1.0.2.json")))
+    workflow_version = publish_workflow(definition)
     Task.create!(repository:, sequence: 1, title: "Apply the quick fix", task_input_schema_version: "1",
       approved_brief: "Apply the confirmed quick fix.", task_type: quick_fix_task_type,
       workflow_version:, workflow_state: workflow_version.workflow_states.find_by!(initial: true))
@@ -26,9 +27,15 @@ RSpec.describe WorkflowSteps::Complete, :aggregate_failures do
   before do
     FileUtils.mkdir_p(File.dirname(worktree_path))
     initialize_git_repository(repository_path, task_number: "KOS-000000", files: { "README.md" => "initial\n" })
+    FileUtils.mkdir_p(remote_path)
+    git(remote_path, "init", "--bare")
+    git(repository_path, "remote", "add", "origin", "file://#{remote_path}")
+    git(repository_path, "push", "origin", "main")
   end
 
   after { FileUtils.remove_entry(directory) if File.exist?(directory) }
+
+  def remote_path = File.join(directory, "remote.git")
 
   { "approved" => "publication", "changes_requested" => "development" }.each do |verdict, target|
     it "reviews the exact clean candidate and routes #{verdict} to #{target}" do
@@ -39,6 +46,130 @@ RSpec.describe WorkflowSteps::Complete, :aggregate_failures do
 
   it "rejects review completion after the reviewer changes the worktree" do
     expect(dirty_review_completion_code).to eq("invalid_artifact")
+  end
+
+  it "recovers a moved publication through trusted fetch, verified rebase, checks, and review" do
+    expect(base_moved_recovery_flow).to be(true)
+  end
+
+  def base_moved_recovery_flow
+    candidate, review_attempt, reservation = prepare_review
+    reconcile_worktree(review_attempt, reservation, candidate,
+      input_context_digest: review_attempt.input_context_digest)
+    complete(review_attempt, "publication", [ review_artifact(review_attempt, candidate, "approved") ])
+    publication_attempt = claim("publication-recovery")
+    expected_oid = git(remote_path, "rev-parse", "refs/heads/main").strip
+    publication = Publications::Prepare.call(repository:, task_number: task.number, candidate_sha: candidate,
+      remote: "origin", base_ref: "refs/heads/main", expected_remote_oid: expected_oid,
+      attempt_id: publication_attempt.id, fencing_token: publication_attempt.fencing_token,
+      expected_lock_version: task.reload.lock_version)
+    capture(publication_attempt)
+    moved_oid = advance_remote_base
+    expect do
+      Publications::Reconcile.call(repository:, publication_id: publication.id, candidate_sha: candidate,
+        observed_remote_tip: moved_oid, candidate_reachable: false, observed_at: Time.current,
+        evidence_digest: digest("base moved"), attempt_id: publication_attempt.id,
+        fencing_token: publication_attempt.fencing_token, expected_lock_version: task.reload.lock_version)
+    end.to raise_error(CommittedOperationError)
+    Publications::RecoverBaseMoved.call(repository:, publication_id: publication.id,
+      attempt_id: publication_attempt.id, fencing_token: publication_attempt.fencing_token,
+      expected_lock_version: task.reload.lock_version)
+
+    synchronization_attempt = claim("base-synchronization")
+    context = capture(synchronization_attempt)
+    fetch_effect, fetch_input, fetch_result = fetch_effect(synchronization_attempt, context)
+    rebase_effect = prepare_rebase_effect(synchronization_attempt, context, reservation, fetch_result)
+    rebase_input = rebase_adapter_request(synchronization_attempt, reservation, rebase_effect,
+      fetch_input, fetch_result)
+    rebase_result = Kos::Repository::Rebase.new(rebase_input).call
+    synchronized = rebase_result.fetch("head_sha")
+    expect(reservation.reload.head_sha).to eq(candidate)
+    observation = Kos::Repository::Worktree.new(adapter_request("observe", synchronization_attempt, reservation,
+      synchronized, input_context_digest: context.fetch("input_context_digest"))).call
+    RepositoryEffects::ReconcileRebase.call(repository:, effect_id: rebase_effect.id, head_sha: synchronized,
+      rebase_evidence_digest: rebase_result.fetch("evidence_digest"),
+      worktree_evidence_digest: observation.fetch("evidence_digest"), attempt_id: synchronization_attempt.id,
+      fencing_token: synchronization_attempt.fencing_token, expected_lock_version: task.reload.lock_version)
+    check_command, check_output = run_check
+    complete(synchronization_attempt, "review",
+      [ candidate_artifact(synchronized), test_artifact(synchronized, check_command, check_output) ])
+
+    expect(fetch_effect.reload.state).to eq("succeeded")
+    expect(rebase_effect.reload.state).to eq("succeeded")
+    expect(synchronized).not_to eq(candidate)
+    expect(git(worktree_path, "merge-base", "--is-ancestor", moved_oid, synchronized)).to be_empty
+    expect(task.reload.workflow_state.identifier).to eq("review")
+    expect(reservation.reload.attributes.values_at("head_sha", "observed_state")).to eq([ synchronized, "clean" ])
+    true
+  end
+
+  def advance_remote_base
+    File.binwrite(File.join(repository_path, "base.txt"), "advanced\n")
+    git(repository_path, "add", "base.txt")
+    git(repository_path, "commit", "-m", "Advance trusted base")
+    git(repository_path, "push", "origin", "main")
+    git(repository_path, "rev-parse", "HEAD").strip
+  end
+
+  def fetch_effect(attempt, context)
+    request = { "schema_version" => "1", "attempt_id" => attempt.id,
+      "input_context_digest" => context.fetch("input_context_digest"),
+      "effect" => { "operation" => "fetch", "remote" => "origin", "ref" => "refs/heads/main" } }
+    effect = RepositoryEffects::Prepare.call(repository:, task_number: task.number, effect_request: request,
+      attempt_id: attempt.id, fencing_token: attempt.fencing_token,
+      expected_lock_version: task.reload.lock_version)
+    input = effect_adapter_request("fetch", attempt, effect)
+    result = Kos::Repository::Fetch.new(input).call
+    reconcile_effect(attempt, effect, result.merge("outcome" => "succeeded", "operation" => "fetch"))
+    evidence = { "schema_version" => "1", "operation" => "fetch", "outcome" => "succeeded" }.merge(result).merge(
+      "repository_id" => repository.id, "effect_id" => effect.id,
+      "current_owner_attempt_id" => attempt.id, "fencing_token" => attempt.fencing_token,
+      "effect_request_digest" => effect.request_digest)
+    [ effect, input, evidence ]
+  end
+
+  def prepare_rebase_effect(attempt, context, reservation, fetch_result)
+    request = { "schema_version" => "1", "attempt_id" => attempt.id,
+      "input_context_digest" => context.fetch("input_context_digest"),
+      "effect" => { "operation" => "rebase", "reservation_id" => reservation.id,
+        "expected_head_sha" => context.dig("worktree", "head_sha"),
+        "onto_sha" => fetch_result.fetch("observed_oid") } }
+    RepositoryEffects::Prepare.call(repository:, task_number: task.number, effect_request: request,
+      attempt_id: attempt.id, fencing_token: attempt.fencing_token,
+      expected_lock_version: task.reload.lock_version)
+  end
+
+  def repository_snapshot
+    { "id" => repository.id, "git_common_dir" => repository.git_common_dir,
+      "trusted_remote" => repository.trusted_remote, "trusted_remote_url" => repository.trusted_remote_url,
+      "base_ref" => repository.base_ref }
+  end
+
+  def effect_adapter_request(operation, attempt, effect)
+    { "schema_version" => "1", "operation" => operation, "repository" => repository_snapshot,
+      "effect" => { "id" => effect.id, "repository_id" => repository.id,
+        "current_owner_attempt_id" => attempt.id, "fencing_token" => attempt.fencing_token,
+        "request_digest" => effect.request_digest, "request" => effect.request } }
+  end
+
+  def rebase_adapter_request(attempt, reservation, effect, fetch_input, fetch_result)
+    effect_adapter_request("rebase", attempt, effect).merge(
+      "reservation" => { "id" => reservation.id, "repository_id" => repository.id,
+        "state" => reservation.state, "path" => reservation.path, "branch" => reservation.branch,
+        "fencing_token" => attempt.fencing_token },
+      "fetch" => { "request" => fetch_input, "result" => fetch_result }
+    )
+  end
+
+  def reconcile_effect(attempt, effect, result)
+    envelope = { "schema_version" => "1", "effect_intent_id" => effect.id,
+      "request_attempt_id" => effect.prepared_attempt_id, "owner_attempt_id" => attempt.id,
+      "input_context_digest" => effect.request.fetch("input_context_digest"),
+      "effect_request_digest" => effect.request_digest,
+      "result" => result }
+    RepositoryEffects::Reconcile.call(repository:, effect_id: effect.id, effect_result: envelope,
+      attempt_id: attempt.id, fencing_token: attempt.fencing_token,
+      expected_lock_version: task.reload.lock_version)
   end
 
   def dirty_review_completion_code

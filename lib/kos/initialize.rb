@@ -561,6 +561,12 @@ module Kos
             "unknown" => { "category" => "transient", "code" => "publication_preflight_state_uncertain",
               "message" => "Capability probe", "retryable" => true }, "preconditions" => preconditions } ],
           [ %w[publication prepare-observed], [], { "preflight_id" => preflight_id,
+            "preconditions" => preconditions } ],
+          [ %w[publication recover-base-moved], [], { "publication_id" => SecureRandom.uuid,
+            "preconditions" => preconditions } ],
+          [ %w[effect reconcile-rebase], [], { "effect_id" => SecureRandom.uuid, "head_sha" => "b" * 40,
+            "rebase_evidence_digest" => "sha256:#{'a' * 64}",
+            "worktree_evidence_digest" => "sha256:#{'b' * 64}",
             "preconditions" => preconditions } ] ]
         probes.each_with_index do |(parts, options, body), index|
           mutation = body ? [ "--input", "-", "--idempotency-key", "capability-probe-#{index}" ] : []
@@ -616,7 +622,9 @@ module Kos
         { %w[publication-preflight get] => "publication_preflight.get",
           %w[publication-preflight prepare] => "publication_preflight.prepare",
           %w[publication-preflight reconcile] => "publication_preflight.reconcile",
-          %w[publication prepare-observed] => "publication.prepare_observed" }.fetch(parts)
+          %w[publication prepare-observed] => "publication.prepare_observed",
+          %w[publication recover-base-moved] => "publication.recover_base_moved",
+          %w[effect reconcile-rebase] => "effect.reconcile_rebase" }.fetch(parts)
       end
 
       def executable(name)

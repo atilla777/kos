@@ -11,6 +11,7 @@ require "tmpdir"
 require_relative "json_parser"
 require_relative "git_url"
 require_relative "publication_preflight_evidence"
+require_relative "rebase_evidence"
 require_relative "worktree_observation"
 
 module Kos
@@ -1236,10 +1237,11 @@ module Kos
 
       def success(head)
         verify_success!(head)
-        document = { "schema_version" => "1", "repository" => repository, "reservation" => reservation,
-          "effect" => effect_snapshot, "fetch" => request.fetch("fetch"), "original_base_sha" => @original_base,
-          "expected_head_sha" => @expected_head, "onto_sha" => onto_sha, "head_sha" => head }
-        { "head_sha" => head, "evidence_digest" => digest(canonical_json(document)) }
+        fetch = request.fetch("fetch")
+        evidence_digest = Kos::RebaseEvidence.digest(repository:, reservation:, effect: effect_snapshot, fetch:,
+          original_base_sha: @original_base,
+          expected_head_sha: @expected_head, onto_sha:, head_sha: head)
+        { "head_sha" => head, "evidence_digest" => evidence_digest }
       end
 
       def verify_success!(head)

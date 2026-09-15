@@ -29,6 +29,7 @@ module WorkflowSteps
         transition = transition!(task, attempt, to_status)
         validate_contract!(task, attempt, transition, artifacts)
         validate_synchronized_worktree!(task, attempt, artifacts)
+        validate_base_synchronization!(task, attempt, artifacts)
         validate_review_worktree!(task, attempt, artifacts)
 
         records = register_artifacts!(task, attempt, repository, artifacts)
@@ -144,23 +145,57 @@ module WorkflowSteps
         artifacts.find { _1.fetch("type") == "document" }&.dig("metadata", "commit_sha")
       when "development"
         artifacts.find { _1.fetch("type") == "candidate" }&.dig("metadata", "candidate_sha")
+      when "base-synchronization"
+        artifacts.find { _1.fetch("type") == "candidate" }&.dig("metadata", "candidate_sha")
       end
       return unless expected_head
 
       reservation = task.worktree_reservation
       context = attempt.input_context.fetch("worktree")
-      effects = attempt.owned_repository_effects.to_a.select { _1.request.dig("effect", "operation") == "commit" }
+      operation = task.workflow_state.identifier == "base-synchronization" ? "rebase" : "commit"
+      effects = attempt.owned_repository_effects.to_a.select { _1.request.dig("effect", "operation") == operation }
       effect = effects.one? ? effects.first : nil
       valid = reservation&.id == context.fetch("reservation_id") && reservation.state == "confirmed" &&
         reservation.head_sha == expected_head &&
-        reservation.observed_state == "clean" && reservation.observation_digest.present?
+        ReviewWorktree.current_clean?(reservation, attempt, expected_head,
+          input_context_digest: task.workflow_state.identifier == "base-synchronization" ?
+            attempt.input_context_digest : nil)
       valid &&= effect&.state == "succeeded" && effect.prepared_attempt_id == attempt.id &&
         effect.request["input_context_digest"] == attempt.input_context_digest &&
         effect.request.dig("effect", "reservation_id") == reservation.id &&
-        effect.result.dig("result", "commit_sha") == expected_head
+        effect.result.dig("result", operation == "rebase" ? "head_sha" : "commit_sha") == expected_head
       invalid!("Worktree HEAD is not synchronized with transition evidence") unless valid
     end
     private_class_method :validate_synchronized_worktree!
+
+    def self.validate_base_synchronization!(task, attempt, artifacts)
+      return unless task.workflow_state.identifier == "base-synchronization"
+
+      effects = attempt.owned_repository_effects.to_a
+      fetches = effects.select { _1.request.dig("effect", "operation") == "fetch" }
+      rebases = effects.select { _1.request.dig("effect", "operation") == "rebase" }
+      fetch = fetches.one? ? fetches.first : nil
+      rebase = rebases.one? ? rebases.first : nil
+      candidate_sha = artifacts.find { _1.fetch("type") == "candidate" }&.dig("metadata", "candidate_sha")
+      context = attempt.input_context
+      fetch_result = fetch&.result&.fetch("result", nil)
+      rebase_result = rebase&.result&.fetch("result", nil)
+      valid = effects.size == 2 && fetch&.state == "succeeded" && rebase&.state == "succeeded" &&
+        fetch.prepared_attempt_id == attempt.id && rebase.prepared_attempt_id == attempt.id &&
+        fetch.request["input_context_digest"] == attempt.input_context_digest &&
+        rebase.request["input_context_digest"] == attempt.input_context_digest &&
+        fetch.request.dig("effect", "remote") == task.repository.trusted_remote &&
+        fetch.request.dig("effect", "ref") == task.repository.base_ref &&
+        fetch_result&.fetch("remote", nil) == task.repository.trusted_remote &&
+        fetch_result&.fetch("ref", nil) == task.repository.base_ref &&
+        rebase.request.dig("effect", "onto_sha") == fetch_result&.fetch("observed_oid", nil) &&
+        rebase.request.dig("effect", "expected_head_sha") == context&.dig("worktree", "head_sha") &&
+        rebase.request.dig("effect", "reservation_id") == context&.dig("worktree", "reservation_id") &&
+        rebase_result&.fetch("head_sha", nil) == candidate_sha && candidate_sha.present? &&
+        candidate_sha != context&.fetch("candidate_sha", nil) && fetch.prepared_at <= rebase.prepared_at
+      invalid!("Base synchronization does not match its trusted fetch and rebase") unless valid
+    end
+    private_class_method :validate_base_synchronization!
 
     def self.validate_review_worktree!(task, attempt, artifacts)
       return unless task.workflow_state.identifier == "review"
