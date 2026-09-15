@@ -35,7 +35,8 @@ RSpec.describe WorktreeReservations::Reserve, :aggregate_failures do
         repository = Repository.create!(git_common_dir: "/tmp/reserve-concurrency-#{index}.git",
           task_prefix: prefix, trusted_remote: "origin", trusted_remote_url: "file:///tmp/remote.git",
           base_ref: "refs/heads/main")
-        task = Task.create!(repository: repository, sequence: 1, title: "Concurrent reserve", task_type: type,
+        task = Task.create!(repository: repository, sequence: 1, title: "Concurrent reserve",
+          task_input_schema_version: "1", approved_brief: "Reserve the approved task concurrently.", task_type: type,
           workflow_version: version, workflow_state: version.workflow_states.find_by!(initial: true))
         attempt = WorkflowAttempts::Claim.call(repository: repository, task_number: task.number,
           owner_id: "orchestrator-#{index}", lease_seconds: 300, expected_lock_version: 0,

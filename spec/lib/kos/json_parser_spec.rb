@@ -9,4 +9,9 @@ RSpec.describe Kos::JsonParser do
     expect { described_class.parse('{"nested":{"value":1,"value":2}}') }
       .to raise_error(JSON::ParserError, /duplicate key "value"/)
   end
+
+  it "rejects source bytes that are not valid UTF-8" do
+    expect { described_class.parse("{\"value\":\"\xFF\"}".b) }
+      .to raise_error(JSON::ParserError, /valid UTF-8/)
+  end
 end

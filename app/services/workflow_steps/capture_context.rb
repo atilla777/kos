@@ -29,6 +29,8 @@ module WorkflowSteps
     private_class_method :check_task_state!
 
     def self.build_context(repository, task, attempt)
+      unavailable!("Approved task input is unavailable") unless task.task_input
+
       definition = verified_definition!(task.workflow_version)
       status = definition.fetch("statuses").find { _1.fetch("id") == task.workflow_state.identifier }
       raise InvariantError, "Current workflow status is absent from its pinned definition" unless status
@@ -37,6 +39,7 @@ module WorkflowSteps
         "schema_version" => "1",
         "task_id" => task.id,
         "task_number" => task.number,
+        "task_input" => task.task_input,
         "attempt_id" => attempt.id,
         "repository_id" => repository.id,
         "workflow_version_id" => task.workflow_version_id,

@@ -20,7 +20,8 @@ RSpec.describe "API v1 workflow step completion", :aggregate_failures, type: :re
   end
   let(:task) do
     version = publish_workflow
-    Task.create!(repository:, sequence: 1, title: "Complete API step", task_type: quick_fix_task_type,
+    Task.create!(repository:, sequence: 1, title: "Complete API step", task_input_schema_version: "1",
+      approved_brief: "Complete the approved API step.", task_type: quick_fix_task_type,
       workflow_version: version, workflow_state: version.workflow_states.find_by!(initial: true))
   end
 

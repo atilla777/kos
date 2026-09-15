@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://kos.local/schemas/cli/v1/common.json",
   "$defs": {
+    "task_input": { "type": "object", "properties": { "schema_version": { "const": "1" }, "title": { "type": "string", "minLength": 1, "pattern": "\\S" }, "approved_brief": { "type": "string", "minLength": 1, "pattern": "\\S", "x-media-type": "text/markdown; charset=utf-8", "x-max-utf8-bytes": 131072 } }, "required": ["schema_version", "title", "approved_brief"], "additionalProperties": false },
     "schema_version": { "const": "1" },
     "identifier": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,127}$" },
     "semantic_version": { "type": "string", "pattern": "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)(?:-(?:(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$" },

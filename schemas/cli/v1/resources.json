@@ -11,10 +11,11 @@
     "task": {
       "type": "object",
       "properties": {
-        "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "id": { "$ref": "common.json#/$defs/uuid" }, "repository_id": { "$ref": "common.json#/$defs/uuid" }, "number": { "$ref": "common.json#/$defs/task_number" }, "title": { "type": "string", "minLength": 1 }, "task_type": { "const": "quick-fix" }, "status": { "enum": ["open", "active", "blocked", "completed", "cancelled"] }, "workflow_status": { "$ref": "common.json#/$defs/identifier" }, "workflow_version_id": { "$ref": "common.json#/$defs/uuid" }, "lock_version": { "type": "integer", "minimum": 0 }, "active_attempt_id": { "$ref": "common.json#/$defs/uuid" }, "worktree_reservation_id": { "$ref": "common.json#/$defs/uuid" }, "active_publication_id": { "$ref": "common.json#/$defs/uuid" }, "branch": { "$ref": "common.json#/$defs/task_branch" }, "worktree_path": { "type": "string", "minLength": 1 }, "created_at": { "$ref": "common.json#/$defs/timestamp" }, "updated_at": { "$ref": "common.json#/$defs/timestamp" }
+        "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "id": { "$ref": "common.json#/$defs/uuid" }, "repository_id": { "$ref": "common.json#/$defs/uuid" }, "number": { "$ref": "common.json#/$defs/task_number" }, "title": { "type": "string", "minLength": 1 }, "task_input": { "$ref": "common.json#/$defs/task_input" }, "task_type": { "const": "quick-fix" }, "status": { "enum": ["open", "active", "blocked", "completed", "cancelled"] }, "workflow_status": { "$ref": "common.json#/$defs/identifier" }, "workflow_version_id": { "$ref": "common.json#/$defs/uuid" }, "lock_version": { "type": "integer", "minimum": 0 }, "active_attempt_id": { "$ref": "common.json#/$defs/uuid" }, "worktree_reservation_id": { "$ref": "common.json#/$defs/uuid" }, "active_publication_id": { "$ref": "common.json#/$defs/uuid" }, "branch": { "$ref": "common.json#/$defs/task_branch" }, "worktree_path": { "type": "string", "minLength": 1 }, "created_at": { "$ref": "common.json#/$defs/timestamp" }, "updated_at": { "$ref": "common.json#/$defs/timestamp" }
       },
       "required": ["schema_version", "id", "repository_id", "number", "title", "task_type", "status", "workflow_status", "workflow_version_id", "lock_version", "created_at", "updated_at"],
       "x-derived-field": { "field": "branch", "template": "kos/task-{number}" },
+      "x-field-equality": [["title", "task_input.title", "when-present"]],
       "x-workflow-status-belongs-to": "workflow_version_id",
       "allOf": [
         {

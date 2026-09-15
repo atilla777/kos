@@ -77,6 +77,8 @@ RSpec.describe Repository, type: :model do
       repository: create_repository,
       sequence:,
       title: "Persist task state",
+      task_input_schema_version: "1",
+      approved_brief: "Persist the approved task state.",
       task_type: workflow.fetch(:task_type),
       workflow_version: workflow.fetch(:version),
       workflow_state: workflow.fetch(:source)
@@ -101,6 +103,8 @@ RSpec.describe Repository, type: :model do
       repository: create_repository,
       sequence: 1,
       title: "Mismatched state",
+      task_input_schema_version: "1",
+      approved_brief: "Reject the mismatched approved task state.",
       task_type:,
       workflow_version: first.fetch(:version),
       workflow_state: second.fetch(:source)
@@ -115,6 +119,8 @@ RSpec.describe Repository, type: :model do
       repository: create_repository,
       sequence: 1,
       title: "Unpublished workflow",
+      task_input_schema_version: "1",
+      approved_brief: "Reject the unpublished approved task state.",
       task_type:,
       workflow_version:,
       workflow_state: state
@@ -146,14 +152,52 @@ RSpec.describe Repository, type: :model do
       repository: create_repository,
       sequence:,
       title: "Sequence boundary",
+      task_input_schema_version: "1",
+      approved_brief: "Check the approved task sequence boundary.",
       task_type: workflow.fetch(:task_type),
       workflow_version: workflow.fetch(:version),
       workflow_state: workflow.fetch(:source)
     )
   end
 
+  def approved_input_validation_summary
+    workflow = create_workflow
+    attributes = { repository: create_repository, sequence: 1, title: "Input validation",
+      task_type: workflow.fetch(:task_type), workflow_version: workflow.fetch(:version),
+      workflow_state: workflow.fetch(:source) }
+    missing = Task.new(attributes)
+    oversized = Task.new(attributes.merge(task_input_schema_version: "1",
+      approved_brief: "a" * (Task::MAX_APPROVED_BRIEF_BYTES + 1)))
+    wrong_encoding = Task.new(attributes.merge(task_input_schema_version: "1",
+      approved_brief: "Approved".encode(Encoding::ISO_8859_1)))
+    [ missing.valid?, oversized.valid?, wrong_encoding.valid?, missing.errors.attribute_names,
+      oversized.errors.attribute_names, wrong_encoding.errors.attribute_names ]
+  end
+
+  def approved_input_immutability_summary
+    task = create_task
+    errors = %i[approved_brief title].map do |attribute|
+      task.update_column(attribute, "Changed")
+    rescue ActiveRecord::StatementInvalid => error
+      error.message
+    end
+    [ task.reload.task_input, errors.all? { _1.include?("approved input are immutable") } ]
+  end
+
   it "derives a repository-scoped public task number" do
     expect(create_task.number).to eq("KOS-000012")
+  end
+
+  it "returns and protects the approved task input" do
+    expect(approved_input_immutability_summary)
+      .to eq([ { "schema_version" => "1", "title" => "Persist task state",
+        "approved_brief" => "Persist the approved task state." }, true ])
+  end
+
+  it "validates approved task input before persistence" do
+    expect(approved_input_validation_summary)
+      .to eq([ false, false, false, %i[task_input_schema_version approved_brief],
+        [ :approved_brief ], [ :approved_brief ] ])
   end
 
   it "persists workflow associations" do
@@ -257,7 +301,7 @@ RSpec.describe Repository, type: :model do
 
   it "protects immutable task identity" do
     expect { create_task.update_column(:sequence, 2) }
-      .to raise_error(ActiveRecord::StatementInvalid, /task identity and workflow version are immutable/)
+      .to raise_error(ActiveRecord::StatementInvalid, /task identity, workflow version, and approved input are immutable/)
   end
 
   it "protects the immutable task identifier" do
@@ -273,11 +317,12 @@ RSpec.describe Repository, type: :model do
   end
 
   it "uses optimistic locking for tasks" do
-    task = create_task
+    workflow = create_workflow
+    task = create_task(workflow)
     stale_copy = Task.find(task.id)
-    task.update!(title: "Changed title")
+    task.update!(workflow_state: workflow.fetch(:terminal))
 
-    expect { stale_copy.update!(title: "Stale title") }.to raise_error(ActiveRecord::StaleObjectError)
+    expect { stale_copy.update!(workflow_state: workflow.fetch(:terminal)) }.to raise_error(ActiveRecord::StaleObjectError)
   end
 
   it "allows activation of a published version" do

@@ -22,7 +22,11 @@ RSpec.describe "API v1 task creation", :aggregate_failures, type: :request do
       "Idempotency-Key" => key }
   end
 
-  def request_document(body = { "title" => "Repair timeout", "task_type" => "quick-fix" },
+  def task_input(title: "Repair timeout", brief: "Repair timeout handling as approved.")
+    { "schema_version" => "1", "title" => title, "approved_brief" => brief }
+  end
+
+  def request_document(body = { "task_input" => task_input, "task_type" => "quick-fix" },
     repository_id: repository.id)
     { "schema_version" => "1", "command" => "task.create", "repository_id" => repository_id, "body" => body }
   end
@@ -43,14 +47,15 @@ RSpec.describe "API v1 task creation", :aggregate_failures, type: :request do
 
   def created_task_summary
     [ response.status, document.dig("data", "number"), document.dig("data", "workflow_version_id"),
-      document.dig("data", "workflow_status"), document.dig("data", "status"), Task.count,
+      document.dig("data", "workflow_status"), document.dig("data", "status"),
+      document.dig("data", "task_input"), Task.count,
       repository.reload.next_task_sequence, IdempotencyRecord.count ]
   end
 
   def malformed_scope_and_title_results
     create_request(request_document(repository_id: SecureRandom.uuid))
     mismatch = [ response.status, document.dig("error", "code") ]
-    create_request(request_document({ "title" => " \t", "task_type" => "quick-fix" }))
+    create_request(request_document({ "task_input" => task_input(title: " \t"), "task_type" => "quick-fix" }))
     [ mismatch, response.status, document.dig("error", "code"), Task.count ]
   end
 
@@ -70,22 +75,55 @@ RSpec.describe "API v1 task creation", :aggregate_failures, type: :request do
       IdempotencyRecord.count ]
   end
 
+  def brief_conflict_summary
+    create_request
+    changed = { "task_input" => task_input(brief: "A different approved baseline."), "task_type" => "quick-fix" }
+    create_request(request_document(changed))
+    [ response.status, document.dig("error", "code"), Task.count, repository.reload.next_task_sequence ]
+  end
+
+  def invalid_input_summary
+    invalid_bodies = [ { "task_type" => "quick-fix" },
+      { "task_input" => task_input(brief: " \t\n"), "task_type" => "quick-fix" },
+      { "task_input" => task_input.merge("schema_version" => "2"), "task_type" => "quick-fix" },
+      { "task_input" => task_input(brief: "a" * (Task::MAX_APPROVED_BRIEF_BYTES + 1)),
+        "task_type" => "quick-fix" } ]
+    results = invalid_bodies.map.with_index do |body, index|
+      create_request(request_document(body), request_headers: headers(key: "invalid-task-key-#{index}"))
+      [ response.status, document.dig("error", "code") ]
+    end
+    create_request(request_document, request_headers: headers(key: "invalid-task-key-3"))
+    [ results, response.status, Task.count, repository.reload.next_task_sequence, IdempotencyRecord.count ]
+  end
+
   it "creates and idempotently replays one pinned task" do
     version = activate_workflow
     2.times { create_request }
 
     expect(created_task_summary)
-      .to eq([ 201, "KOS-000001", version.id, "implementation-planning", "open", 1, 2, 1 ])
+      .to eq([ 201, "KOS-000001", version.id, "implementation-planning", "open", task_input, 1, 2, 1 ])
     expect(Kos::Cli::SchemaRegistry.new).to be_valid("commands.json", "result", document)
   end
 
   it "rejects key reuse with another title without allocating" do
     activate_workflow
     create_request
-    create_request(request_document({ "title" => "Another fix", "task_type" => "quick-fix" }))
+    create_request(request_document({ "task_input" => task_input(title: "Another fix"), "task_type" => "quick-fix" }))
 
     expect([ response.status, document.dig("error", "code"), Task.count,
       repository.reload.next_task_sequence ]).to eq([ 409, "idempotency_conflict", 1, 2 ])
+  end
+
+  it "binds idempotency to the approved brief" do
+    activate_workflow
+
+    expect(brief_conflict_summary).to eq([ 409, "idempotency_conflict", 1, 2 ])
+  end
+
+  it "rejects absent, blank, unsupported, and oversized approved input without allocating" do
+    activate_workflow
+    expect(invalid_input_summary)
+      .to eq([ Array.new(4, [ 400, "malformed_input" ]), 201, 1, 2, 1 ])
   end
 
   it "rejects repository path/body mismatch and whitespace-only titles" do

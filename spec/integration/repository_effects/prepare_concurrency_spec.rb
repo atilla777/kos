@@ -32,7 +32,8 @@ RSpec.describe RepositoryEffects::Prepare, :aggregate_failures do
         expected_lock_version: draft.lock_version)
       repository = Repository.create!(git_common_dir: "/tmp/effect-concurrency.git", task_prefix: "KOS",
         trusted_remote: "origin", trusted_remote_url: "file:///tmp/remote.git", base_ref: "refs/heads/main")
-      task = Task.create!(repository: repository, sequence: 1, title: "Concurrent effect", task_type: type,
+      task = Task.create!(repository: repository, sequence: 1, title: "Concurrent effect",
+        task_input_schema_version: "1", approved_brief: "Prepare the approved effect concurrently.", task_type: type,
         workflow_version: version, workflow_state: version.workflow_states.find_by!(initial: true))
       attempt = WorkflowAttempts::Claim.call(repository: repository, task_number: task.number,
         owner_id: "owner", lease_seconds: 300, expected_lock_version: 0, idempotency_key: "claim-effect")

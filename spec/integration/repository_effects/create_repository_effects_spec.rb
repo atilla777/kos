@@ -60,7 +60,7 @@ RSpec.describe CreateRepositoryEffects, :aggregate_failures do
       env = environment(directory)
       migrate!(env, 20_260_911_030_000)
       repository_id, task_number, attempt_id, digest = seed_state(env)
-      migrate!(env)
+      migrate!(env, 20_260_912_000_000)
       upgraded = runner!(env.merge("REPOSITORY_ID" => repository_id, "TASK_NUMBER" => task_number,
         "ATTEMPT_ID" => attempt_id, "DIGEST" => digest), <<~'RUBY')
         repository = Repository.find(ENV.fetch("REPOSITORY_ID"))
@@ -80,7 +80,7 @@ RSpec.describe CreateRepositoryEffects, :aggregate_failures do
         end
         puts JSON.generate([RepositoryEffect.count, effect.state, guarded, Task.count, WorkflowAttempt.count])
       RUBY
-      command!(env, "ActiveRecord::Base.connection_pool.migration_context.rollback(2)")
+      command!(env, "ActiveRecord::Base.connection_pool.migration_context.rollback(1)")
       rolled_back = runner!(env, <<~'RUBY')
         tables = ActiveRecord::Base.connection.tables
         puts JSON.generate([tables.include?("repository_effects"), Task.count, WorkflowAttempt.count])

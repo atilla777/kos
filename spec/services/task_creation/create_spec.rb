@@ -14,7 +14,8 @@ RSpec.describe TaskCreation::Create, :aggregate_failures do
   end
 
   def create_task(title: "Repair timeout")
-    described_class.call(repository: repository, title: title, task_type_name: "quick-fix")
+    task_input = { "schema_version" => "1", "title" => title, "approved_brief" => "Repair the approved timeout." }
+    described_class.call(repository: repository, task_input: task_input, task_type_name: "quick-fix")
   end
 
   def publish_second_version
@@ -36,6 +37,13 @@ RSpec.describe TaskCreation::Create, :aggregate_failures do
     [ task, first, second ]
   end
 
+  def create_task_in_other_repository
+    other = Repository.create!(git_common_dir: "/tmp/#{SecureRandom.uuid}.git", task_prefix: "APP",
+      trusted_remote: "origin", trusted_remote_url: "file:///tmp/other.git", base_ref: "refs/heads/main")
+    input = { "schema_version" => "1", "title" => "Other", "approved_brief" => "Complete the other task." }
+    described_class.call(repository: other, task_input: input, task_type_name: "quick-fix")
+  end
+
   it "allocates a public number and pins the active version and initial state" do
     version = publish_workflow
     activate(version)
@@ -54,10 +62,8 @@ RSpec.describe TaskCreation::Create, :aggregate_failures do
 
   it "allocates sequence one independently in separate repositories" do
     activate(publish_workflow)
-    other = Repository.create!(git_common_dir: "/tmp/#{SecureRandom.uuid}.git", task_prefix: "APP",
-      trusted_remote: "origin", trusted_remote_url: "file:///tmp/other.git", base_ref: "refs/heads/main")
 
-    expect([ create_task.number, described_class.call(repository: other, title: "Other", task_type_name: "quick-fix").number ])
+    expect([ create_task.number, create_task_in_other_repository.number ])
       .to eq(%w[KOS-000001 APP-000001])
   end
 

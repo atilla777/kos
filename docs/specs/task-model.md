@@ -19,7 +19,7 @@ The initial types are:
 
 A `Task` is one unit of managed work. It records at least:
 
-- an internal identifier and title;
+- an internal identifier and immutable approved task input;
 - an immutable repository-specific public number;
 - its task type;
 - status and workflow status;
@@ -32,11 +32,15 @@ In the MVP, `status` is not independently mutable. It is derived from terminal w
 
 Task creation resolves the task type's current workflow version inside the creation transaction. The task stores that immutable foreign-key reference and does not copy the workflow graph, store a bundle digest, or follow later task-type activation changes. Its current state must belong to the selected version. Version migration for an existing task is not supported in version 1.
 
+The approved task input is a closed versioned object containing a nonblank title and a nonblank UTF-8 Markdown brief of at most 128 KiB. The brief is the complete human-approved task baseline supplied to workflow execution; its internal Markdown sections are not separately interpreted by KOS. Task identity, approved input, public number, pinned workflow version, and initial state are stored in one creation transaction. The title, brief, and input schema version are immutable at the database boundary.
+
+Every task created after this contract requires approved input. A legacy task without it remains readable but cannot finalize a new executable context. KOS never derives or backfills approval content from a title, dialogue, or repository file. [ADR-0010](../decisions/0010-durable-approved-task-input.md) records this boundary.
+
 ## Public Numbers And Traceability
 
 Every registered repository has an immutable task prefix of 2 through 10 uppercase ASCII letters or digits beginning with a letter. The prefix is globally unique within one KOS installation. Every task combines that prefix with a six-digit numeric sequence to receive an immutable public number such as `KOS-000123`. The SQLite primary key is internal. The numeric sequence is allocated within the task-creation write transaction, protected by a repository-scoped uniqueness constraint, and never reused within that repository. Creation fails explicitly after sequence `999999`; it does not widen or wrap the public number. Public numbers are used by the CLI, branch names, task-artifact paths, Git trailers, and human or agent references. Child tasks have their own numbers; relations, not composite numbers, define hierarchy.
 
-Task creation requires an idempotency key, so retrying after a lost response returns the original task.
+Task creation requires an idempotency key, so retrying the same approved input after a lost response returns the original task. Reusing that key with different input is an idempotency conflict.
 
 Task-local Markdown artifacts use stable IDs derived from the public number for homogeneous sections:
 

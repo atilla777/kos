@@ -251,7 +251,8 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
         { "task_type" => "quick-fix", "workflow_version_id" => resource_id, "expected_lock_version" => 0 } ],
       [ [ "task", "create", "--repository", repository_id ], "task.create",
         "/api/v1/repositories/#{repository_id}/tasks",
-        { "title" => "Repair timeout", "task_type" => "quick-fix" } ],
+        { "task_input" => { "schema_version" => "1", "title" => "Repair timeout",
+          "approved_brief" => "Repair timeout handling as approved." }, "task_type" => "quick-fix" } ],
       [ [ "attempt", "claim", "--repository", repository_id ], "attempt.claim",
         "/api/v1/repositories/#{repository_id}/tasks/KOS-000001/attempts/claim",
         { "task_number" => "KOS-000001", "owner_id" => "orchestrator-1", "lease_seconds" => 300,
@@ -355,7 +356,8 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
   end
 
   def expect_mutation_retry
-    body = { "title" => "Repair timeout", "task_type" => "quick-fix" }
+    body = { "task_input" => { "schema_version" => "1", "title" => "Repair timeout",
+      "approved_brief" => "Repair timeout handling as approved." }, "task_type" => "quick-fix" }
     final = failure("task.create", category: "conflict", code: "task_type_unavailable")
     bodies = []
     with_server([ [ "503 Service Unavailable", transient("task.create") ],
@@ -366,6 +368,19 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
       expect([ status.exitstatus, requests.length, bodies.uniq.length,
         requests.map { |lines| lines.join.scan(/Idempotency-Key: task-create-key-1/).length } ])
         .to eq([ 6, 3, 1, [ 1, 1, 1 ] ])
+    end
+  end
+
+  def invalid_utf8_result
+    input = "{\"task_input\":{\"schema_version\":\"1\",\"title\":\"Task\",\"approved_brief\":\"\xFF\"}," \
+      "\"task_type\":\"quick-fix\"}".b
+    Tempfile.create("kos-invalid-utf8") do |file|
+      file.binmode
+      file.write(input)
+      file.close
+      stdout, _stderr, status = run_cli("http://127.0.0.1:1", "task", "create", "--repository", repository_id,
+        "--input", file.path, "--idempotency-key", "invalid-utf8-key", "--json")
+      [ status.exitstatus, JSON.parse(stdout).dig("error", "code") ]
     end
   end
 
@@ -380,6 +395,19 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
     stdout, _stderr, status = run_cli("http://127.0.0.1:1", "workflow", "publish", "--input", "-",
       "--idempotency-key", "publish-key-1", "--json", stdin_data: '{"expected_lock_version":0,"expected_lock_version":1}')
     expect([ status.exitstatus, JSON.parse(stdout).dig("error", "code") ]).to eq([ 2, "malformed_input" ])
+  end
+
+  it "rejects an oversized approved task brief before transport" do
+    body = { "task_input" => { "schema_version" => "1", "title" => "Oversized task",
+      "approved_brief" => "a" * (Kos::Cli::Parser::MAX_APPROVED_BRIEF_BYTES + 1) }, "task_type" => "quick-fix" }
+    stdout, _stderr, status = run_cli("http://127.0.0.1:1", "task", "create", "--repository", repository_id,
+      "--input", "-", "--idempotency-key", "oversized-task-key", "--json", stdin_data: JSON.generate(body))
+
+    expect([ status.exitstatus, JSON.parse(stdout).dig("error", "code") ]).to eq([ 2, "malformed_input" ])
+  end
+
+  it "rejects non-UTF-8 mutation input with a structured validation failure" do
+    expect(invalid_utf8_result).to eq([ 2, "malformed_input" ])
   end
 
   it "requires the token environment variable with a stable exit" do

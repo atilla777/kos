@@ -79,7 +79,7 @@ bin/kos-initialize apply --input initialize.json --approved-plan sha256:DIGEST -
 
 Add `--force` to `apply` only after approving every planned update or conflict. Installation requires executable `kos`, `kos-repository`, and `kos-opencode` commands, verifies the active published `quick-fix` workflow and the complete OpenCode adapter contract, including retrospective while disabled, then publishes six skills, the session guard, and three restrictive agent profiles under `.opencode`. The manifest is published last at `.opencode/kos-runtime-manifest.json`; unrelated OpenCode files are not managed. A changed source-bundle or capability-report digest is a managed upgrade and requires a new approved plan plus `--force`; never edit installed copies directly.
 
-Create a task from an input body containing `title` and `task_type: quick-fix`:
+Create a task from an input body containing `task_type: quick-fix` and a version 1 `task_input` with `title` and the complete approved Markdown `approved_brief`:
 
 ```sh
 bin/kos task create --repository UUID --input task.json --idempotency-key task-create-1 --json
@@ -98,7 +98,7 @@ bin/kos step context --repository UUID --input context.json --idempotency-key st
 
 Claim requires the task number, owner ID, lease duration, and expected task lock version. Renew, fail, and needs-human require the active attempt ID, fencing token, and expected lock version. Reconcile is available after lease expiry and records the observed recovery state and evidence digest without asserting that an external effect succeeded.
 
-`step context` requires the active attempt ID, fencing token, and expected task lock version. It atomically freezes and returns the pinned instruction, templates, artifact requirements, allowed repository effects, and execution metadata. A status requiring a worktree remains unavailable until its task-bound reservation is confirmed; publication context also remains unavailable until its durable publication intent has been prepared by the publication protocol. The orchestrator verifies the approved review and mandatory checks before requesting publication; the repository adapter does not execute arbitrary project check commands.
+`step context` requires the active attempt ID, fencing token, and expected task lock version. It atomically freezes and returns the approved task input, pinned instruction, templates, artifact requirements, allowed repository effects, and execution metadata. A legacy task without approved input and a status without its required confirmed worktree remain unavailable. Publication context also remains unavailable until its durable publication intent has been prepared by the publication protocol. The orchestrator verifies the approved review and mandatory checks before requesting publication; the repository adapter does not execute arbitrary project check commands.
 
 Reserve, confirm, reconcile, and explicitly release task worktrees through the same mutation transport:
 

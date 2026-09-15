@@ -4,9 +4,11 @@ module Api
       def create
         body = mutation_body
         return if performed?
+        return render_malformed_input unless body.dig("task_input", "approved_brief").bytesize <=
+          Task::MAX_APPROVED_BRIEF_BYTES
 
         execute_mutation(body, status: :created, serialize: Serializer.method(:task)) do
-          TaskCreation::Create.call(repository: repository, title: body.fetch("title"),
+          TaskCreation::Create.call(repository: repository, task_input: body.fetch("task_input"),
             task_type_name: body.fetch("task_type"))
         end
       end

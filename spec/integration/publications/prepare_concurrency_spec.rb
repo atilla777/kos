@@ -30,7 +30,8 @@ RSpec.describe Publications::Prepare, :aggregate_failures do
         expected_lock_version: draft.lock_version)
       repository = Repository.create!(git_common_dir: "/tmp/publication-concurrency.git", task_prefix: "KOS",
         trusted_remote: "origin", trusted_remote_url: "file:///tmp/remote.git", base_ref: "refs/heads/main")
-      task = Task.create!(repository: repository, sequence: 1, title: "Concurrent publication", task_type: type,
+      task = Task.create!(repository: repository, sequence: 1, title: "Concurrent publication",
+        task_input_schema_version: "1", approved_brief: "Publish the approved task concurrently.", task_type: type,
         workflow_version: version, workflow_state: version.workflow_states.find_by!(initial: true))
       now = Time.current.change(usec: 0)
       candidate_sha = "a" * 40

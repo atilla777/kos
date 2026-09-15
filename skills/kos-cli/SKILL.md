@@ -44,6 +44,8 @@ kos artifact list --repository "$repository_id" --task "$task_number" --limit 10
 kos attempt claim --repository "$repository_id" --input - --idempotency-key "$idempotency_key" --json
 ```
 
+`task create` requires `task_type: "quick-fix"` and a closed `task_input` with `schema_version: "1"`, a nonblank `title`, and the complete approved Markdown `approved_brief`. Preserve the exact approved brief when retrying. Never derive it from the title, dialogue, or a repository file, and never create a task before the human approval boundary has produced it.
+
 ## Available Commands
 
 Use only these commands until a later installed CLI explicitly supports more:

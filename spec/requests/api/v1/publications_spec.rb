@@ -19,7 +19,8 @@ RSpec.describe "API v1 publications", :aggregate_failures, type: :request do
   end
   let(:version) { publish_workflow }
   let(:task) do
-    Task.create!(repository:, sequence: 1, title: "Publish candidate", task_type: quick_fix_task_type,
+    Task.create!(repository:, sequence: 1, title: "Publish candidate", task_input_schema_version: "1",
+      approved_brief: "Publish the approved candidate.", task_type: quick_fix_task_type,
       workflow_version: version, workflow_state: version.workflow_states.find_by!(initial: true))
   end
 

@@ -176,7 +176,8 @@ RSpec.describe WorkflowCatalog::PublishDraft, :aggregate_failures do
   def create_task_pinned_to(workflow)
     repository = Repository.create!(git_common_dir: "/tmp/#{SecureRandom.uuid}.git", task_prefix: "KOS",
       trusted_remote: "origin", trusted_remote_url: "file:///tmp/remote.git", base_ref: "refs/heads/main")
-    Task.create!(repository: repository, sequence: 1, title: "Pinned task", task_type: quick_fix_task_type,
+    Task.create!(repository: repository, sequence: 1, title: "Pinned task", task_input_schema_version: "1",
+      approved_brief: "Keep the approved task pinned.", task_type: quick_fix_task_type,
       workflow_version: workflow, workflow_state: workflow.workflow_states.find_by!(initial: true))
   end
 end

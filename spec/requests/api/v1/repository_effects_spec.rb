@@ -22,7 +22,8 @@ RSpec.describe "API v1 repository effects", :aggregate_failures, type: :request 
   let(:task) do
     type = quick_fix_task_type
     version = publish_workflow
-    Task.create!(repository:, sequence: 1, title: "Persist repository effect", task_type: type,
+    Task.create!(repository:, sequence: 1, title: "Persist repository effect", task_input_schema_version: "1",
+      approved_brief: "Persist the approved repository effect.", task_type: type,
       workflow_version: version, workflow_state: version.workflow_states.find_by!(initial: true))
   end
 

@@ -12,7 +12,8 @@ RSpec.describe WorkflowAttempts::Claim, :aggregate_failures do
   let(:task) do
     type = quick_fix_task_type
     version = publish_workflow
-    Task.create!(repository:, sequence: 1, title: "Own workflow step", task_type: type,
+    Task.create!(repository:, sequence: 1, title: "Own workflow step", task_input_schema_version: "1",
+      approved_brief: "Own the approved workflow step.", task_type: type,
       workflow_version: version, workflow_state: version.workflow_states.find_by!(initial: true))
   end
   let(:started_at) { Time.utc(2026, 9, 11, 12) }

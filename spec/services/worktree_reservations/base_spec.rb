@@ -11,7 +11,8 @@ RSpec.describe WorktreeReservations::Base, :aggregate_failures do
   let(:task) do
     type = quick_fix_task_type
     version = publish_workflow
-    Task.create!(repository:, sequence: 1, title: "Reserve worktree", task_type: type,
+    Task.create!(repository:, sequence: 1, title: "Reserve worktree", task_input_schema_version: "1",
+      approved_brief: "Reserve the approved task worktree.", task_type: type,
       workflow_version: version, workflow_state: version.workflow_states.find_by!(initial: true))
   end
   let(:started_at) { Time.utc(2026, 9, 11, 14) }

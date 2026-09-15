@@ -111,7 +111,8 @@ RSpec.describe "API v1 reads", :aggregate_failures, type: :request do
   def create_execution(artifact_created_at: nil)
     task_type, _draft, workflow, states = create_catalog
     repository = create_repository
-    task = Task.create!(repository:, sequence: 1, title: "Read API state", task_type:, workflow_version: workflow,
+    task = Task.create!(repository:, sequence: 1, title: "Read API state", task_input_schema_version: "1",
+      approved_brief: "Read the approved API state.", task_type:, workflow_version: workflow,
       workflow_state: states.fetch("development"))
     now = Time.utc(2026, 9, 10, 13)
     attempt = WorkflowAttempt.create!(repository:, task:, workflow_state: task.workflow_state,
@@ -310,6 +311,7 @@ RSpec.describe "API v1 reads", :aggregate_failures, type: :request do
     get "/api/v1/workflow-versions", params: { limit: 1, cursor: }, headers: headers
     expect([ response.status, document.dig("error", "code") ]).to eq([ 400, "malformed_input" ])
     other_task = Task.create!(repository: task.repository, sequence: 2, title: "Other task",
+      task_input_schema_version: "1", approved_brief: "Read the other approved task.",
       task_type: task.task_type, workflow_version: task.workflow_version, workflow_state: task.workflow_state)
     other_path = "/api/v1/repositories/#{task.repository_id}/tasks/#{other_task.number}/artifacts"
     get other_path, params: { limit: 1, cursor: }, headers: headers

@@ -16,7 +16,8 @@ RSpec.describe WorkflowSteps::Complete, :aggregate_failures do
   let(:task) do
     type = quick_fix_task_type
     version = publish_workflow
-    Task.create!(repository:, sequence: 1, title: "Complete workflow step", task_type: type,
+    Task.create!(repository:, sequence: 1, title: "Complete workflow step", task_input_schema_version: "1",
+      approved_brief: "Complete the approved workflow step.", task_type: type,
       workflow_version: version, workflow_state: version.workflow_states.find_by!(initial: true))
   end
 
@@ -223,7 +224,8 @@ RSpec.describe WorkflowSteps::Complete, :aggregate_failures do
       { "type" => "decision", "decision" => "delivery", "value" => "direct" }
     ]
     version = publish_workflow(definition)
-    decision_task = Task.create!(repository:, sequence: 2, title: "Choose branch", task_type: quick_fix_task_type,
+    decision_task = Task.create!(repository:, sequence: 2, title: "Choose branch", task_input_schema_version: "1",
+      approved_brief: "Choose the approved workflow branch.", task_type: quick_fix_task_type,
       workflow_version: version, workflow_state: version.workflow_states.find_by!(initial: true))
     attempt = WorkflowAttempts::Claim.call(repository:, task_number: decision_task.number, owner_id: "orchestrator-1",
       lease_seconds: 300, expected_lock_version: 0, idempotency_key: "decision-claim")
@@ -291,7 +293,8 @@ RSpec.describe WorkflowSteps::Complete, :aggregate_failures do
     transition = WorkflowTransition.create!(workflow_version: version, from_state: source, to_state: terminal)
     WorkflowTransitionCondition.create!(workflow_transition: transition, position: 0, condition_type: "always")
     version.update!(published_at: Time.current)
-    generic_task = Task.create!(repository:, sequence: 3, title: "Coordinate", task_type: type,
+    generic_task = Task.create!(repository:, sequence: 3, title: "Coordinate", task_input_schema_version: "1",
+      approved_brief: "Coordinate the approved task.", task_type: type,
       workflow_version: version, workflow_state: source)
     attempt = WorkflowAttempts::Claim.call(repository:, task_number: generic_task.number, owner_id: "orchestrator-1",
       lease_seconds: 300, expected_lock_version: 0, idempotency_key: "terminal-claim")
@@ -312,7 +315,8 @@ RSpec.describe WorkflowSteps::Complete, :aggregate_failures do
     transition = WorkflowTransition.create!(workflow_version: version, from_state: source, to_state: terminal)
     WorkflowTransitionCondition.create!(workflow_transition: transition, position: 0, condition_type: "always")
     version.update!(published_at: Time.current)
-    publication_task = Task.create!(repository:, sequence: 4, title: "Publish", task_type: type,
+    publication_task = Task.create!(repository:, sequence: 4, title: "Publish", task_input_schema_version: "1",
+      approved_brief: "Publish the approved task.", task_type: type,
       workflow_version: version, workflow_state: source)
     attempt = WorkflowAttempts::Claim.call(repository:, task_number: publication_task.number,
       owner_id: "orchestrator-1", lease_seconds: 300, expected_lock_version: 0,

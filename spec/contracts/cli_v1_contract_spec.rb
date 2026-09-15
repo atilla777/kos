@@ -139,7 +139,9 @@ module CliV1Contract
 
   def task
     { "schema_version" => "1", "id" => TASK_ID, "repository_id" => REPOSITORY_ID, "number" => "KOS-000123",
-      "title" => "Repair timeout handling", "task_type" => "quick-fix", "status" => "active",
+      "title" => "Repair timeout handling", "task_input" => { "schema_version" => "1",
+        "title" => "Repair timeout handling", "approved_brief" => "Repair timeout handling as approved." },
+      "task_type" => "quick-fix", "status" => "active",
       "workflow_status" => "development", "workflow_version_id" => WORKFLOW_VERSION_ID, "lock_version" => 3,
       "active_publication_id" => PUBLICATION_ID, "created_at" => "2026-09-09T12:00:00Z",
       "updated_at" => "2026-09-09T12:01:00Z" }
@@ -147,6 +149,8 @@ module CliV1Contract
 
   def context
     value = { "schema_version" => "1", "task_id" => TASK_ID, "task_number" => "KOS-000123", "attempt_id" => ATTEMPT_ID,
+      "task_input" => { "schema_version" => "1", "title" => "Repair timeout handling",
+        "approved_brief" => "Repair timeout handling as approved." },
       "repository_id" => REPOSITORY_ID, "workflow_version_id" => WORKFLOW_VERSION_ID, "workflow_status" => "development",
       "instruction" => "# Development\n\nImplement and test the approved change.\n", "artifact_templates" => [],
       "expected_lock_version" => 3, "fencing_token" => 8, "base_ref" => "refs/heads/main",
@@ -225,7 +229,8 @@ module CliV1Contract
       "effect.get" => { "effect_id" => EFFECT_ID },
       "artifact.list" => { "task_number" => "KOS-000123", "limit" => 20 },
       "publication.get" => { "publication_id" => PUBLICATION_ID },
-      "task.create" => { "title" => "Repair timeout handling", "task_type" => "quick-fix" },
+      "task.create" => { "task_input" => { "schema_version" => "1", "title" => "Repair timeout handling",
+        "approved_brief" => "Repair timeout handling as approved." }, "task_type" => "quick-fix" },
       "attempt.claim" => { "task_number" => "KOS-000123", "owner_id" => "orchestrator-1", "lease_seconds" => 300,
         "preconditions" => { "expected_lock_version" => 3 } },
       "attempt.renew" => { "lease_seconds" => 300, "preconditions" => preconditions },
@@ -781,6 +786,14 @@ RSpec.describe CliV1Contract do
 
     expect([ context.fetch("input_context_digest"), context.keys.grep(/bundle_digest|materials|allowed_capabilities/) ])
       .to eq([ "sha256:#{digest}", [] ])
+  end
+
+  it "keeps frozen contexts from before approved task input schema-valid" do
+    legacy = described_class.context.except("task_input", "input_context_digest")
+    digest = Digest::SHA256.hexdigest(described_class.canonical_json(legacy))
+    legacy["input_context_digest"] = "sha256:#{digest}"
+
+    expect(described_class.definition("workflow.json", "context")).to be_valid(legacy)
   end
 
   it "keeps artifact evidence type-specific" do

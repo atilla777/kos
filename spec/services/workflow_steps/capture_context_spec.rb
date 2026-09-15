@@ -10,7 +10,8 @@ RSpec.describe WorkflowSteps::CaptureContext, :aggregate_failures do
   end
   let(:version) { publish_workflow }
   let(:task) do
-    Task.create!(repository:, sequence: 1, title: "Freeze context", task_type: quick_fix_task_type,
+    Task.create!(repository:, sequence: 1, title: "Freeze context", task_input_schema_version: "1",
+      approved_brief: "Fix context capture.", task_type: quick_fix_task_type,
       workflow_version: version, workflow_state: version.workflow_states.find_by!(initial: true))
   end
   let(:now) { Time.utc(2026, 9, 11, 12) }
@@ -58,6 +59,8 @@ RSpec.describe WorkflowSteps::CaptureContext, :aggregate_failures do
     digest = "sha256:#{Digest::SHA256.hexdigest(canonical)}"
     expect(context).to include(
       "task_id" => task.id, "task_number" => task.number, "attempt_id" => attempt.id,
+      "task_input" => { "schema_version" => "1", "title" => "Freeze context",
+        "approved_brief" => "Fix context capture." },
       "repository_id" => repository.id, "workflow_version_id" => version.id,
       "workflow_status" => "implementation-planning", "instruction" => status.fetch("instruction"),
       "artifact_templates" => status.fetch("artifact_templates").sort_by { _1.fetch("id") },
@@ -130,6 +133,16 @@ RSpec.describe WorkflowSteps::CaptureContext, :aggregate_failures do
     error.code
   end
 
+  def frozen_legacy_context_summary
+    attempt = claim
+    confirm_worktree(attempt)
+    legacy = described_class.send(:build_context, repository, task, attempt).except("task_input")
+    digest = "sha256:#{Digest::SHA256.hexdigest(WorkflowCatalog::CanonicalDefinition.canonical_json(legacy))}"
+    legacy["input_context_digest"] = digest
+    attempt.update!(input_context: legacy, input_context_digest: digest)
+    [ capture(attempt), legacy ]
+  end
+
   it "freezes the exact validated pinned step context and canonical digest" do
     expect_exact_context
   end
@@ -137,6 +150,12 @@ RSpec.describe WorkflowSteps::CaptureContext, :aggregate_failures do
   it "returns the frozen context without rebuilding mutable installation input" do
     summary = frozen_setting_summary
     expect(summary).to eq([ summary.fetch(1), summary.fetch(1), false ])
+  end
+
+  it "accepts an immutable frozen context from before task input transport" do
+    summary = frozen_legacy_context_summary
+
+    expect(summary.first).to eq(summary.last)
   end
 
   it "accepts a confirmed task worktree created by a reconciled earlier attempt" do

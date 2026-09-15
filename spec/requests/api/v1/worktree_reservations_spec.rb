@@ -20,7 +20,8 @@ RSpec.describe "API v1 worktree reservations", :aggregate_failures, type: :reque
   let(:task) do
     type = quick_fix_task_type
     version = publish_workflow
-    Task.create!(repository:, sequence: 1, title: "Reserve through API", task_type: type,
+    Task.create!(repository:, sequence: 1, title: "Reserve through API", task_input_schema_version: "1",
+      approved_brief: "Reserve the approved worktree.", task_type: type,
       workflow_version: version, workflow_state: version.workflow_states.find_by!(initial: true))
   end
   let(:head_sha) { "b" * 40 }

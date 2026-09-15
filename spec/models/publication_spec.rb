@@ -10,7 +10,8 @@ RSpec.describe Publication, type: :model do
   end
   let(:version) { publish_workflow }
   let(:task) do
-    Task.create!(repository:, sequence: 1, title: "Publication persistence", task_type: quick_fix_task_type,
+    Task.create!(repository:, sequence: 1, title: "Publication persistence", task_input_schema_version: "1",
+      approved_brief: "Persist the approved publication.", task_type: quick_fix_task_type,
       workflow_version: version, workflow_state: version.workflow_states.find_by!(initial: true))
   end
   let(:attempt) do
@@ -106,7 +107,8 @@ RSpec.describe Publication, type: :model do
   end
 
   def other_task_attempt
-    other_task = Task.create!(repository:, sequence: 2, title: "Other task", task_type: quick_fix_task_type,
+    other_task = Task.create!(repository:, sequence: 2, title: "Other task", task_input_schema_version: "1",
+      approved_brief: "Persist the other approved task.", task_type: quick_fix_task_type,
       workflow_version: version, workflow_state: version.workflow_states.find_by!(initial: true))
     WorkflowAttempt.create!(repository:, task: other_task, workflow_state: other_task.workflow_state,
       owner_id: "other-owner", idempotency_key: "other-publication-owner", fencing_token: 1,

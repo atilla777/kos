@@ -22,6 +22,7 @@ module Kos
 
     class Parser
       IDEMPOTENCY_KEY_FORMAT = /\A[A-Za-z0-9._:-]{8,255}\z/
+      MAX_APPROVED_BRIEF_BYTES = 128 * 1024
       COMMANDS = {
         %w[repository register] => [ "repository.register", nil, {}, true ],
         %w[runtime-config get] => [ "runtime_config.get", nil, {} ],
@@ -90,6 +91,9 @@ module Kos
         request["repository_id"] = repository_id if repository_id
         unless @schema_registry.valid?("commands.json", "request", request)
           raise Error.new("validation", "malformed_input", "Arguments are malformed")
+        end
+        if command == "task.create" && body.dig("task_input", "approved_brief").bytesize > MAX_APPROVED_BRIEF_BYTES
+          raise Error.new("validation", "malformed_input", "Approved task brief is too large")
         end
 
         if mutation

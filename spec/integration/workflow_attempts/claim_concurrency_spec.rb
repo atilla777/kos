@@ -33,7 +33,8 @@ RSpec.describe WorkflowAttempts::Claim, :aggregate_failures do
       type.update!(current_workflow_version: version)
       repository = Repository.create!(git_common_dir: "/tmp/claim-concurrency.git", task_prefix: "KOS",
         trusted_remote: "origin", trusted_remote_url: "file:///tmp/remote.git", base_ref: "refs/heads/main")
-      task = Task.create!(repository: repository, sequence: 1, title: "Concurrent claim", task_type: type,
+      task = Task.create!(repository: repository, sequence: 1, title: "Concurrent claim",
+        task_input_schema_version: "1", approved_brief: "Claim the approved task concurrently.", task_type: type,
         workflow_version: version, workflow_state: version.workflow_states.find_by!(initial: true))
       puts JSON.generate([repository.id, task.number])
     RUBY

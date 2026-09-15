@@ -36,7 +36,7 @@ module Kos
           "sha256:7c89e36d7d333e217b8f08f5d772efae415224a88dc757808158100d956f1762".freeze
         RELEASE_DIGESTS = {
           ".opencode/skills/kos-cli/SKILL.md" =>
-            "sha256:37fc43d6273e98ad3716ac59440a3b0db1075a3527ca59a0ae676bbb8e87ca09",
+            "sha256:b91cb76a27da761fbaa1a5b14edbad5c5ff6e468d9bbc220255576707cbc2989",
           ".opencode/skills/kos-initialize/SKILL.md" =>
             "sha256:b03e1f66dccf03ae2832c80e7616cb84d9b766b597cf6ac9fbe31abfcb5d2aba",
           ".opencode/skills/kos-orchestrate/SKILL.md" =>

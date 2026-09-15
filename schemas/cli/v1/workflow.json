@@ -30,6 +30,7 @@
         "schema_version": { "$ref": "common.json#/$defs/schema_version" },
         "task_id": { "$ref": "common.json#/$defs/uuid" },
         "task_number": { "$ref": "common.json#/$defs/task_number" },
+        "task_input": { "$ref": "common.json#/$defs/task_input" },
         "attempt_id": { "$ref": "common.json#/$defs/uuid" },
         "repository_id": { "$ref": "common.json#/$defs/uuid" },
         "workflow_version_id": { "$ref": "common.json#/$defs/uuid" },

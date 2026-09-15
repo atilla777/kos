@@ -66,14 +66,16 @@ RSpec.describe TaskCreation::Create, ".call", :aggregate_failures do
           end
         end
         repository = Repository.find(ENV.fetch("REPOSITORY_ID"))
-        body = { "title" => ENV.fetch("TITLE"), "task_type" => "quick-fix" }
+        task_input = { "schema_version" => "1", "title" => ENV.fetch("TITLE"),
+          "approved_brief" => "Execute the approved concurrent task." }
+        body = { "task_input" => task_input, "task_type" => "quick-fix" }
         result = Idempotency::Execute.call(command: "task.create", key: ENV.fetch("IDEMPOTENCY_KEY"), body: body,
           status: 201, repository: repository, serialize: ->(task) { { "number" => task.number } }) do
           if ENV["ENTERED_FILE"]
             File.write(ENV.fetch("ENTERED_FILE"), "entered")
             sleep 0.01 until File.exist?(ENV.fetch("RELEASE_FILE"))
           end
-          TaskCreation::Create.call(repository: repository, title: body.fetch("title"),
+          TaskCreation::Create.call(repository: repository, task_input: body.fetch("task_input"),
             task_type_name: body.fetch("task_type"))
         end
         puts JSON.generate(result.data)

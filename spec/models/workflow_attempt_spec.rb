@@ -44,6 +44,8 @@ RSpec.describe WorkflowAttempt, :aggregate_failures, type: :model do
       repository:,
       sequence:,
       title: "Persist execution state",
+      task_input_schema_version: "1",
+      approved_brief: "Persist the approved execution state.",
       task_type: workflow.fetch(:task_type),
       workflow_version: workflow.fetch(:version),
       workflow_state: workflow.fetch(:source)

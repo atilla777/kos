@@ -71,6 +71,7 @@ module Api
             "repository_id" => record.repository_id,
             "number" => record.number,
             "title" => record.title,
+            "task_input" => record.task_input,
             "task_type" => record.task_type.name,
             "status" => record.status,
             "workflow_status" => record.workflow_state.identifier,

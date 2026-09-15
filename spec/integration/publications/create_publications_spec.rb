@@ -33,7 +33,7 @@ RSpec.describe CreatePublications, :aggregate_failures do
       env = environment(directory)
       migrate!(env, 20_260_912_000_000)
       seed_repository(env)
-      migrate!(env)
+      migrate!(env, 20_260_912_010_000)
       upgraded = runner!(env, <<~'RUBY')
         puts JSON.generate([ActiveRecord::Base.connection.table_exists?(:publications),
           Task.column_names.include?("active_publication_id"), Repository.count,
@@ -47,7 +47,7 @@ RSpec.describe CreatePublications, :aggregate_failures do
         puts JSON.generate([ActiveRecord::Base.connection.table_exists?(:publications),
           Task.column_names.include?("active_publication_id"), Repository.count])
       RUBY
-      migrate!(env)
+      migrate!(env, 20_260_912_010_000)
       upgraded_again = runner!(env, <<~'RUBY')
         sql = ActiveRecord::Base.connection.select_value(<<~SQL)
           SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'publications'
