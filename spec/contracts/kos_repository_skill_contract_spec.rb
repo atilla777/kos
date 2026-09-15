@@ -9,8 +9,9 @@ require "spec_helper"
 module KosRepositorySkillContract
   ROOT = File.expand_path("../..", __dir__)
   SKILL_PATH = File.join(ROOT, "skills/kos-repository/SKILL.md")
-  SCHEMA_PATH = File.join(ROOT, "schemas/repository/v1/adapter.json")
-  EXPECTED_OPERATIONS = %w[materialize observe remove commit fetch rebase push].freeze
+  SCHEMA_PATHS = Dir[File.join(ROOT, "schemas/repository/v{1,2}/adapter.json")].sort.freeze
+  EXPECTED_OPERATIONS = %w[materialize observe remove commit fetch rebase push publication_preflight].freeze
+  NON_REPEATABLE_OPERATIONS = %w[materialize remove commit fetch rebase push].freeze
   REQUIRED_GUIDANCE = {
     "Authority Boundary" => [
       "sole executor of mutating Git operations", "Invoke this skill only as the lease-owning orchestrator",
@@ -38,7 +39,9 @@ module KosRepositorySkillContract
     "fetch" => [ "Prepared or adopted durable `fetch` effect", "registered repository trust snapshot" ],
     "rebase" => [ "Current `confirmed` reservation", "durable `rebase` effect", "verified fetch request and result" ],
     "push" => [ "Prepared or adopted publication", "current task version",
-      "approved review and required-check evidence for the exact candidate", "registered publication target" ]
+      "approved review and required-check evidence for the exact candidate", "registered publication target" ],
+    "publication_preflight" => [ "Prepared or adopted version 2 publication preflight",
+      "registered repository trust snapshot" ]
   }.freeze
   RESULT_VALIDATION = {
     1 => "exactly one JSON object", 2 => "`schema_version`", 3 => "`operation` equals",
@@ -83,9 +86,13 @@ module KosRepositorySkillContract
   end
 
   def schema_operations
-    schema = JSON.parse(File.read(SCHEMA_PATH))
-    schema.dig("$defs", "request", "oneOf").map do |reference|
-      reference.fetch("$ref").split("/").last.delete_suffix("_request")
+    SCHEMA_PATHS.flat_map do |path|
+      schema = JSON.parse(File.read(path))
+      request = schema.dig("$defs", "request")
+      references = request.fetch("oneOf", [ { "$ref" => request.dig("properties", "operation", "const") } ])
+      references.map do |reference|
+        reference.fetch("$ref").split("/").last.delete_suffix("_request")
+      end
     end
   end
 
@@ -116,7 +123,7 @@ module KosRepositorySkillContract
     section_text = section("Reconcile Observations", "Safe Invocation Sequence")
     RECOVERY_GUIDANCE.reject { |requirement| section_text.include?(requirement) }.tap do |errors|
       operations = section_text.match(/Do not repeat (`[^\n]+`) merely/)&.captures&.first&.scan(/`([^`]+)`/)&.flatten
-      errors << :mutation_inventory unless operations == EXPECTED_OPERATIONS - [ "observe" ]
+      errors << :mutation_inventory unless operations == NON_REPEATABLE_OPERATIONS
     end
   end
 

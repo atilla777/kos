@@ -48,9 +48,12 @@ module WorkflowAttempts
       if attempt.owned_repository_effects.unresolved.exists?
         raise OperationError.new("invalid_transition", "Attempt has an unresolved repository effect")
       end
-      return unless attempt.owned_publications.unresolved.exists?
-
-      raise OperationError.new("invalid_transition", "Attempt has an unresolved publication")
+      if attempt.owned_publications.unresolved.exists?
+        raise OperationError.new("invalid_transition", "Attempt has an unresolved publication")
+      end
+      if attempt.owned_publication_preflights.active.exists?
+        raise OperationError.new("invalid_transition", "Attempt has an active publication preflight")
+      end
     end
   end
 end

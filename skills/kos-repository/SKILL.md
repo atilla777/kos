@@ -30,6 +30,7 @@ Every operation belongs to an existing durable protocol. Never invoke the adapte
 | `fetch` | Prepared or adopted durable `fetch` effect and registered repository trust snapshot |
 | `rebase` | Current `confirmed` reservation, prepared or adopted durable `rebase` effect, and complete verified fetch request and result |
 | `push` | Prepared or adopted publication, current task version, approved review and required-check evidence for the exact candidate, and registered publication target |
+| `publication_preflight` | Prepared or adopted version 2 publication preflight and registered repository trust snapshot |
 
 `observe` means worktree observation only. Version 1 has no generic adapter command for observing or reconciling a commit, fetch, or rebase effect. Never invent one.
 
@@ -40,14 +41,14 @@ Immediately before invocation, use current values returned by `kos`. Never infer
 Invoke exactly one of the implemented operations in this form:
 
 ```text
-kos-repository <materialize|observe|remove|commit|fetch|rebase|push> --input <path|-> --json
+kos-repository <materialize|observe|remove|commit|fetch|rebase|push|publication_preflight> --input <path|-> --json
 ```
 
 - Use `kos-repository`, not a path into a KOS source checkout.
 - Prefer `--input -` when the closed request document can be supplied without a temporary file.
 - Pass the executable and every argument as a process argument array. Never interpolate task, workflow, artifact, or model input into a shell command.
 - The operation argument must equal the request's `operation`.
-- Supply exactly one JSON object conforming to `schemas/repository/v1/adapter.json#/$defs/request`, with `schema_version` exactly `"1"` and no additional properties.
+- Supply exactly one closed JSON object. `publication_preflight` uses `schemas/repository/v2/adapter.json#/$defs/request` and `schema_version: "2"`; every other operation uses `schemas/repository/v1/adapter.json#/$defs/request` and `schema_version: "1"`.
 - Keep stdout and stderr separate. Stdout is the single machine result; stderr is diagnostics only and may not be parsed as state or evidence.
 - The adapter has no API token, repository flag, idempotency key, or built-in retry loop. Do not copy those properties from the `kos` state CLI.
 
@@ -62,6 +63,7 @@ kos-repository <materialize|observe|remove|commit|fetch|rebase|push> --input <pa
 | `fetch` | Fetch only the registered base ref from the registered trusted remote without updating local refs. |
 | `rebase` | Replay the verified linear task-commit suffix onto the verified fetched base. |
 | `push` | Observe and conditionally publish the exact candidate to the registered base ref, then observe candidate reachability. |
+| `publication_preflight` | Observe the exact registered base ref for a durable version 2 preflight without updating refs or shared `FETCH_HEAD`. |
 
 Do not invoke an operation absent from this table. Do not use the adapter to run project checks, choose paths, create commit messages, approve candidates, select transitions, classify publication completion, or make any other workflow decision.
 
@@ -70,9 +72,9 @@ Do not invoke an operation absent from this table. Do not use the adapter to run
 Capture stdout, stderr, and process exit status separately. The executable validates its own output against the closed schema; independently fail closed unless all of these checks pass:
 
 1. Stdout contains exactly one JSON object and no prose.
-2. `schema_version` is exactly `"1"`.
+2. `schema_version` is exactly `"2"` for `publication_preflight` and `"1"` for every other operation.
 3. `operation` equals the operation invoked; `unknown` is valid only for malformed invocation input.
-4. `outcome` is exactly one of the schema-valid `succeeded`, `failed`, or push-only `unknown` branches.
+4. `outcome` is exactly one of the schema-valid `succeeded`, `failed`, or push- and publication-preflight-only `unknown` branches.
 5. The complete document validates against `adapter.json#/$defs/success` or `adapter.json#/$defs/failure`, as appropriate.
 6. Exit status is `0` for `succeeded`, or matches the error category for `failed` or `unknown`.
 7. Every returned repository, reservation, effect, publication, current-owner, fencing-token, request-digest, candidate, and operation field equals the invocation and fresh authoritative KOS snapshot wherever that field applies. Immediately before `push`, recheck that the current task version, prepared publication, approved review, and required checks all bind the exact candidate and target.
@@ -99,12 +101,13 @@ An exit status of `0` means that the adapter returned a valid observation. It do
 - After a timeout, lost response, transient failure, or otherwise invalid result from a mutating operation, treat the outcome as potentially uncertain. Return control to the operation's durable recovery protocol rather than creating a replacement intent or issuing an automatic retry.
 - Do not repeat `materialize`, `remove`, `commit`, `fetch`, `rebase`, or `push` merely because the process failed, timed out, or returned `retryable: true`. A later invocation requires a fresh authoritative read, completed reconciliation when required, and renewed protocol authorization.
 - A fresh worktree `observe` may be requested only when the current reservation protocol calls for it. It does not reconcile a generic effect or publication by itself.
+- A `publication_preflight` success is submitted only to version 2 `publication-preflight reconcile`. Its `unknown` result is preserved through that command; after adoption, a fresh observation is recovery of the same read-only intent rather than authorization for a publication or push.
 
 ## Safe Invocation Sequence
 
 1. Read the task, attempt, and matching durable resource through `kos` in the immutable repository scope.
 2. Verify lease ownership, fencing, current task version, resource state, and operation-specific preconditions; verify context digest and workflow allowlist for a workflow-requested effect.
-3. Build one closed version 1 request entirely from current authoritative snapshots and verified effect inputs.
+3. Build one closed request in the operation's required adapter version entirely from current authoritative snapshots and verified effect inputs.
 4. Invoke the installed adapter once with an argument array and separated output streams.
 5. Validate the complete result, exit status, operation, outcome, and all applicable bindings.
 6. Build the matching closed KOS reconciliation body from that validated observation and authoritative durable state; do not infer workflow success from adapter success.

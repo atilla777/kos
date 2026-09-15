@@ -19,6 +19,7 @@ These documents are normative specifications of observable KOS behavior and mate
 | [Runtime Integration](runtime-integration.md) | Canonical skills, runtime targets, and CLI protocol |
 | [Retrospective](retrospective.md) | Optional session analysis, privacy, and improvement proposals |
 | [CLI Protocol Version 1](cli-protocol.md) | Versioned commands, JSON schemas, transport, preconditions, and stable errors |
+| [CLI Protocol Version 2](cli-protocol-v2.md) | Minimal additive durable publication-preflight commands and schemas |
 | [Initialization](initialization.md) | Safe target-project and runtime installation |
 | [Central Persistence](central-persistence.md) | Production state layout, migrations, workflow content, and repository registration |
 

@@ -44,6 +44,12 @@ RSpec.describe Kos::Initialize::Application do
     expect(required_executable_results).to all(eq([ "executable_unavailable", true ]))
   end
 
+  it "rejects an installed repository adapter without publication preflight support" do
+    write_executable("kos-repository", "#!/usr/bin/env ruby\nexit 0\n")
+    result = invoke("plan", "--input", "-", "--json")
+    expect(result.dig(:document, "error", "code")).to eq("runtime_incompatible")
+  end
+
   it "applies copied files, publishes the manifest last, and then plans unchanged" do
     expect(apply_contract_results).to all(be_truthy)
   end
@@ -184,6 +190,16 @@ RSpec.describe Kos::Initialize::Application do
          "content_digest" => "#{KosInitializeApplicationFixture::DIGEST}", "definition" => {"workflow_id" => "quick-fix"}}
       when ["repository", "register"]
         JSON.parse(STDIN.read).merge("id" => repository_id)
+      when ["publication-preflight", "get"], ["publication-preflight", "prepare"],
+           ["publication-preflight", "reconcile"], ["publication", "prepare-observed"]
+        identifier = { ["publication-preflight", "get"] => "publication_preflight.get",
+                       ["publication-preflight", "prepare"] => "publication_preflight.prepare",
+                       ["publication-preflight", "reconcile"] => "publication_preflight.reconcile",
+                       ["publication", "prepare-observed"] => "publication.prepare_observed" }.fetch(command)
+        puts JSON.generate("schema_version" => "2", "request_id" => "33333333-3333-4333-8333-333333333333",
+          "command" => identifier, "error" => {"category" => "authorization",
+            "code" => "repository_access_denied", "message" => "Repository access denied", "retryable" => false})
+        exit 4
       else
         abort "unexpected command"
       end
@@ -191,7 +207,18 @@ RSpec.describe Kos::Initialize::Application do
                      ["repository", "register"] => "repository.register" }.fetch(command)
       puts JSON.generate("schema_version" => "1", "command" => identifier, "data" => data)
     RUBY
-    write_executable("kos-repository", "#!/usr/bin/env ruby\nexit 0\n")
+    write_executable("kos-repository", <<~RUBY)
+      #!/usr/bin/env ruby
+      require "json"
+      if ARGV == ["publication_preflight", "--input", "-", "--json"]
+        request = JSON.parse(STDIN.read)
+        puts JSON.generate("schema_version" => "2", "operation" => "publication_preflight", "outcome" => "failed",
+          "error" => {"category" => "validation", "code" => "publication_preflight_mismatch",
+                      "message" => "Preflight mismatch", "retryable" => false})
+        exit 2
+      end
+      abort "unexpected command"
+    RUBY
     write_executable("kos-opencode", <<~RUBY)
       #!/usr/bin/env ruby
       exec #{File.join(KosInitializeApplicationFixture::ROOT, "bin/kos-opencode").inspect}, *ARGV

@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kos.local/schemas/repository/v2/adapter.json",
+  "$defs": {
+    "schema_version": { "const": "2" },
+    "uuid": { "type": "string", "format": "uuid" },
+    "git_oid": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "identifier": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,127}$" },
+    "remote_url": { "type": "string", "format": "uri", "maxLength": 4096, "pattern": "^(?:(?:https|ssh|git)://(?![^/?#]*:[^/?#]*@)[^?#]+|file://[^/?#]*/[^?#]*)$" },
+    "absolute_path": { "type": "string", "minLength": 1, "pattern": "^/", "x-canonical-path": true },
+    "base_ref": { "type": "string", "pattern": "^refs/heads/[^ ]+$" },
+    "repository": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "git_common_dir": { "$ref": "#/$defs/absolute_path" },
+        "trusted_remote": { "$ref": "#/$defs/identifier" },
+        "trusted_remote_url": { "$ref": "#/$defs/remote_url" },
+        "base_ref": { "$ref": "#/$defs/base_ref" }
+      },
+      "required": ["id", "git_common_dir", "trusted_remote", "trusted_remote_url", "base_ref"],
+      "additionalProperties": false
+    },
+    "publication_preflight": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "repository_id": { "$ref": "#/$defs/uuid" },
+        "task_id": { "$ref": "#/$defs/uuid" },
+        "candidate_sha": { "$ref": "#/$defs/git_oid" },
+        "current_owner_attempt_id": { "$ref": "#/$defs/uuid" },
+        "fencing_token": { "type": "integer", "minimum": 1 },
+        "remote": { "$ref": "#/$defs/identifier" },
+        "base_ref": { "$ref": "#/$defs/base_ref" },
+        "state": { "enum": ["prepared", "unknown"] }
+      },
+      "required": ["id", "repository_id", "task_id", "candidate_sha", "current_owner_attempt_id", "fencing_token", "remote", "base_ref", "state"],
+      "additionalProperties": false
+    },
+    "request": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/schema_version" },
+        "operation": { "const": "publication_preflight" },
+        "repository": { "$ref": "#/$defs/repository" },
+        "publication_preflight": { "$ref": "#/$defs/publication_preflight" }
+      },
+      "required": ["schema_version", "operation", "repository", "publication_preflight"],
+      "additionalProperties": false
+    },
+    "success": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/schema_version" },
+        "operation": { "const": "publication_preflight" },
+        "outcome": { "const": "succeeded" },
+        "repository_id": { "$ref": "#/$defs/uuid" },
+        "publication_preflight_id": { "$ref": "#/$defs/uuid" },
+        "task_id": { "$ref": "#/$defs/uuid" },
+        "candidate_sha": { "$ref": "#/$defs/git_oid" },
+        "current_owner_attempt_id": { "$ref": "#/$defs/uuid" },
+        "fencing_token": { "type": "integer", "minimum": 1 },
+        "remote": { "$ref": "#/$defs/identifier" },
+        "base_ref": { "$ref": "#/$defs/base_ref" },
+        "observed_remote_oid": { "$ref": "#/$defs/git_oid" },
+        "observed_at": { "type": "string", "format": "date-time" },
+        "evidence_digest": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["schema_version", "operation", "outcome", "repository_id", "publication_preflight_id", "task_id", "candidate_sha", "current_owner_attempt_id", "fencing_token", "remote", "base_ref", "observed_remote_oid", "observed_at", "evidence_digest"],
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "category": { "enum": ["validation", "internal", "transient"] },
+        "code": { "enum": ["malformed_input", "repository_mismatch", "repository_invalid", "repository_ref_invalid", "repository_format_unsupported", "repository_lock_invalid", "publication_preflight_mismatch", "publication_preflight_remote_mismatch", "publication_preflight_ref_mismatch", "publication_preflight_configuration_invalid", "publication_preflight_state_uncertain", "internal_error"] },
+        "message": { "type": "string", "minLength": 1 },
+        "retryable": { "type": "boolean" }
+      },
+      "required": ["category", "code", "message", "retryable"],
+      "oneOf": [
+        { "properties": { "category": { "const": "validation" }, "code": { "enum": ["malformed_input", "repository_mismatch", "repository_invalid", "repository_ref_invalid", "repository_format_unsupported", "repository_lock_invalid", "publication_preflight_mismatch", "publication_preflight_remote_mismatch", "publication_preflight_ref_mismatch", "publication_preflight_configuration_invalid"] }, "retryable": { "const": false } } },
+        { "properties": { "category": { "const": "internal" }, "code": { "const": "internal_error" }, "retryable": { "const": false } } },
+        { "properties": { "category": { "const": "transient" }, "code": { "const": "publication_preflight_state_uncertain" }, "retryable": { "const": true } } }
+      ],
+      "additionalProperties": false
+    },
+    "failed": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/schema_version" },
+        "operation": { "const": "publication_preflight" },
+        "outcome": { "const": "failed" },
+        "error": { "allOf": [{ "$ref": "#/$defs/error" }, { "not": { "properties": { "category": { "const": "transient" } }, "required": ["category"] } }] }
+      },
+      "required": ["schema_version", "operation", "outcome", "error"],
+      "additionalProperties": false
+    },
+    "unknown": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/schema_version" },
+        "operation": { "const": "publication_preflight" },
+        "outcome": { "const": "unknown" },
+        "error": { "allOf": [{ "$ref": "#/$defs/error" }, { "properties": { "category": { "const": "transient" }, "code": { "const": "publication_preflight_state_uncertain" }, "retryable": { "const": true } } }] }
+      },
+      "required": ["schema_version", "operation", "outcome", "error"],
+      "additionalProperties": false
+    },
+    "failure": { "oneOf": [{ "$ref": "#/$defs/failed" }, { "$ref": "#/$defs/unknown" }] }
+  }
+}

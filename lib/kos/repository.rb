@@ -10,6 +10,7 @@ require "tmpdir"
 
 require_relative "json_parser"
 require_relative "git_url"
+require_relative "publication_preflight_evidence"
 require_relative "worktree_observation"
 
 module Kos
@@ -27,15 +28,16 @@ module Kos
     end
 
     class Schema
-      PATH = File.expand_path("../../schemas/repository/v1/adapter.json", __dir__)
+      PATHS = %w[1 2].to_h do |version|
+        [ version, File.expand_path("../../schemas/repository/v#{version}/adapter.json", __dir__) ]
+      end.freeze
 
       def initialize
-        document = JSON.parse(File.read(PATH))
-        @schema = JSONSchemer.schema(document)
+        @schemas = PATHS.transform_values { |path| JSONSchemer.schema(JSON.parse(File.read(path))) }
       end
 
       def valid?(definition, value)
-        @schema.ref("#/$defs/#{definition}").valid?(value)
+        @schemas.fetch(value["schema_version"], nil)&.ref("#/$defs/#{definition}")&.valid?(value) || false
       end
     end
 
@@ -1344,7 +1346,7 @@ module Kos
 
       def validate_trusted_url!
         url = repository.fetch("trusted_remote_url")
-        validation!("push_configuration_invalid", "Trusted remote URL is invalid") unless
+        validation!(configuration_error_code, "Trusted remote URL is invalid") unless
           normalized_git_url(url) == url
       end
 
@@ -1352,13 +1354,13 @@ module Kos
         configured = git_common("config", "--null", "--get-all", "remote.#{remote}.url")
         urls = nul_values(configured)
         normalized = urls.map { |url| normalized_git_url(url) }
-        validation!("push_configuration_invalid", "Trusted remote configuration does not match") unless
+        validation!(configuration_error_code, "Trusted remote configuration does not match") unless
           configured.success && normalized == [ repository.fetch("trusted_remote_url") ]
         @transport_url = urls.first
 
         names = git_common("config", "--local", "--name-only", "--null", "--list")
-        validation!("push_configuration_invalid", "Repository configuration could not be verified") unless names.success
-        validation!("push_configuration_invalid", "Repository configuration can redirect publication") if
+        validation!(configuration_error_code, "Repository configuration could not be verified") unless names.success
+        validation!(configuration_error_code, "Repository configuration can redirect publication") if
           nul_values(names).any? { |name| FORBIDDEN_CONFIG.any? { |pattern| pattern.match?(name) } }
       end
 
@@ -1394,33 +1396,36 @@ module Kos
       end
 
       def observe_remote
+        fetch_remote
+        observed_tip = observed_remote_oid
+        [ observed_tip, candidate_reachable?(observed_tip) ]
+      rescue Error => error
+        raise if error.code == observation_error_code
+
+        transient!(observation_error_code, "Publication remote observation failed")
+      rescue SystemCallError
+        transient!(observation_error_code, "Publication remote observation failed")
+      end
+
+      def fetch_remote
         result = git_common(*TRANSPORT_CONFIGURATION, "fetch", "--no-append", "--no-tags", "--no-prune",
           "--no-prune-tags", "--no-recurse-submodules", "--no-auto-maintenance", "--no-write-commit-graph",
           "--no-update-shallow", "--no-write-fetch-head", "--refmap=", "--upload-pack=git-upload-pack",
           @transport_url, base_ref)
-        transient!("push_observation_failed", "Publication remote observation failed") unless result.success
-
-        observed_tip = observed_remote_oid
-        [ observed_tip, candidate_reachable?(observed_tip) ]
-      rescue Error => error
-        raise if error.code == "push_observation_failed"
-
-        transient!("push_observation_failed", "Publication remote observation failed")
-      rescue SystemCallError
-        transient!("push_observation_failed", "Publication remote observation failed")
+        transient!(observation_error_code, "Publication remote observation failed") unless result.success
       end
 
       def observed_remote_oid
         result = git_common(*TRANSPORT_CONFIGURATION, "ls-remote", "--refs", "--exit-code",
           @transport_url, base_ref)
-        transient!("push_observation_failed", "Publication remote observation failed") unless result.success
+        transient!(observation_error_code, "Publication remote observation failed") unless result.success
         match = result.stdout.match(/\A([0-9a-f]{40})\t([^\0\r\n]+)(?:\n)?\z/)
-        transient!("push_observation_failed", "Publication remote observation is invalid") unless
+        transient!(observation_error_code, "Publication remote observation is invalid") unless
           match && match[2] == base_ref
 
         oid = match[1]
         object = git_common("cat-file", "-t", oid)
-        transient!("push_observation_failed", "Observed remote tip is not a local commit") unless
+        transient!(observation_error_code, "Observed remote tip is not a local commit") unless
           object.success && object.stdout == "commit\n"
         oid
       end
@@ -1473,6 +1478,68 @@ module Kos
       def digest(bytes)
         "sha256:#{Digest::SHA256.hexdigest(bytes)}"
       end
+
+      def configuration_error_code
+        "push_configuration_invalid"
+      end
+
+      def observation_error_code
+        "push_observation_failed"
+      end
+    end
+
+    class PublicationPreflight < Push
+      def call
+        validate_repository!
+        with_lock do
+          validate_repository!
+          validate_authority!
+          validate_trusted_url!
+          validate_remote_configuration!
+          fetch_remote
+          success(observed_remote_oid)
+        end
+      rescue Error => error
+        raise unless error.category == "transient"
+
+        raise Error.new("transient", "publication_preflight_state_uncertain",
+          "Publication preflight remote state could not be observed", retryable: true, outcome: "unknown")
+      end
+
+      private
+
+      def validate_authority!
+        validation!("publication_preflight_mismatch", "Publication preflight does not belong to the repository") unless
+          publication_preflight.fetch("repository_id") == repository.fetch("id")
+        validation!("publication_preflight_remote_mismatch",
+          "Publication preflight remote does not match registered trust") unless remote == repository.fetch("trusted_remote")
+        validation!("publication_preflight_ref_mismatch",
+          "Publication preflight ref does not match the registered base ref") unless base_ref == repository.fetch("base_ref")
+      end
+
+      def success(observed_remote_oid)
+        observed_at = Time.now.utc.iso8601(6)
+        { "observed_remote_oid" => observed_remote_oid, "observed_at" => observed_at,
+          "evidence_digest" => Kos::PublicationPreflightEvidence.digest(repository: repository,
+            publication_preflight: publication_preflight, observed_remote_oid: observed_remote_oid,
+            observed_at: observed_at) }
+      end
+
+      def publication_preflight
+        request.fetch("publication_preflight")
+      end
+
+      def publication
+        publication_preflight
+      end
+
+      def configuration_error_code
+        "publication_preflight_configuration_invalid"
+      end
+
+      def observation_error_code
+        "publication_preflight_state_uncertain"
+      end
     end
 
     class Application
@@ -1504,14 +1571,23 @@ module Kos
         when "fetch" then Fetch.new(request)
         when "rebase" then Rebase.new(request)
         when "push" then Push.new(request)
+        when "publication_preflight" then PublicationPreflight.new(request)
         else Worktree.new(request)
         end
       end
 
       def success_document(request, result)
-        document = { "schema_version" => "1", "operation" => request.fetch("operation"), "outcome" => "succeeded",
+        document = { "schema_version" => request.fetch("schema_version"), "operation" => request.fetch("operation"),
+          "outcome" => "succeeded",
           "repository_id" => request.dig("repository", "id") }
-        if %w[fetch rebase].include?(request.fetch("operation"))
+        if request.fetch("operation") == "publication_preflight"
+          preflight = request.fetch("publication_preflight")
+          document.merge(result).merge("publication_preflight_id" => preflight.fetch("id"),
+            "task_id" => preflight.fetch("task_id"), "candidate_sha" => preflight.fetch("candidate_sha"),
+            "current_owner_attempt_id" => preflight.fetch("current_owner_attempt_id"),
+            "fencing_token" => preflight.fetch("fencing_token"), "remote" => preflight.fetch("remote"),
+            "base_ref" => preflight.fetch("base_ref"))
+        elsif %w[fetch rebase].include?(request.fetch("operation"))
           effect = request.fetch("effect")
           document.merge(result).merge("effect_id" => effect.fetch("id"),
             "current_owner_attempt_id" => effect.fetch("current_owner_attempt_id"),
@@ -1535,17 +1611,18 @@ module Kos
 
       def write_error(error)
         @stderr.puts(error.message)
-        write({ "schema_version" => "1", "operation" => known_operation, "outcome" => error.outcome,
+        write({ "schema_version" => known_schema_version, "operation" => known_operation, "outcome" => error.outcome,
           "error" => { "category" => error.category, "code" => error.code, "message" => error.message,
             "retryable" => error.retryable } })
       end
 
       def parse
         operation, input_flag, path, json_flag = @arguments
-        unless %w[materialize observe remove commit fetch rebase push].include?(operation) && input_flag == "--input" && path &&
+        unless %w[materialize observe remove commit fetch rebase push publication_preflight].include?(operation) &&
+            input_flag == "--input" && path &&
             json_flag == "--json" && @arguments.length == 4
           raise Error.new("validation", "malformed_input",
-            "Usage: kos-repository <materialize|observe|remove|commit|fetch|rebase|push> --input <path|-> --json")
+            "Usage: kos-repository <materialize|observe|remove|commit|fetch|rebase|push|publication_preflight> --input <path|-> --json")
         end
         content = path == "-" ? @input.read : File.binread(path)
         request = Kos::JsonParser.parse(content)
@@ -1559,7 +1636,12 @@ module Kos
       end
 
       def known_operation
-        %w[materialize observe remove commit fetch rebase push].include?(@arguments.first) ? @arguments.first : "unknown"
+        operations = %w[materialize observe remove commit fetch rebase push publication_preflight]
+        operations.include?(@arguments.first) ? @arguments.first : "unknown"
+      end
+
+      def known_schema_version
+        known_operation == "publication_preflight" ? "2" : "1"
       end
 
       def write(document)

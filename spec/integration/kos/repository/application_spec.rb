@@ -356,6 +356,22 @@ RSpec.describe Kos::Repository::Application do
     expect(push_lock_observation).to eq([ true, true, true ])
   end
 
+  it "observes the trusted publication base without pushing or changing refs and FETCH_HEAD", :aggregate_failures do
+    expect(successful_publication_preflight_observation).to eq([ true, true, true, true, false ])
+  end
+
+  it "returns retryable unknown when publication preflight transport is uncertain" do
+    expect(unknown_publication_preflight_observation).to eq(
+      [ 8, "2", "unknown", "publication_preflight_state_uncertain", true ]
+    )
+  end
+
+  it "repeats publication preflight identity and trust validation under the common lock" do
+    expect(publication_preflight_lock_observation).to eq(
+      [ true, "publication_preflight_configuration_invalid", false ]
+    )
+  end
+
   it "rebases the exact task commit suffix onto verified fetched base evidence", :aggregate_failures do
     expect(successful_rebase_observation).to eq(
       [ true, true, true, [ "KOS-000123" ], "", true, true, true ]
@@ -746,6 +762,63 @@ RSpec.describe Kos::Repository::Application do
         "input_context_digest" => "sha256:#{'e' * 64}", "candidate_sha" => candidate, "remote" => "origin",
         "base_ref" => "refs/heads/main", "expected_remote_oid" => expected_remote_oid } }
     [ input, candidate ]
+  end
+
+  def publication_preflight_request
+    prepare_remote
+    { "schema_version" => "2", "operation" => "publication_preflight",
+      "repository" => { "id" => repository_id, "git_common_dir" => common_dir,
+        "trusted_remote" => "origin", "trusted_remote_url" => remote_url, "base_ref" => "refs/heads/main" },
+      "publication_preflight" => { "id" => "44444444-4444-4444-8444-444444444444",
+        "repository_id" => repository_id, "task_id" => "55555555-5555-4555-8555-555555555555",
+        "candidate_sha" => head_sha, "current_owner_attempt_id" => "77777777-7777-4777-8777-777777777777",
+        "fencing_token" => 11, "remote" => "origin", "base_ref" => "refs/heads/main", "state" => "prepared" } }
+  end
+
+  def successful_publication_preflight_observation
+    input = publication_preflight_request
+    fetch_head = File.join(common_dir, "FETCH_HEAD")
+    original_fetch_head = "#{'f' * 40}\t\tbranch 'other' of hidden\n"
+    File.binwrite(fetch_head, original_fetch_head)
+    before = repository_state
+    adapter, calls = recording_git
+    allow(Kos::Repository::PublicationPreflight).to receive(:new).and_return(
+      Kos::Repository::PublicationPreflight.new(input, git: adapter)
+    )
+    result = invoke(input)
+    evidence = Kos::PublicationPreflightEvidence.digest(repository: input.fetch("repository"),
+      publication_preflight: input.fetch("publication_preflight"),
+      observed_remote_oid: result.fetch("observed_remote_oid"), observed_at: result.fetch("observed_at"))
+    [ result.fetch("observed_remote_oid") == remote_head, result.fetch("evidence_digest") == evidence,
+      repository_state == before, File.binread(fetch_head) == original_fetch_head, push_called?(calls) ]
+  end
+
+  def unknown_publication_preflight_observation
+    input = publication_preflight_request
+    adapter, = recording_git(fetch_success: false)
+    allow(Kos::Repository::PublicationPreflight).to receive(:new).and_return(
+      Kos::Repository::PublicationPreflight.new(input, git: adapter)
+    )
+    document, status = run(input)
+    [ status, document.fetch("schema_version"), document.fetch("outcome"), document.dig("error", "code"),
+      document.dig("error", "retryable") ]
+  end
+
+  def publication_preflight_lock_observation
+    input = publication_preflight_request
+    lock = File.open(File.join(common_dir, "kos-repository.lock"), File::RDWR | File::CREAT, 0o600)
+    lock.flock(File::LOCK_EX)
+    adapter, calls = recording_git
+    operation = Kos::Repository::PublicationPreflight.new(input, git: adapter)
+    worker = Thread.new { capture_operation_error(operation) }
+    sleep 0.05
+    blocked = worker.alive?
+    git(repository_path, "config", "--replace-all", "remote.origin.url", "file:///untrusted.git")
+    lock.flock(File::LOCK_UN)
+    error = worker.value
+    [ blocked, error.code, fetch_called?(calls) ]
+  ensure
+    lock&.close
   end
 
   def successful_push_observation

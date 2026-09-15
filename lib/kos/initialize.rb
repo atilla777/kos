@@ -7,6 +7,7 @@ require "pathname"
 require "securerandom"
 
 require_relative "git_url"
+require_relative "cli/schema_registry"
 require_relative "json_parser"
 require_relative "runtime/open_code/capability_verifier"
 require_relative "version"
@@ -438,7 +439,7 @@ module Kos
       def plan(request)
         @schema.validate!("request", request)
         repository = inspect_repository(request)
-        readiness = inspect_readiness
+        readiness = inspect_readiness(repository)
         sources = source_files
         manifest, manifest_observation = read_manifest(repository.fetch("worktree_root"), repository)
         files = observe_files(repository.fetch("worktree_root"), sources, manifest)
@@ -516,7 +517,7 @@ module Kos
         raise Error.new("repository_invalid", "Trusted remote URL is invalid")
       end
 
-      def inspect_readiness
+      def inspect_readiness(repository_snapshot)
         kos = executable("kos")
         repository = executable("kos-repository")
         launcher = executable("kos-opencode")
@@ -534,6 +535,8 @@ module Kos
         unless workflow["id"] == workflow_id && workflow["task_type"] == "quick-fix" && workflow["definition"].is_a?(Hash)
           raise Error.new("workflow_unavailable", "Active quick-fix workflow is not readable")
         end
+        verify_publication_preflight_cli!(kos)
+        verify_publication_preflight_adapter!(repository, repository_snapshot)
         {
           "kos_executable" => kos, "repository_executable" => repository,
           "launcher_executable" => launcher, "opencode_executable" => opencode,
@@ -544,6 +547,76 @@ module Kos
         }
       rescue KeyError, JSON::ParserError
         raise Error.new("workflow_unavailable", "KOS returned malformed workflow readiness data")
+      end
+
+      def verify_publication_preflight_cli!(kos)
+        repository_id = SecureRandom.uuid
+        preflight_id = SecureRandom.uuid
+        attempt_id = SecureRandom.uuid
+        preconditions = { "expected_lock_version" => 0, "attempt_id" => attempt_id, "fencing_token" => 1 }
+        probes = [ [ %w[publication-preflight get], [ "--preflight", preflight_id ], nil ],
+          [ %w[publication-preflight prepare], [], { "task_number" => "KOS-000001", "candidate_sha" => "a" * 40,
+            "remote" => "origin", "base_ref" => "refs/heads/main", "preconditions" => preconditions } ],
+          [ %w[publication-preflight reconcile], [], { "preflight_id" => preflight_id,
+            "unknown" => { "category" => "transient", "code" => "publication_preflight_state_uncertain",
+              "message" => "Capability probe", "retryable" => true }, "preconditions" => preconditions } ],
+          [ %w[publication prepare-observed], [], { "preflight_id" => preflight_id,
+            "preconditions" => preconditions } ] ]
+        probes.each_with_index do |(parts, options, body), index|
+          mutation = body ? [ "--input", "-", "--idempotency-key", "capability-probe-#{index}" ] : []
+          result = @runner.capture(kos, *parts, "--repository", repository_id, *options, *mutation, "--json",
+            chdir: @cwd, stdin_data: body ? JSON.generate(body) : "",
+            environment: { "PATH" => @environment.fetch("PATH", "") })
+          verify_capability_failure!(result, schema: Kos::Cli::SchemaRegistry.new(version: "2"),
+            definition: "failure", exit_status: 4, identity_field: "command", identity: command_identifier(parts),
+            code: "repository_access_denied")
+        end
+      end
+
+      def verify_publication_preflight_adapter!(repository, snapshot)
+        repository_id = SecureRandom.uuid
+        request = { "schema_version" => "2", "operation" => "publication_preflight",
+          "repository" => { "id" => repository_id, "git_common_dir" => snapshot.fetch("git_common_dir"),
+            "trusted_remote" => snapshot.fetch("trusted_remote"),
+            "trusted_remote_url" => snapshot.fetch("trusted_remote_url"), "base_ref" => snapshot.fetch("base_ref") },
+          "publication_preflight" => { "id" => SecureRandom.uuid, "repository_id" => SecureRandom.uuid,
+            "task_id" => SecureRandom.uuid, "candidate_sha" => "a" * 40,
+            "current_owner_attempt_id" => SecureRandom.uuid, "fencing_token" => 1,
+            "remote" => snapshot.fetch("trusted_remote"), "base_ref" => snapshot.fetch("base_ref"),
+            "state" => "prepared" } }
+        result = @runner.capture(repository, "publication_preflight", "--input", "-", "--json",
+          chdir: @cwd, stdin_data: JSON.generate(request), environment: { "PATH" => @environment.fetch("PATH", "") })
+        verify_capability_failure!(result, schema: repository_v2_schema, definition: "failure", exit_status: 2,
+          identity_field: "operation", identity: "publication_preflight", code: "publication_preflight_mismatch")
+      end
+
+      def verify_capability_failure!(result, schema:, definition:, exit_status:, identity_field:, identity:, code:)
+        document = Kos::JsonParser.parse(result.stdout)
+        valid = !result.timed_out && result.status.exitstatus == exit_status && document.is_a?(Hash) &&
+          schema_valid?(schema, definition, document) && document[identity_field] == identity &&
+          document.dig("error", "code") == code
+        raise Error.new("runtime_incompatible", "Installed KOS executables lack publication preflight") unless valid
+      rescue JSON::ParserError
+        raise Error.new("runtime_incompatible", "Installed KOS executables lack publication preflight")
+      end
+
+      def schema_valid?(schema, definition, document)
+        return schema.valid?("envelopes.json", definition, document) if schema.is_a?(Kos::Cli::SchemaRegistry)
+
+        schema.ref("#/$defs/#{definition}").valid?(document)
+      end
+
+      def repository_v2_schema
+        @repository_v2_schema ||= JSONSchemer.schema(JSON.parse(File.read(
+          File.join(ROOT, "schemas/repository/v2/adapter.json")
+        )))
+      end
+
+      def command_identifier(parts)
+        { %w[publication-preflight get] => "publication_preflight.get",
+          %w[publication-preflight prepare] => "publication_preflight.prepare",
+          %w[publication-preflight reconcile] => "publication_preflight.reconcile",
+          %w[publication prepare-observed] => "publication.prepare_observed" }.fetch(parts)
       end
 
       def executable(name)

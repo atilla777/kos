@@ -53,6 +53,17 @@ Rails.application.routes.draw do
         end
       end
     end
+    namespace :v2 do
+      scope "repositories/:repository_id" do
+        resources :tasks, only: [], param: :task_number do
+          post "publication-preflights", to: "publication_preflights#prepare", on: :member
+        end
+        resources :publication_preflights, only: :show, path: "publication-preflights" do
+          post :reconcile, on: :member
+        end
+        post "publication-preflights/:preflight_id/publication", to: "publications#prepare_observed"
+      end
+    end
   end
 
   get "api/:schema_version/*path" => "api/unsupported_versions#show",

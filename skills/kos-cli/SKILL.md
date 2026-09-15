@@ -54,7 +54,8 @@ Use only these commands until a later installed CLI explicitly supports more:
 | Scope | Reads | Mutations |
 | --- | --- | --- |
 | Global | `runtime-config get`, `task-type list`, `workflow list`, `workflow get`, `workflow export`, `workflow-draft get`, `workflow-draft validate` | `repository register`, `runtime-config update`, `workflow-draft import`, `workflow publish`, `workflow activate` |
-| Repository | `repository get`, `task get`, `attempt get`, `worktree get`, `effect get`, `publication get`, `artifact list` | `task create`, `attempt claim`, `attempt renew`, `attempt fail`, `attempt needs-human`, `attempt reconcile`, `step context`, `step complete`, `worktree reserve`, `worktree confirm`, `worktree reconcile`, `worktree release`, `effect prepare`, `effect reconcile`, `publication prepare`, `publication reconcile` |
+| Repository v1 | `repository get`, `task get`, `attempt get`, `worktree get`, `effect get`, `publication get`, `artifact list` | `task create`, `attempt claim`, `attempt renew`, `attempt fail`, `attempt needs-human`, `attempt reconcile`, `step context`, `step complete`, `worktree reserve`, `worktree confirm`, `worktree reconcile`, `worktree release`, `effect prepare`, `effect reconcile`, `publication prepare`, `publication reconcile` |
+| Repository v2 | `publication-preflight get` | `publication-preflight prepare`, `publication-preflight reconcile`, `publication prepare-observed` |
 
 ## Unavailable Commands
 
@@ -65,7 +66,7 @@ Use only these commands until a later installed CLI explicitly supports more:
 Capture stdout and the process exit status separately. The CLI performs full request and response JSON Schema validation. Independently fail closed unless all of these checks pass:
 
 1. Stdout contains exactly one JSON object and no prose.
-2. `schema_version` is exactly `"1"`.
+2. `schema_version` is exactly `"2"` for the four publication-preflight commands and `"1"` for every other installed command.
 3. `request_id` is a UUID string.
 4. `command` equals the logical command invoked, such as `task.get`; `unknown` is valid only for an `unknown_command` failure.
 5. Exactly one of `data` or `error` is present.

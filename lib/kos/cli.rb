@@ -58,6 +58,11 @@ module Kos
         %w[publication get] => [ "publication.get", "repository", { "publication_id" => "--publication" } ],
         %w[publication prepare] => [ "publication.prepare", "repository", {}, true ],
         %w[publication reconcile] => [ "publication.reconcile", "repository", {}, true ],
+        %w[publication prepare-observed] => [ "publication.prepare_observed", "repository", {}, true, "2" ],
+        %w[publication-preflight get] => [ "publication_preflight.get", "repository",
+          { "preflight_id" => "--preflight" }, false, "2" ],
+        %w[publication-preflight prepare] => [ "publication_preflight.prepare", "repository", {}, true, "2" ],
+        %w[publication-preflight reconcile] => [ "publication_preflight.reconcile", "repository", {}, true, "2" ],
         %w[artifact list] => [ "artifact.list", "repository",
           { "task_number" => "--task", "limit" => "--limit", "cursor" => "--cursor" } ]
       }.freeze
@@ -72,7 +77,8 @@ module Kos
         definition = COMMANDS[key]
         raise Error.new("validation", "unknown_command", "Command is not implemented") unless definition
 
-        command, scope, option_definitions, mutation = definition
+        command, scope, option_definitions, mutation, version = definition
+        version ||= "1"
         extra_options = mutation ? %w[--input --idempotency-key] : []
         options = parse_options(arguments.drop(2), option_definitions.values + [ "--repository", *extra_options ])
         raise Error.new("validation", "malformed_input", "--json is required") unless options.delete("--json")
@@ -88,9 +94,10 @@ module Kos
         end
         raise Error.new("validation", "malformed_input", "Arguments are malformed") unless options.empty?
 
-        request = { "schema_version" => "1", "command" => command, "body" => body }
+        request = { "schema_version" => version, "command" => command, "body" => body }
         request["repository_id"] = repository_id if repository_id
-        unless @schema_registry.valid?("commands.json", "request", request)
+        registry = version == "1" ? @schema_registry : SchemaRegistry.new(version:)
+        unless registry.valid?("commands.json", "request", request)
           raise Error.new("validation", "malformed_input", "Arguments are malformed")
         end
         if command == "task.create" && body.dig("task_input", "approved_brief").bytesize > MAX_APPROVED_BRIEF_BYTES
@@ -196,6 +203,14 @@ module Kos
         "publication.get" => "/api/v1/repositories/%<repository_id>s/publications/%<publication_id>s",
         "publication.prepare" => "/api/v1/repositories/%<repository_id>s/tasks/%<task_number>s/publications",
         "publication.reconcile" => "/api/v1/repositories/%<repository_id>s/publications/%<publication_id>s/reconcile",
+        "publication.prepare_observed" =>
+          "/api/v2/repositories/%<repository_id>s/publication-preflights/%<preflight_id>s/publication",
+        "publication_preflight.get" =>
+          "/api/v2/repositories/%<repository_id>s/publication-preflights/%<preflight_id>s",
+        "publication_preflight.prepare" =>
+          "/api/v2/repositories/%<repository_id>s/tasks/%<task_number>s/publication-preflights",
+        "publication_preflight.reconcile" =>
+          "/api/v2/repositories/%<repository_id>s/publication-preflights/%<preflight_id>s/reconcile",
         "artifact.list" => "/api/v1/repositories/%<repository_id>s/tasks/%<task_number>s/artifacts"
       }.freeze
 
@@ -219,13 +234,13 @@ module Kos
 
           delay(attempt, response, timeout)
         rescue Net::ReadTimeout, Timeout::Error
-          response = local_failure(logical_request.fetch("command"), "transient", "request_timeout",
+          response = local_failure(logical_request, "transient", "request_timeout",
             "API request timed out")
           return response if attempt == 2
 
           delay(attempt, response, timeout)
         rescue *TRANSIENT_ERRORS
-          response = local_failure(logical_request.fetch("command"), "transient", "transport_unavailable",
+          response = local_failure(logical_request, "transient", "transport_unavailable",
             "API transport is unavailable")
           return response if attempt == 2
 
@@ -281,8 +296,10 @@ module Kos
         raw = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https", open_timeout: timeout,
           read_timeout: timeout) { |http| http.request(request) }
         document = JSON.parse(raw.body)
-        valid = @schema_registry.valid?("commands.json", "result", document) ||
-          @schema_registry.valid?("envelopes.json", "failure", document)
+        registry = logical_request["schema_version"] == "1" ? @schema_registry :
+          SchemaRegistry.new(version: logical_request.fetch("schema_version"))
+        valid = registry.valid?("commands.json", "result", document) ||
+          registry.valid?("envelopes.json", "failure", document)
         raise Error.new("internal", "internal_error", "API response failed schema validation") unless valid
         unless document.fetch("command") == command && raw.code.to_i == expected_status(document, command)
           raise Error.new("internal", "internal_error", "API response does not match the request")
@@ -299,9 +316,9 @@ module Kos
 
       def expected_status(document, command)
         if document["data"]
-          @schema_registry.success_status(command)
+          registry_for(document).success_status(command)
         else
-          @schema_registry.error_status(document.dig("error", "code"))
+          registry_for(document).error_status(document.dig("error", "code"))
         end
       end
 
@@ -312,9 +329,14 @@ module Kos
         @sleeper.sleep([ seconds, timeout ].min)
       end
 
-      def local_failure(command, category, code, message)
-        { "schema_version" => "1", "request_id" => SecureRandom.uuid, "command" => command,
+      def local_failure(logical_request, category, code, message)
+        { "schema_version" => logical_request.fetch("schema_version"), "request_id" => SecureRandom.uuid,
+          "command" => logical_request.fetch("command"),
           "error" => { "category" => category, "code" => code, "message" => message, "retryable" => true } }
+      end
+
+      def registry_for(document)
+        document["schema_version"] == "1" ? @schema_registry : SchemaRegistry.new(version: document.fetch("schema_version"))
       end
     end
 
@@ -335,8 +357,9 @@ module Kos
         write(document)
       rescue Error => error
         command = command_for_error(error)
+        version = command == "unknown" ? "1" : Parser::COMMANDS.fetch(@arguments.first(2)).fetch(4, "1")
         @stderr.puts(error.message)
-        write({ "schema_version" => "1", "request_id" => SecureRandom.uuid, "command" => command,
+        write({ "schema_version" => version, "request_id" => SecureRandom.uuid, "command" => command,
           "error" => { "category" => error.category, "code" => error.code, "message" => error.message,
             "retryable" => false } })
       end

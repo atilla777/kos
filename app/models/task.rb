@@ -17,6 +17,7 @@ class Task < ApplicationRecord
   has_many :worktree_reservations, dependent: :restrict_with_exception
   has_many :repository_effects, dependent: :restrict_with_exception
   has_many :publications, dependent: :restrict_with_exception
+  has_many :publication_preflights, dependent: :restrict_with_exception
 
   validates :sequence, inclusion: { in: 1..999_999 }, uniqueness: { scope: :repository_id }
   validate :validate_title

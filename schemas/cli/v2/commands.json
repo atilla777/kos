@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kos.local/schemas/cli/v2/commands.json",
+  "$defs": {
+    "command_identifier": { "enum": ["publication_preflight.get", "publication_preflight.prepare", "publication_preflight.reconcile", "publication.prepare_observed"] },
+    "request_base": { "type": "object", "properties": { "schema_version": { "$ref": "common.json#/$defs/schema_version" }, "command": { "$ref": "#/$defs/command_identifier" }, "repository_id": { "$ref": "common.json#/$defs/uuid" }, "body": { "type": "object" } }, "required": ["schema_version", "command", "repository_id", "body"] },
+    "preflight_locator": { "type": "object", "properties": { "preflight_id": { "$ref": "common.json#/$defs/uuid" } }, "required": ["preflight_id"], "additionalProperties": false },
+    "publication_preflight_prepare_body": {
+      "type": "object",
+      "properties": { "task_number": { "$ref": "common.json#/$defs/task_number" }, "candidate_sha": { "$ref": "common.json#/$defs/git_oid" }, "remote": { "$ref": "common.json#/$defs/identifier" }, "base_ref": { "$ref": "common.json#/$defs/base_ref" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } },
+      "required": ["task_number", "candidate_sha", "remote", "base_ref", "preconditions"],
+      "x-server-preconditions": ["current_candidate_generation", "approved_independent_review", "trusted_remote_and_base_ref"],
+      "additionalProperties": false
+    },
+    "publication_preflight_reconcile_body": {
+      "oneOf": [
+        { "type": "object", "properties": { "preflight_id": { "$ref": "common.json#/$defs/uuid" }, "observed_remote_oid": { "$ref": "common.json#/$defs/git_oid" }, "observed_at": { "$ref": "common.json#/$defs/timestamp" }, "evidence_digest": { "$ref": "common.json#/$defs/digest" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["preflight_id", "observed_remote_oid", "observed_at", "evidence_digest", "preconditions"], "x-canonical-evidence": "server-verified-publication-preflight-observation", "additionalProperties": false },
+        { "type": "object", "properties": { "preflight_id": { "$ref": "common.json#/$defs/uuid" }, "unknown": { "$ref": "envelopes.json#/$defs/safe_error" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } }, "required": ["preflight_id", "unknown", "preconditions"], "additionalProperties": false }
+      ]
+    },
+    "publication_prepare_observed_body": {
+      "type": "object",
+      "properties": { "preflight_id": { "$ref": "common.json#/$defs/uuid" }, "preconditions": { "$ref": "common.json#/$defs/leased_preconditions" } },
+      "required": ["preflight_id", "preconditions"],
+      "x-copies-expected-remote-oid-from": "publication_preflight.observed_remote_oid",
+      "x-server-preconditions": ["reconciled_preflight", "current_candidate_generation", "approved_independent_review", "trusted_remote_and_base_ref"],
+      "additionalProperties": false
+    },
+    "request": {
+      "allOf": [
+        { "$ref": "#/$defs/request_base" },
+        { "oneOf": [
+          { "properties": { "command": { "const": "publication_preflight.get" }, "body": { "$ref": "#/$defs/preflight_locator" } } },
+          { "properties": { "command": { "const": "publication_preflight.prepare" }, "body": { "$ref": "#/$defs/publication_preflight_prepare_body" } } },
+          { "properties": { "command": { "const": "publication_preflight.reconcile" }, "body": { "$ref": "#/$defs/publication_preflight_reconcile_body" } } },
+          { "properties": { "command": { "const": "publication.prepare_observed" }, "body": { "$ref": "#/$defs/publication_prepare_observed_body" } } }
+        ] }
+      ],
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "allOf": [
+        { "$ref": "envelopes.json#/$defs/success" },
+        { "oneOf": [
+          { "properties": { "command": { "const": "publication_preflight.get" }, "data": { "$ref": "resources.json#/$defs/publication_preflight" } } },
+          { "properties": { "command": { "const": "publication_preflight.prepare" }, "data": { "allOf": [{ "$ref": "resources.json#/$defs/publication_preflight" }, { "properties": { "state": { "const": "prepared" } } }] } } },
+          { "properties": { "command": { "const": "publication_preflight.reconcile" }, "data": { "allOf": [{ "$ref": "resources.json#/$defs/publication_preflight" }, { "properties": { "state": { "enum": ["unknown", "reconciled"] } } }] } } },
+          { "properties": { "command": { "const": "publication.prepare_observed" }, "data": { "allOf": [{ "$ref": "resources.json#/$defs/publication" }, { "properties": { "state": { "const": "prepared" } } }] } } }
+        ] }
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

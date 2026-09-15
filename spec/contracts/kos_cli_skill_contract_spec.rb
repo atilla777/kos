@@ -72,7 +72,8 @@ module KosCliSkillContract
 
   def implemented_command_entries
     Kos::Cli::Parser::COMMANDS.map do |parts, definition|
-      scope = definition[1] ? "Repository" : "Global"
+      version = definition.fetch(4, "1")
+      scope = definition[1] ? "Repository v#{version}" : "Global"
       kind = definition[3] ? :mutation : :read
       [ scope, kind, parts.join(" ") ]
     end

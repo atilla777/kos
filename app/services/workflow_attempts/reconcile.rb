@@ -44,6 +44,8 @@ module WorkflowAttempts
         return if observed_state == "repository_effect_pending"
       elsif attempt.owned_publications.unresolved.exists?
         return if observed_state == "publication_unknown"
+      elsif attempt.owned_publication_preflights.active.exists?
+        return if observed_state == "publication_unknown"
       elsif !%w[repository_effect_pending publication_unknown].include?(observed_state)
         return
       end

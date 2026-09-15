@@ -5,10 +5,10 @@ require "uri"
 module Kos
   module Cli
     class SchemaRegistry
-      SCHEMA_DIRECTORY = File.expand_path("../../../schemas/cli/v1", __dir__)
+      SCHEMA_ROOT = File.expand_path("../../../schemas/cli", __dir__)
 
-      def initialize
-        schemas = Dir[File.join(SCHEMA_DIRECTORY, "*.json")].sort.map do |path|
+      def initialize(version: "1")
+        schemas = Dir[File.join(SCHEMA_ROOT, "v#{version}", "*.json")].sort.map do |path|
           JSON.parse(File.read(path))
         end
         registry = schemas.to_h { |schema| [ URI(schema.fetch("$id")), schema ] }

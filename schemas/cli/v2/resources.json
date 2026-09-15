@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kos.local/schemas/cli/v2/resources.json",
+  "$defs": {
+    "publication_preflight": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "common.json#/$defs/schema_version" },
+        "id": { "$ref": "common.json#/$defs/uuid" },
+        "repository_id": { "$ref": "common.json#/$defs/uuid" },
+        "task_id": { "$ref": "common.json#/$defs/uuid" },
+        "prepared_attempt_id": { "$ref": "common.json#/$defs/uuid" },
+        "current_owner_attempt_id": { "$ref": "common.json#/$defs/uuid" },
+        "candidate_sha": { "$ref": "common.json#/$defs/git_oid" },
+        "remote": { "$ref": "common.json#/$defs/identifier" },
+        "base_ref": { "$ref": "common.json#/$defs/base_ref" },
+        "state": { "enum": ["prepared", "unknown", "reconciled", "consumed"] },
+        "observed_remote_oid": { "$ref": "common.json#/$defs/git_oid" },
+        "observation_digest": { "$ref": "common.json#/$defs/digest" },
+        "observed_at": { "$ref": "common.json#/$defs/timestamp" },
+        "error": { "$ref": "envelopes.json#/$defs/safe_error" },
+        "publication_id": { "$ref": "common.json#/$defs/uuid" },
+        "prepared_at": { "$ref": "common.json#/$defs/timestamp" },
+        "reconciled_at": { "$ref": "common.json#/$defs/timestamp" },
+        "consumed_at": { "$ref": "common.json#/$defs/timestamp" },
+        "updated_at": { "$ref": "common.json#/$defs/timestamp" }
+      },
+      "required": ["schema_version", "id", "repository_id", "task_id", "prepared_attempt_id", "current_owner_attempt_id", "candidate_sha", "remote", "base_ref", "state", "prepared_at", "updated_at"],
+      "allOf": [
+        { "if": { "properties": { "state": { "const": "prepared" } }, "required": ["state"] }, "then": { "not": { "anyOf": [{ "required": ["observed_remote_oid"] }, { "required": ["observation_digest"] }, { "required": ["observed_at"] }, { "required": ["error"] }, { "required": ["publication_id"] }, { "required": ["reconciled_at"] }, { "required": ["consumed_at"] }] } } },
+        { "if": { "properties": { "state": { "const": "unknown" } }, "required": ["state"] }, "then": { "required": ["error", "reconciled_at"], "not": { "anyOf": [{ "required": ["observed_remote_oid"] }, { "required": ["observation_digest"] }, { "required": ["observed_at"] }, { "required": ["publication_id"] }, { "required": ["consumed_at"] }] } } },
+        { "if": { "properties": { "state": { "enum": ["reconciled", "consumed"] } }, "required": ["state"] }, "then": { "required": ["observed_remote_oid", "observation_digest", "observed_at", "reconciled_at"], "not": { "required": ["error"] } } },
+        { "if": { "properties": { "state": { "const": "reconciled" } }, "required": ["state"] }, "then": { "not": { "anyOf": [{ "required": ["publication_id"] }, { "required": ["consumed_at"] }] } } },
+        { "if": { "properties": { "state": { "const": "consumed" } }, "required": ["state"] }, "then": { "required": ["publication_id", "consumed_at"] } }
+      ],
+      "x-immutable-bindings": ["repository_id", "task_id", "prepared_attempt_id", "candidate_sha", "remote", "base_ref"],
+      "additionalProperties": false
+    },
+    "publication": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "common.json#/$defs/schema_version" },
+        "id": { "$ref": "common.json#/$defs/uuid" },
+        "repository_id": { "$ref": "common.json#/$defs/uuid" },
+        "task_id": { "$ref": "common.json#/$defs/uuid" },
+        "prepared_attempt_id": { "$ref": "common.json#/$defs/uuid" },
+        "current_owner_attempt_id": { "$ref": "common.json#/$defs/uuid" },
+        "candidate_sha": { "$ref": "common.json#/$defs/git_oid" },
+        "remote": { "$ref": "common.json#/$defs/identifier" },
+        "base_ref": { "$ref": "common.json#/$defs/base_ref" },
+        "expected_remote_oid": { "$ref": "common.json#/$defs/git_oid" },
+        "state": { "enum": ["prepared", "reconciled", "superseded", "completed"] },
+        "observed_remote_tip": { "$ref": "common.json#/$defs/git_oid" },
+        "candidate_reachable": { "type": "boolean" },
+        "observation_digest": { "$ref": "common.json#/$defs/digest" },
+        "observed_at": { "$ref": "common.json#/$defs/timestamp" },
+        "prepared_at": { "$ref": "common.json#/$defs/timestamp" },
+        "reconciled_at": { "$ref": "common.json#/$defs/timestamp" },
+        "completed_at": { "$ref": "common.json#/$defs/timestamp" },
+        "updated_at": { "$ref": "common.json#/$defs/timestamp" }
+      },
+      "required": ["schema_version", "id", "repository_id", "task_id", "prepared_attempt_id", "current_owner_attempt_id", "candidate_sha", "remote", "base_ref", "expected_remote_oid", "state", "prepared_at", "updated_at"],
+      "allOf": [
+        { "if": { "properties": { "state": { "enum": ["reconciled", "superseded", "completed"] } }, "required": ["state"] }, "then": { "required": ["observed_remote_tip", "candidate_reachable", "observation_digest", "observed_at", "reconciled_at"] } },
+        { "if": { "properties": { "state": { "const": "completed" } }, "required": ["state"] }, "then": { "properties": { "candidate_reachable": { "const": true } }, "required": ["completed_at"] } },
+        { "if": { "properties": { "state": { "const": "superseded" } }, "required": ["state"] }, "then": { "properties": { "candidate_reachable": { "const": false } } } }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

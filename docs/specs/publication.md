@@ -22,9 +22,13 @@ After approval of that candidate, publication:
 
 Only the reviewed candidate may be published to the trusted remote and base ref. Force-push is prohibited.
 
+For new publication attempts, the additive version 2 path obtains the expected remote OID through a durable publication preflight before creating the publication intent. The orchestrator first prepares a preflight bound to the current reviewed candidate and trusted target, then asks only `kos-repository` to observe that target. Concrete reconciliation requires server verification of canonical adapter evidence containing `observed_remote_oid`, `observed_at`, and `evidence_digest`. An unknown result remains unresolved and is adopted and reconciled after interruption without a blind repeat.
+
+Observed preparation accepts the reconciled preflight identifier and leased preconditions, never a caller-supplied OID. It atomically consumes that preflight and creates the existing publication-shaped resource with `expected_remote_oid` copied from the verified observation. Concurrent preparation, reconciliation, and consumption preserve idempotency, lock, lease, and fencing semantics and produce at most one active result. The exact machine surface is defined by [CLI Protocol Version 2](cli-protocol-v2.md), and [ADR-0011](../decisions/0011-minimal-cli-v2-coexistence.md) records why it coexists with immutable version 1.
+
 ## Recovery And Base Movement
 
-If push outcome is unknown, such as a connection loss after sending data, publication fetches the remote before attempting another push. Every adapter invocation performs this preflight observation: it returns without another push when the candidate is already reachable and does not push when the observed tip differs from the prepared expected OID. A retry is allowed only when the candidate is not reachable and the base ref still equals that OID. The same idempotency key returns the already recorded outcome.
+If push outcome is unknown, such as a connection loss after sending data, publication fetches the remote before attempting another push. Every push adapter invocation performs its own immediate preflight observation, independently of the durable preparation preflight: it returns without another push when the candidate is already reachable and does not push when the observed tip differs from the prepared expected OID. A retry is allowed only when the candidate is not reachable and the base ref still equals that OID. The same idempotency key returns the already recorded outcome.
 
 If another task moved the base branch, KOS rejects the push. The task must synchronize with the current base, produce a new candidate SHA, repeat required checks and independent review, and then publish the new generation. Evidence for the old candidate does not satisfy the new candidate.
 

@@ -26,6 +26,8 @@ module KosOrchestrateSkillContract
     attempt.claim attempt.renew attempt.fail attempt.needs_human attempt.reconcile step.context step.complete
     worktree.reserve worktree.confirm worktree.reconcile worktree.release
     effect.prepare effect.reconcile publication.prepare publication.reconcile
+    publication_preflight.get publication_preflight.prepare publication_preflight.reconcile
+    publication.prepare_observed
   ].freeze
   REQUIRED_GUIDANCE = {
     "Authority Boundary" => [
@@ -47,7 +49,8 @@ module KosOrchestrateSkillContract
     "Prepare The Context" => [
       "no such path-allocation read", "never derive a path", "worktree reserve", "worktree confirm",
       "Dirty or mismatched state is a blocker",
-      "publication prepare", "Before a review context", "development's earlier observation is stale",
+      "publication-preflight prepare", "publication prepare-observed", "Before a review context",
+      "development's earlier observation is stale",
       "RFC 8785 canonical JSON serialization", "mix it with another context"
     ],
     "Dispatch The Pinned Mode" => [
@@ -61,7 +64,7 @@ module KosOrchestrateSkillContract
       "Return it only to the retained child session", "preserve `failed` and `unknown` outcomes exactly",
       "After reconciling a successful `commit`", "adapter `observe`", "through `worktree reconcile`",
       "return success only after an `absent` observation", "`push_state_uncertain`",
-      "cannot complete, fail, or enter `needs_human`"
+      "cannot complete, fail, or enter `needs_human`", "adopts any active `prepared`, `unknown`, or `reconciled`"
     ],
     "Submit The Result" => [
       "preserve its substantive outcome, artifacts, summary, and evidence unchanged",
