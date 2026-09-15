@@ -20,7 +20,7 @@ RSpec.describe Idempotency::Execute, :aggregate_failures do
   end
 
   def fixture
-    File.join(root, "spec/fixtures/workflow_definitions/v1/valid/quick-fix.json")
+    File.join(root, "workflows/quick-fix/1.0.1.json")
   end
 
   def runner_script

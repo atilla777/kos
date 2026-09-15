@@ -22,7 +22,7 @@ RSpec.describe TaskCreation::Create, ".call", :aggregate_failures do
   def prepare(environment)
     _output, status = Open3.capture2e(environment, File.join(root, "bin/rails"), "db:prepare")
     expect(status).to be_success
-    fixture = File.join(root, "spec/fixtures/workflow_definitions/v1/valid/quick-fix.json")
+    fixture = File.join(root, "workflows/quick-fix/1.0.1.json")
     JSON.parse(run_script(environment, <<~RUBY))
       repository = Repository.create!(git_common_dir: "/tmp/concurrent.git", task_prefix: "KOS",
         trusted_remote: "origin", trusted_remote_url: "file:///tmp/remote.git", base_ref: "refs/heads/main")

@@ -104,9 +104,10 @@ RSpec.describe WorkflowCatalog::PublishDraft, :aggregate_failures do
   end
 
   it "does not change the workflow version pinned by an existing task" do
-    ids = activated_versions_for_existing_task
+    pinned, active, newly_selected = activated_versions_for_existing_task
 
-    expect([ ids.all? { |id| id.match?(/\A[0-9a-f-]{36}\z/) }, ids.uniq.length ]).to eq([ true, 2 ])
+    expect([ pinned.version, active.version, newly_selected.version, pinned.id == active.id ])
+      .to eq([ "1.0.0", "1.0.1", "1.0.1", false ])
   end
 
   def publish_then_change_draft
@@ -164,20 +165,25 @@ RSpec.describe WorkflowCatalog::PublishDraft, :aggregate_failures do
   end
 
   def activated_versions_for_existing_task
-    first = publish_workflow
+    historical = JSON.parse(File.read(Rails.root.join("workflows/quick-fix/1.0.0.json")))
+    first = publish_workflow(historical)
     activate(first.id, 0)
-    task = create_task_pinned_to(first)
-    draft = import_workflow(workflow_definition(version: "2.0.0"), expected_lock_version: 1)
+    task = create_task_pinned_to
+    draft = import_workflow(workflow_definition, expected_lock_version: 1)
     second = described_class.call(workflow_id: "quick-fix", expected_lock_version: draft.lock_version)
     activate(second.id, 1)
-    [ task.reload.workflow_version_id, quick_fix_task_type.reload.current_workflow_version_id ]
+    new_task = create_task("New task", task.repository)
+    [ task.reload.workflow_version, quick_fix_task_type.reload.current_workflow_version, new_task.workflow_version ]
   end
 
-  def create_task_pinned_to(workflow)
+  def create_task_pinned_to
     repository = Repository.create!(git_common_dir: "/tmp/#{SecureRandom.uuid}.git", task_prefix: "KOS",
       trusted_remote: "origin", trusted_remote_url: "file:///tmp/remote.git", base_ref: "refs/heads/main")
-    Task.create!(repository: repository, sequence: 1, title: "Pinned task", task_input_schema_version: "1",
-      approved_brief: "Keep the approved task pinned.", task_type: quick_fix_task_type,
-      workflow_version: workflow, workflow_state: workflow.workflow_states.find_by!(initial: true))
+    create_task("Pinned task", repository)
+  end
+
+  def create_task(title, repository)
+    input = { "schema_version" => "1", "title" => title, "approved_brief" => "Execute the approved task." }
+    TaskCreation::Create.call(repository:, task_input: input, task_type_name: "quick-fix")
   end
 end

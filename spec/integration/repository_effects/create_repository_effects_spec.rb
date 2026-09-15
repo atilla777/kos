@@ -29,7 +29,7 @@ RSpec.describe CreateRepositoryEffects, :aggregate_failures do
   end
 
   def seed_state(environment)
-    fixture = File.join(root, "spec/fixtures/workflow_definitions/v1/valid/quick-fix.json")
+    fixture = File.join(root, "workflows/quick-fix/1.0.1.json")
     runner!(environment, <<~RUBY)
       type = TaskType.find_or_create_by!(id: "quick-fix") do |record|
         record.name = "quick-fix"

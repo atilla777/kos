@@ -31,7 +31,7 @@ RSpec.describe Task, ".approved task input migration", :aggregate_failures do
 
   def seed_legacy_task(environment)
     runner!(environment, <<~'RUBY')
-      definition = JSON.parse(File.read(Rails.root.join("spec/fixtures/workflow_definitions/v1/valid/quick-fix.json")))
+      definition = JSON.parse(File.read(Rails.root.join("workflows/quick-fix/1.0.1.json")))
       repository = Repository.create!(git_common_dir: "/tmp/legacy-input.git", task_prefix: "LEG",
         trusted_remote: "origin", trusted_remote_url: "file:///tmp/remote.git", base_ref: "refs/heads/main")
       TaskType.create!(id: "quick-fix", name: "quick-fix", workflow_id: "quick-fix")

@@ -1,6 +1,6 @@
 module WorkflowCatalogHelpers
-  def workflow_definition(version: "1.0.0")
-    path = Rails.root.join("spec/fixtures/workflow_definitions/v1/valid/quick-fix.json")
+  def workflow_definition(version: "1.0.1")
+    path = Rails.root.join("workflows/quick-fix/1.0.1.json")
     JSON.parse(File.read(path)).merge("version" => version)
   end
 

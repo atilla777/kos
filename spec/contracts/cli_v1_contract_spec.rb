@@ -7,7 +7,8 @@ require "spec_helper"
 module CliV1Contract
   SCHEMA_DIRECTORY = File.expand_path("../../schemas/cli/v1", __dir__)
   RUNTIME_SCHEMA_PATH = File.expand_path("../../schemas/runtime/v1/retrospective.json", __dir__)
-  WORKFLOW_FIXTURE = File.expand_path("../fixtures/workflow_definitions/v1/valid/quick-fix.json", __dir__)
+  WORKFLOW_FIXTURE = File.expand_path("../../workflows/quick-fix/1.0.1.json", __dir__)
+  HISTORICAL_WORKFLOW_FIXTURE = File.expand_path("../../workflows/quick-fix/1.0.0.json", __dir__)
   INVALID_WORKFLOW_FIXTURES = File.expand_path("../fixtures/workflow_definitions/v1/invalid/*.json", __dir__)
   INVALID_WORKFLOW_CASES = Dir[INVALID_WORKFLOW_FIXTURES].sort.map do |path|
     [ File.basename(path), JSON.parse(File.read(path)) ]
@@ -54,12 +55,16 @@ module CliV1Contract
     JSON.parse(File.read(WORKFLOW_FIXTURE))
   end
 
+  def historical_workflow_definition
+    JSON.parse(File.read(HISTORICAL_WORKFLOW_FIXTURE))
+  end
+
   def canonical_json(value)
     WorkflowCatalog::CanonicalJson.generate(value)
   end
 
-  def canonical_workflow_definition
-    value = Marshal.load(Marshal.dump(workflow_definition))
+  def canonical_workflow_definition(definition = workflow_definition)
+    value = Marshal.load(Marshal.dump(definition))
     value.fetch("statuses").each do |status|
       status.fetch("artifact_templates").sort_by! { |template| template.fetch("id") }
       status.fetch("allowed_repository_effects").sort!
@@ -78,8 +83,28 @@ module CliV1Contract
     value
   end
 
-  def workflow_content_digest
-    "sha256:#{Digest::SHA256.hexdigest(canonical_json(canonical_workflow_definition))}"
+  def workflow_content_digest(definition = workflow_definition)
+    "sha256:#{Digest::SHA256.hexdigest(canonical_json(canonical_workflow_definition(definition)))}"
+  end
+
+  def workflow_execution_policy
+    workflow_definition.fetch("statuses").to_h do |status|
+      [ status.fetch("id"), status.values_at("execution_mode", "worktree", "repository_changes",
+        "allowed_repository_effects") ]
+    end
+  end
+
+  def expected_workflow_execution_policy
+    {
+      "implementation-planning" => [ "subagent", "required", "allowed", [ "commit" ] ],
+      "development" => [ "subagent", "required", "allowed", [ "commit" ] ],
+      "review" => [ "subagent", "required", "forbidden", [] ],
+      "publication" => [ "subagent", "required", "forbidden", [ "fetch", "push", "worktree_remove" ] ]
+    }
+  end
+
+  def workflow_instructions
+    workflow_definition.fetch("statuses").to_h { |status| [ status.fetch("id"), status.fetch("instruction") ] }
   end
 
   def preconditions
@@ -112,7 +137,7 @@ module CliV1Contract
 
   def workflow_summary
     { "schema_version" => "1", "id" => WORKFLOW_VERSION_ID, "workflow_id" => "quick-fix", "task_type" => "quick-fix",
-      "version" => "1.0.0", "content_digest" => workflow_content_digest,
+      "version" => workflow_definition.fetch("version"), "content_digest" => workflow_content_digest,
       "published_at" => "2026-09-09T12:00:00Z" }
   end
 
@@ -736,6 +761,35 @@ RSpec.describe CliV1Contract do
       .valid?(described_class.workflow_definition)
 
     expect([ validity, described_class.graph_errors(described_class.workflow_definition) ]).to eq([ true, [] ])
+  end
+
+  it "retains a valid historical quick-fix workflow definition" do
+    validity = described_class.definition("workflow_definition.json", "definition")
+      .valid?(described_class.historical_workflow_definition)
+
+    expect([ validity, described_class.graph_errors(described_class.historical_workflow_definition) ])
+      .to eq([ true, [] ])
+  end
+
+  it "pins the historical production quick-fix content" do
+    expect(described_class.workflow_content_digest(described_class.historical_workflow_definition))
+      .to eq("sha256:b5e2205f398b12e27dcb6d48053d2aee32f457049d9655a42eaf54f06ce69d6b")
+  end
+
+  it "pins the reviewed production quick-fix content" do
+    expect(described_class.workflow_summary.fetch("content_digest"))
+      .to eq("sha256:db2ffddd73dd0715b00d80c5dac7f45f40f4e93b713ad898cab93a6d258d2e5b")
+  end
+
+  it "keeps the production quick-fix execution policy minimal" do
+    expect(described_class.workflow_execution_policy).to eq(described_class.expected_workflow_execution_policy)
+  end
+
+  it "uses frozen approved task input for planning, development, and review" do
+    instructions = described_class.workflow_instructions.values_at("implementation-planning", "development", "review")
+
+    expect([ instructions.all? { |instruction| instruction.include?("exact versioned approved task input from the frozen context") },
+      instructions.none? { |instruction| instruction.include?("approved task record") } ]).to eq([ true, true ])
   end
 
   CliV1Contract::INVALID_WORKFLOW_CASES.each do |name, fixture|

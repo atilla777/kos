@@ -1,0 +1,72 @@
+{
+  "schema_version": "1",
+  "workflow_id": "quick-fix",
+  "task_type": "quick-fix",
+  "version": "1.0.0",
+  "initial_status": "implementation-planning",
+  "terminal_status": "completed",
+  "statuses": [
+    {
+      "id": "implementation-planning",
+      "execution_mode": "subagent",
+      "instruction": "# Implementation Planning\n\nCreate the implementation plan for this task.\n\n- Read the approved task record, relevant specifications, accepted ADRs, repository rules, and affected code. Treat absent or conflicting approved requirements as a reason to return `needs_human`; do not invent product decisions.\n- Keep the plan limited to the approved task. Identify the current and target state, technical design, affected components and contracts, ordered implementation steps, verification strategy, and material risks. Use task-local requirement, decision, acceptance, and risk identifiers where those sections are present.\n- Create `tasks/<task-number>/implementation-plan.md` using the supplied template. Keep durable behavior in `docs/specs/` and long-lived architecture decisions in `docs/decisions/`; reference them rather than duplicating them.\n- Run the non-Git checks needed to validate the document. Request one `commit` effect for the exact implementation-plan path only. After a succeeded effect, return one produced task-scoped document artifact bound to the committed path, commit SHA, and content digest.\n- Do not report success without the committed implementation-plan artifact required by this status.\n",
+      "artifact_templates": [
+        {
+          "id": "implementation-plan",
+          "media_type": "text/markdown; charset=utf-8",
+          "content": "---\ntitle: <Task Title> Implementation Plan\ntask: <TASK-NUMBER>\n---\n\n# <TASK-NUMBER>: Implementation Plan\n\n## Current State\n\nDescribe the relevant existing behavior and implementation.\n\n## Target State\n\nDescribe the approved result and boundaries.\n\n## Technical Design\n\nRecord task-local technical decisions and reference affected specifications and ADRs.\n\n## Components And Contracts\n\nList the code, persistence, API, CLI, runtime, documentation, or artifact contracts affected by the change.\n\n## Implementation Sequence\n\n1. List the smallest ordered implementation steps.\n\n## Verification\n\nList focused tests, required suites, linters, and any manual checks.\n\n## Risks\n\nRecord material delivery and regression risks and their controls.\n"
+        }
+      ],
+      "allowed_repository_effects": ["commit"],
+      "worktree": "required",
+      "repository_changes": "allowed",
+      "required_artifacts": [
+        { "type": "document", "cardinality": "one", "subject": "task", "allowed_states": ["produced"] }
+      ]
+    },
+    {
+      "id": "development",
+      "execution_mode": "subagent",
+      "instruction": "# Development\n\nImplement and verify the approved implementation plan.\n\n- Read the task record, committed implementation plan, referenced specifications and ADRs, repository rules, and relevant code before editing. Stop with `needs_human` if they conflict or a material product or architecture decision is missing.\n- Change only files required by the approved scope. Preserve unrelated work and established boundaries; do not add opportunistic refactoring, compatibility behavior, dependencies, or contract changes.\n- Add or update automated tests for every behavior change or defect fix. Run the focused checks while iterating, then every required affected suite and linter from the repository rules. Preserve the exact command, exit code, and bounded output digest for each test artifact.\n- After all required checks pass, request one `commit` effect containing exactly the task paths and a concise message. Use the returned commit SHA as the candidate SHA and bind every passed test artifact to that exact candidate.\n- Return one produced task candidate and one or more passed candidate test artifacts. Never label a failed, skipped, stale, or unrun check as passed, and do not report success without a succeeded commit effect.\n",
+      "artifact_templates": [],
+      "allowed_repository_effects": ["commit"],
+      "worktree": "required",
+      "repository_changes": "allowed",
+      "required_artifacts": [
+        { "type": "candidate", "cardinality": "one", "subject": "task", "allowed_states": ["produced"] },
+        { "type": "test", "cardinality": "many", "subject": "candidate", "allowed_states": ["passed"] }
+      ]
+    },
+    {
+      "id": "review",
+      "execution_mode": "subagent",
+      "instruction": "# Independent Review\n\nReview the exact candidate identified by the frozen context without changing repository files.\n\n- Read the approved task record, implementation plan, relevant specifications and ADRs, repository rules, and candidate files available in the supplied worktree. Do not review another branch, commit, or checkout and do not request repository effects.\n- Prioritize correctness defects, security or reliability invariant violations, behavioral regressions, unsafe recovery or publication behavior, and missing required tests. Run useful non-mutating project checks when permitted, but do not claim evidence that is unavailable from the frozen context and worktree.\n- Return `changes_requested` when any material finding remains. Return `approved` only when the candidate satisfies the approved scope and acceptance criteria and no material finding remains. Bind the review metadata to the exact candidate SHA and this distinct review attempt.\n- Do not edit findings away, broaden the task, or convert uncertainty about required evidence into approval.\n",
+      "artifact_templates": [],
+      "allowed_repository_effects": [],
+      "worktree": "required",
+      "repository_changes": "forbidden",
+      "required_artifacts": [
+        { "type": "review", "cardinality": "one", "subject": "candidate", "allowed_states": ["approved", "changes_requested"] }
+      ]
+    },
+    {
+      "id": "publication",
+      "execution_mode": "subagent",
+      "instruction": "# Publication\n\nPublish only the approved candidate and release its task worktree safely.\n\n- Require the frozen context to identify the exact candidate, prepared publication, trusted remote, full base ref, expected remote OID, and confirmed worktree reservation. Do not substitute ambient Git state or another candidate.\n- Request the authorized `push` effect for the prepared publication. Treat only a succeeded result whose observation proves the candidate reachable from the trusted base ref as published. A moved base, failed effect, unknown result, mismatched evidence, or absent reachability is not success and must remain in the durable recovery path.\n- After publication is proven, request `worktree_remove` for the exact reservation and expected HEAD. Do not report success until removal is durably reconciled as succeeded; never remove a dirty, mismatched, or unknown worktree.\n- Return one published candidate-scoped publication artifact using the exact publication ID, candidate SHA, remote, base ref, observed remote tip, reachability, and observation time from the validated publication result. Do not publish again or fabricate missing evidence.\n",
+      "artifact_templates": [],
+      "allowed_repository_effects": ["fetch", "push", "worktree_remove"],
+      "worktree": "required",
+      "repository_changes": "forbidden",
+      "required_artifacts": [
+        { "type": "publication", "cardinality": "one", "subject": "candidate", "allowed_states": ["published"] }
+      ]
+    }
+  ],
+  "transitions": [
+    { "from": "implementation-planning", "to": "development", "conditions": [{ "type": "artifact-state", "artifact_type": "document", "state": "produced" }] },
+    { "from": "development", "to": "review", "conditions": [{ "type": "artifact-state", "artifact_type": "candidate", "state": "produced" }, { "type": "artifact-state", "artifact_type": "test", "state": "passed" }] },
+    { "from": "review", "to": "development", "conditions": [{ "type": "artifact-state", "artifact_type": "review", "state": "changes_requested" }] },
+    { "from": "review", "to": "publication", "conditions": [{ "type": "artifact-state", "artifact_type": "review", "state": "approved" }] },
+    { "from": "publication", "to": "completed", "conditions": [{ "type": "artifact-state", "artifact_type": "publication", "state": "published" }] }
+  ]
+}

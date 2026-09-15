@@ -232,8 +232,7 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
   end
 
   def mutation_cases
-    definition = JSON.parse(File.read(File.expand_path("../../../fixtures/workflow_definitions/v1/valid/quick-fix.json",
-      __dir__)))
+    definition = JSON.parse(File.read(File.expand_path("../../../../workflows/quick-fix/1.0.1.json", __dir__)))
     preconditions = { "expected_lock_version" => 3, "attempt_id" => resource_id, "fencing_token" => 8 }
     manifest = { "schema_version" => "1", "attempt_id" => resource_id,
       "input_context_digest" => "sha256:#{'a' * 64}", "outcome" => "failed", "artifacts" => [] }

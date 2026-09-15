@@ -25,8 +25,8 @@ RSpec.describe "API v1 reads", :aggregate_failures, type: :request do
     expect(Kos::Cli::SchemaRegistry.new).to be_valid(schema, definition, value)
   end
 
-  def definition(version: "1.0.0")
-    path = Rails.root.join("spec/fixtures/workflow_definitions/v1/valid/quick-fix.json")
+  def definition(version: "1.0.1")
+    path = Rails.root.join("workflows/quick-fix/1.0.1.json")
     JSON.parse(File.read(path)).merge("version" => version)
   end
 
@@ -54,7 +54,7 @@ RSpec.describe "API v1 reads", :aggregate_failures, type: :request do
     copy
   end
 
-  def create_catalog(version: "1.0.0", published_at: Time.utc(2026, 9, 10, 12))
+  def create_catalog(version: "1.0.1", published_at: Time.utc(2026, 9, 10, 12))
     task_type = TaskType.find_or_create_by!(id: "quick-fix") do |record|
       record.name = "quick-fix"
       record.workflow_id = "quick-fix"
