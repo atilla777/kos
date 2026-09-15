@@ -102,6 +102,8 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
 
   def command_cases
     [
+      [ [ "repository", "get", "--repository", repository_id, "--json" ], "repository.get",
+        "/api/v1/repositories/#{repository_id}" ],
       [ %w[task-type list --limit 1 --json], "task_type.list", "/api/v1/task-types?limit=1" ],
       [ %w[workflow list --limit 1 --json], "workflow.list", "/api/v1/workflow-versions?limit=1" ],
       [ [ "workflow", "get", "--workflow-version", resource_id, "--json" ], "workflow.get",
@@ -130,12 +132,15 @@ RSpec.describe Kos::Cli::Application, :aggregate_failures do
   def expect_command_case(arguments, command, path)
     code = { "workflow.get" => "workflow_version_not_found", "workflow.export" => "workflow_version_not_found",
       "workflow_draft.get" => "workflow_draft_not_found", "workflow_draft.validate" => "workflow_draft_not_found",
-      "attempt.get" => "attempt_not_found", "worktree.get" => "reservation_not_found",
+      "repository.get" => "repository_access_denied", "attempt.get" => "attempt_not_found",
+      "worktree.get" => "reservation_not_found",
       "effect.get" => "effect_not_found", "publication.get" => "publication_not_found",
       "artifact.list" => "task_not_found" }.fetch(command, "task_not_found")
-    with_server([ [ "404 Not Found", failure(command, code:) ] ]) do |url, requests|
+    status_line = command == "repository.get" ? "403 Forbidden" : "404 Not Found"
+    result = command == "repository.get" ? failure(command, category: "authorization", code:) : failure(command, code:)
+    with_server([ [ status_line, result ] ]) do |url, requests|
       stdout, _stderr, status = run_cli(url, *arguments)
-      expect(status.exitstatus).to eq(5)
+      expect(status.exitstatus).to eq(command == "repository.get" ? 4 : 5)
       expect(JSON.parse(stdout).dig("error", "code")).to eq(code)
       expect(requests.first.first).to start_with("GET #{path} ")
     end

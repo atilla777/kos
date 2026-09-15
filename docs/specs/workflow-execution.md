@@ -49,7 +49,7 @@ A subagent:
 
 Each child turn is exactly one schema-valid effect request or final result manifest. Prose, mixed output, malformed JSON, an unexpected turn, or mismatched attempt, context, effect, or intent identity is rejected rather than repaired or inferred by the orchestrator.
 
-Only the lease-owning orchestrator submits the manifest. The CLI verifies the manifest against the stored input-context digest, then registers artifacts and changes workflow status with the expected lock version in one transaction, as specified by [Artifact Contracts](artifact-contracts.md).
+Only the lease-owning orchestrator submits the manifest. The CLI verifies the manifest against the stored input-context digest, then registers artifacts and changes workflow status with the expected lock version in one transaction, as specified by [Artifact Contracts](artifact-contracts.md). Planning and development completion also require exactly one successful commit effect prepared by that frozen attempt, the same reservation frozen in its context, and a latest clean observation whose durable HEAD and returned commit equal the supplied document commit or candidate SHA respectively.
 
 ## Initial And Deferred Workflows
 

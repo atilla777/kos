@@ -28,6 +28,7 @@ module WorkflowSteps
         check_no_unresolved_effects!(attempt)
         transition = transition!(task, attempt, to_status)
         validate_contract!(task, attempt, transition, artifacts)
+        validate_synchronized_worktree!(task, attempt, artifacts)
 
         records = register_artifacts!(task, attempt, repository, artifacts)
         task.update!(active_attempt: nil, workflow_state: transition.to_state)
@@ -133,6 +134,32 @@ module WorkflowSteps
       end
     end
     private_class_method :validate_candidate_generation!
+
+    def self.validate_synchronized_worktree!(task, attempt, artifacts)
+      return unless attempt.input_context&.key?("worktree")
+
+      expected_head = case task.workflow_state.identifier
+      when "implementation-planning"
+        artifacts.find { _1.fetch("type") == "document" }&.dig("metadata", "commit_sha")
+      when "development"
+        artifacts.find { _1.fetch("type") == "candidate" }&.dig("metadata", "candidate_sha")
+      end
+      return unless expected_head
+
+      reservation = task.worktree_reservation
+      context = attempt.input_context.fetch("worktree")
+      effects = attempt.owned_repository_effects.to_a.select { _1.request.dig("effect", "operation") == "commit" }
+      effect = effects.one? ? effects.first : nil
+      valid = reservation&.id == context.fetch("reservation_id") && reservation.state == "confirmed" &&
+        reservation.head_sha == expected_head &&
+        reservation.observed_state == "clean" && reservation.observation_digest.present?
+      valid &&= effect&.state == "succeeded" && effect.prepared_attempt_id == attempt.id &&
+        effect.request["input_context_digest"] == attempt.input_context_digest &&
+        effect.request.dig("effect", "reservation_id") == reservation.id &&
+        effect.result.dig("result", "commit_sha") == expected_head
+      invalid!("Worktree HEAD is not synchronized with transition evidence") unless valid
+    end
+    private_class_method :validate_synchronized_worktree!
 
     def self.invalid!(message)
       raise OperationError.new("invalid_artifact", message)

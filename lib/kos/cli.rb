@@ -25,6 +25,7 @@ module Kos
       MAX_APPROVED_BRIEF_BYTES = 128 * 1024
       COMMANDS = {
         %w[repository register] => [ "repository.register", nil, {}, true ],
+        %w[repository get] => [ "repository.get", "repository", {} ],
         %w[runtime-config get] => [ "runtime_config.get", nil, {} ],
         %w[runtime-config update] => [ "runtime_config.update", nil, {}, true ],
         %w[task-type list] => [ "task_type.list", nil, { "limit" => "--limit", "cursor" => "--cursor" } ],
@@ -162,6 +163,7 @@ module Kos
 
       PATHS = {
         "repository.register" => "/api/v1/repositories",
+        "repository.get" => "/api/v1/repositories/%<repository_id>s",
         "runtime_config.get" => "/api/v1/runtime-config",
         "runtime_config.update" => "/api/v1/runtime-config",
         "task_type.list" => "/api/v1/task-types",

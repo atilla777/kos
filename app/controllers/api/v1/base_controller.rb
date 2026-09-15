@@ -5,6 +5,7 @@ module Api
 
       COMMANDS = {
         "repositories#create" => "repository.register",
+        "repositories#show" => "repository.get",
         "runtime_configs#show" => "runtime_config.get",
         "runtime_configs#update" => "runtime_config.update",
         "task_types#index" => "task_type.list",

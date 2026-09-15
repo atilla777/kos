@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://kos.local/schemas/cli/v1/commands.json",
   "$defs": {
-    "command_identifier": { "enum": ["repository.register", "runtime_config.get", "runtime_config.update", "task_type.list", "workflow.list", "workflow.get", "workflow.export", "workflow_draft.get", "workflow_draft.import", "workflow_draft.validate", "workflow.publish", "workflow.activate", "task.get", "attempt.get", "step.context", "worktree.get", "effect.get", "artifact.list", "publication.get", "task.create", "attempt.claim", "attempt.renew", "attempt.fail", "attempt.needs_human", "attempt.reconcile", "worktree.reserve", "worktree.confirm", "worktree.reconcile", "worktree.release", "effect.prepare", "effect.reconcile", "artifact.register", "step.complete", "publication.prepare", "publication.reconcile", "publication.complete"] },
+    "command_identifier": { "enum": ["repository.register", "repository.get", "runtime_config.get", "runtime_config.update", "task_type.list", "workflow.list", "workflow.get", "workflow.export", "workflow_draft.get", "workflow_draft.import", "workflow_draft.validate", "workflow.publish", "workflow.activate", "task.get", "attempt.get", "step.context", "worktree.get", "effect.get", "artifact.list", "publication.get", "task.create", "attempt.claim", "attempt.renew", "attempt.fail", "attempt.needs_human", "attempt.reconcile", "worktree.reserve", "worktree.confirm", "worktree.reconcile", "worktree.release", "effect.prepare", "effect.reconcile", "artifact.register", "step.complete", "publication.prepare", "publication.reconcile", "publication.complete"] },
     "empty_body": { "type": "object", "additionalProperties": false },
     "pagination": { "type": "object", "properties": { "cursor": { "type": "string", "minLength": 1, "maxLength": 255 }, "limit": { "type": "integer", "minimum": 1, "maximum": 100 } }, "required": ["limit"], "additionalProperties": false },
     "repository_register_body": { "type": "object", "properties": { "git_common_dir": { "$ref": "common.json#/$defs/absolute_path" }, "task_prefix": { "$ref": "common.json#/$defs/task_prefix" }, "trusted_remote": { "$ref": "common.json#/$defs/identifier" }, "trusted_remote_url": { "$ref": "common.json#/$defs/remote_url" }, "base_ref": { "$ref": "common.json#/$defs/base_ref" } }, "required": ["git_common_dir", "task_prefix", "trusted_remote", "trusted_remote_url", "base_ref"], "additionalProperties": false },
@@ -40,6 +40,7 @@
     "effect_locator": { "type": "object", "properties": { "effect_id": { "$ref": "common.json#/$defs/uuid" } }, "required": ["effect_id"], "additionalProperties": false },
     "artifact_list_body": { "type": "object", "properties": { "task_number": { "$ref": "common.json#/$defs/task_number" }, "cursor": { "type": "string", "minLength": 1, "maxLength": 255 }, "limit": { "type": "integer", "minimum": 1, "maximum": 100 } }, "required": ["task_number", "limit"], "additionalProperties": false },
     "scoped_read_request": { "allOf": [{ "$ref": "#/$defs/scoped_request_base" }, { "oneOf": [
+      { "properties": { "command": { "const": "repository.get" }, "body": { "$ref": "#/$defs/empty_body" } } },
       { "properties": { "command": { "const": "task.get" }, "body": { "$ref": "#/$defs/task_locator" } } },
       { "properties": { "command": { "const": "attempt.get" }, "body": { "$ref": "#/$defs/attempt_locator" } } },
       { "properties": { "command": { "const": "worktree.get" }, "body": { "$ref": "#/$defs/reservation_locator" } } },
@@ -94,7 +95,7 @@
     "publication_complete_data": { "type": "object", "properties": { "task": { "$ref": "resources.json#/$defs/task" }, "artifacts": { "type": "array", "items": { "$ref": "artifacts.json#/$defs/artifact" }, "contains": { "properties": { "type": { "const": "publication" }, "state": { "const": "published" } }, "required": ["type", "state"] }, "minContains": 1 } }, "required": ["task", "artifacts"], "additionalProperties": false },
     "result": {
       "allOf": [{ "$ref": "envelopes.json#/$defs/success" }, { "oneOf": [
-        { "properties": { "command": { "const": "repository.register" }, "data": { "$ref": "resources.json#/$defs/repository" } } },
+        { "properties": { "command": { "enum": ["repository.register", "repository.get"] }, "data": { "$ref": "resources.json#/$defs/repository" } } },
         { "properties": { "command": { "enum": ["runtime_config.get", "runtime_config.update"] }, "data": { "$ref": "resources.json#/$defs/runtime_config" } } },
         { "properties": { "command": { "const": "task_type.list" }, "data": { "$ref": "#/$defs/task_types_data" } } },
         { "properties": { "command": { "const": "workflow.list" }, "data": { "$ref": "#/$defs/workflows_data" } } },

@@ -24,6 +24,7 @@ Rails.application.routes.draw do
       end
 
       scope "repositories/:repository_id" do
+        get "", to: "repositories#show"
         resources :tasks, only: %i[create show], param: :task_number do
           resources :artifacts, only: :index
           post "attempts/claim", to: "attempts#claim", on: :member

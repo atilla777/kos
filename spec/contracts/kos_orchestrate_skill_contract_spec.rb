@@ -22,7 +22,7 @@ module KosOrchestrateSkillContract
     "push" => [ "push", "publication reconcile" ]
   }.freeze
   REQUIRED_COMMANDS = %w[
-    task.get workflow.get attempt.get worktree.get effect.get publication.get artifact.list
+    repository.get task.get workflow.get attempt.get worktree.get effect.get publication.get artifact.list
     attempt.claim attempt.renew attempt.fail attempt.needs_human attempt.reconcile step.context step.complete
     worktree.reserve worktree.confirm worktree.reconcile worktree.release
     effect.prepare effect.reconcile publication.prepare publication.reconcile
@@ -34,8 +34,8 @@ module KosOrchestrateSkillContract
       "Never let the workflow-step child call `kos`, `kos-repository`, Git, another subagent"
     ],
     "Read Authoritative State" => [
-      "immutable `workflow_version_id`", "Never use an active replacement workflow",
-      "Reread all operation-specific state immediately before", "registered repository field",
+      "`repository get`", "immutable `workflow_version_id`", "Never use an active replacement workflow",
+      "Reread all operation-specific state immediately before", "lifecycle-appropriate `worktree get`",
       "Never source a Git common directory", "cursor to exhaustion without loops"
     ],
     "Own The Attempt" => [
@@ -58,6 +58,7 @@ module KosOrchestrateSkillContract
       "appears exactly in `allowed_repository_effects`", "no earlier request is pending",
       "Persist the required intent before", "Adapter success is an observation, not workflow success",
       "Return it only to the retained child session", "preserve `failed` and `unknown` outcomes exactly",
+      "After reconciling a successful `commit`", "adapter `observe`", "through `worktree reconcile`",
       "return success only after an `absent` observation", "`push_state_uncertain`",
       "cannot complete, fail, or enter `needs_human`"
     ],
@@ -75,8 +76,7 @@ module KosOrchestrateSkillContract
       "`kos-opencode`", "`KOS_RETROSPECTIVE_FD`"
     ],
     "Fail Closed At Missing Boundaries" => [
-      "publication cannot advance to `completed`", "complete registered repository trust snapshot",
-      "authoritative worktree allocation path", "adopted generic effect IDs",
+      "publication cannot advance to `completed`", "authoritative worktree allocation path", "adopted generic effect IDs",
       "No generic adapter observation operation", "No background lease keeper",
       "Do not call an unavailable command"
     ]
@@ -136,7 +136,7 @@ module KosOrchestrateSkillContract
   end
 
   def missing_boundary_guidance
-    required = [ "`publication complete` is unavailable", "`worktree get` does not supply every fresh HEAD",
+    required = [ "`publication complete` is unavailable", "authoritative worktree allocation path",
       "No generic adapter observation operation", "No background lease keeper", "direct API or Git access" ]
     blocked = section("Fail Closed At Missing Boundaries", nil)
     required.reject { |guidance| blocked.include?(guidance) }

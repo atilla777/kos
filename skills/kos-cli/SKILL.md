@@ -40,6 +40,7 @@ Examples:
 
 ```text
 kos task get --repository "$repository_id" --task "$task_number" --json
+kos repository get --repository "$repository_id" --json
 kos artifact list --repository "$repository_id" --task "$task_number" --limit 100 --json
 kos attempt claim --repository "$repository_id" --input - --idempotency-key "$idempotency_key" --json
 ```
@@ -53,7 +54,7 @@ Use only these commands until a later installed CLI explicitly supports more:
 | Scope | Reads | Mutations |
 | --- | --- | --- |
 | Global | `runtime-config get`, `task-type list`, `workflow list`, `workflow get`, `workflow export`, `workflow-draft get`, `workflow-draft validate` | `repository register`, `runtime-config update`, `workflow-draft import`, `workflow publish`, `workflow activate` |
-| Repository | `task get`, `attempt get`, `worktree get`, `effect get`, `publication get`, `artifact list` | `task create`, `attempt claim`, `attempt renew`, `attempt fail`, `attempt needs-human`, `attempt reconcile`, `step context`, `step complete`, `worktree reserve`, `worktree confirm`, `worktree reconcile`, `worktree release`, `effect prepare`, `effect reconcile`, `publication prepare`, `publication reconcile` |
+| Repository | `repository get`, `task get`, `attempt get`, `worktree get`, `effect get`, `publication get`, `artifact list` | `task create`, `attempt claim`, `attempt renew`, `attempt fail`, `attempt needs-human`, `attempt reconcile`, `step context`, `step complete`, `worktree reserve`, `worktree confirm`, `worktree reconcile`, `worktree release`, `effect prepare`, `effect reconcile`, `publication prepare`, `publication reconcile` |
 
 ## Unavailable Commands
 

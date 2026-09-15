@@ -84,6 +84,24 @@ RSpec.describe "API v1 worktree reservations", :aggregate_failures, type: :reque
       response.status, task.reload.worktree_reservation_id ]
   end
 
+  def confirmed_read_summary
+    attempt = claim
+    reservation = WorktreeReservations::Reserve.call(repository:, task_number: task.number,
+      branch: "kos/task-#{task.number}", path: "/tmp/worktrees/#{task.number}", attempt_id: attempt.id,
+      fencing_token: attempt.fencing_token, expected_lock_version: task.reload.lock_version)
+    WorktreeReservations::Confirm.call(repository:, reservation_id: reservation.id,
+      git_common_dir_digest: "sha256:#{Digest::SHA256.hexdigest(repository.git_common_dir)}", head_sha:,
+      attempt_id: attempt.id, fencing_token: attempt.fencing_token,
+      expected_lock_version: task.reload.lock_version)
+    WorktreeReservations::Reconcile.call(repository:, reservation_id: reservation.id, observed_state: "clean",
+      head_sha:, evidence_digest:, attempt_id: attempt.id, fencing_token: attempt.fencing_token,
+      expected_lock_version: task.reload.lock_version)
+
+    get "/api/v1/repositories/#{repository.id}/worktree-reservations/#{reservation.id}",
+      headers: headers("unused-read-key")
+    JSON.parse(response.body).fetch("data")
+  end
+
   def confirmation_body(attempt, reservation_id)
     digest = "sha256:#{Digest::SHA256.hexdigest(repository.git_common_dir)}"
     { "reservation_id" => reservation_id, "git_common_dir_digest" => digest, "head_sha" => head_sha,
@@ -131,6 +149,12 @@ RSpec.describe "API v1 worktree reservations", :aggregate_failures, type: :reque
       .to eq([ "confirmed", "release_pending", "released", 200, nil ])
   end
 
+  it "reads the persisted confirmation and latest observation" do
+    expect_confirmed_read(confirmed_read_summary)
+    expect(Kos::Cli::SchemaRegistry.new).to be_valid("commands.json", "result",
+      JSON.parse(response.body))
+  end
+
   it "does not disclose a reservation from another repository" do
     expect(cross_repository_summary).to eq([ 404, "reservation_not_found" ])
   end
@@ -147,5 +171,14 @@ RSpec.describe "API v1 worktree reservations", :aggregate_failures, type: :reque
     { "reservation_id" => reservation_id, "observed_state" => observed_state,
       "evidence_digest" => evidence_digest, "preconditions" => preconditions(attempt) }
       .tap { |body| body["head_sha"] = observed_head if observed_head }
+  end
+
+  def expect_confirmed_read(data)
+    expect(data).to include(
+      "state" => "confirmed", "head_sha" => head_sha, "observed_state" => "clean",
+      "observation_digest" => evidence_digest,
+      "git_common_dir_digest" => "sha256:#{Digest::SHA256.hexdigest(repository.git_common_dir)}"
+    )
+    expect(data).to include("confirmed_at", "created_at", "updated_at")
   end
 end

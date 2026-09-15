@@ -18,7 +18,7 @@
       "required": ["identifier", "scope", "cli_suffix", "http_method", "http_path", "success_status", "mutation", "required_preconditions"],
       "allOf": [
         { "if": { "properties": { "scope": { "const": "repository_registration" } }, "required": ["scope"] }, "then": { "properties": { "identifier": { "const": "repository.register" }, "http_path": { "const": "/api/v1/repositories" } } } },
-        { "if": { "properties": { "scope": { "const": "repository" } }, "required": ["scope"] }, "then": { "properties": { "http_path": { "pattern": "^/api/v1/repositories/\\{repository_id\\}/" } } } },
+        { "if": { "properties": { "scope": { "const": "repository" } }, "required": ["scope"] }, "then": { "properties": { "http_path": { "pattern": "^/api/v1/repositories/\\{repository_id\\}(?:/|$)" } } } },
         { "if": { "properties": { "scope": { "const": "global" } }, "required": ["scope"] }, "then": { "properties": { "http_path": { "not": { "pattern": "^/api/v1/repositories" } } } } }
       ],
       "additionalProperties": false
@@ -27,6 +27,7 @@
   },
   "x-command-catalog": [
     { "identifier": "repository.register", "scope": "repository_registration", "cli_suffix": "repository register", "http_method": "POST", "http_path": "/api/v1/repositories", "success_status": 200, "mutation": true, "required_preconditions": ["idempotency"] },
+    { "identifier": "repository.get", "scope": "repository", "cli_suffix": "repository get", "http_method": "GET", "http_path": "/api/v1/repositories/{repository_id}", "success_status": 200, "mutation": false, "required_preconditions": [] },
     { "identifier": "runtime_config.get", "scope": "global", "cli_suffix": "runtime-config get", "http_method": "GET", "http_path": "/api/v1/runtime-config", "success_status": 200, "mutation": false, "required_preconditions": [] },
     { "identifier": "runtime_config.update", "scope": "global", "cli_suffix": "runtime-config update", "http_method": "POST", "http_path": "/api/v1/runtime-config", "success_status": 200, "mutation": true, "required_preconditions": ["idempotency", "lock"] },
     { "identifier": "task_type.list", "scope": "global", "cli_suffix": "task-type list", "http_method": "GET", "http_path": "/api/v1/task-types", "success_status": 200, "mutation": false, "required_preconditions": [] },

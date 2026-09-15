@@ -109,7 +109,7 @@ module Api
         end
 
         def worktree(record)
-          {
+          optional({
             "schema_version" => "1",
             "id" => record.id,
             "repository_id" => record.repository_id,
@@ -119,8 +119,15 @@ module Api
             "path" => record.path,
             "state" => record.state,
             "fencing_token" => record.fencing_token,
-            "created_at" => timestamp(record.created_at)
-          }
+            "git_common_dir_digest" => record.git_common_dir_digest,
+            "head_sha" => record.head_sha,
+            "observed_state" => record.observed_state,
+            "observation_digest" => record.observation_digest,
+            "confirmed_at" => optional_timestamp(record.confirmed_at),
+            "released_at" => optional_timestamp(record.released_at),
+            "created_at" => timestamp(record.created_at),
+            "updated_at" => timestamp(record.updated_at)
+          })
         end
 
         def repository_effect(record)

@@ -194,6 +194,14 @@ RSpec.describe "API v1 reads", :aggregate_failures, type: :request do
     expect_schema_valid("commands.json", "result")
   end
 
+  it "returns the complete repository in its own scope" do
+    repository = create_repository
+    get "/api/v1/repositories/#{repository.id}", headers: headers
+
+    expect(document.dig("data")).to eq(Api::V1::Serializer.repository(repository))
+    expect_schema_valid("commands.json", "result")
+  end
+
   it "returns a repository-scoped attempt" do
     records = create_execution
     repository = records.fetch(:repository)
@@ -206,7 +214,7 @@ RSpec.describe "API v1 reads", :aggregate_failures, type: :request do
     records = create_execution
     repository = records.fetch(:repository)
     get "/api/v1/repositories/#{repository.id}/worktree-reservations/#{records.fetch(:reservation).id}", headers: headers
-    expect(document.dig("data", "attempt_id")).to eq(records.fetch(:attempt).id)
+    expect(document.dig("data")).to eq(Api::V1::Serializer.worktree(records.fetch(:reservation)))
     expect_schema_valid("commands.json", "result")
   end
 
@@ -219,6 +227,12 @@ RSpec.describe "API v1 reads", :aggregate_failures, type: :request do
     get "/api/v1/repositories/#{SecureRandom.uuid}/tasks/#{records.fetch(:task).number}", headers: headers
     expect([ response.status, document.dig("error", "code") ]).to eq([ 403, "repository_access_denied" ])
     expect_schema_valid("envelopes.json", "failure")
+  end
+
+  it "does not reveal an absent repository through the repository read" do
+    get "/api/v1/repositories/#{SecureRandom.uuid}", headers: headers
+
+    expect([ response.status, document.dig("error", "code") ]).to eq([ 403, "repository_access_denied" ])
   end
 
   it "hides resources owned by another repository" do

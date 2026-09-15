@@ -22,7 +22,7 @@ module CliV1Contract
   end
   REGISTRY = SCHEMAS.values.to_h { |schema| [ URI(schema.fetch("$id")), schema ] }
   EXPECTED_COMMANDS = %w[
-    repository.register runtime_config.get runtime_config.update task_type.list workflow.list workflow.get workflow.export
+    repository.register repository.get runtime_config.get runtime_config.update task_type.list workflow.list workflow.get workflow.export
     workflow_draft.get workflow_draft.import workflow_draft.validate workflow.publish workflow.activate task.get attempt.get
     step.context worktree.get effect.get artifact.list publication.get task.create attempt.claim attempt.renew attempt.fail
     attempt.needs_human attempt.reconcile worktree.reserve worktree.confirm worktree.reconcile worktree.release
@@ -210,7 +210,10 @@ module CliV1Contract
   def worktree
     { "schema_version" => "1", "id" => RESERVATION_ID, "repository_id" => REPOSITORY_ID, "task_id" => TASK_ID,
       "attempt_id" => ATTEMPT_ID, "branch" => "kos/task-KOS-000123", "path" => "/tmp/task-123", "state" => "confirmed",
-      "fencing_token" => 8, "created_at" => "2026-09-09T12:00:00Z" }
+      "fencing_token" => 8, "git_common_dir_digest" => DIGEST, "head_sha" => SHA,
+      "observed_state" => "clean", "observation_digest" => DIGEST,
+      "confirmed_at" => "2026-09-09T12:00:00Z", "created_at" => "2026-09-09T12:00:00Z",
+      "updated_at" => "2026-09-09T12:01:00Z" }
   end
 
   def publication(state = "prepared")
@@ -237,6 +240,7 @@ module CliV1Contract
       "repository.register" => { "git_common_dir" => "/home/user/project/.git", "task_prefix" => "KOS",
         "trusted_remote" => "origin", "trusted_remote_url" => "ssh://git@example.com/team/project.git",
         "base_ref" => "refs/heads/main" },
+      "repository.get" => {},
       "runtime_config.get" => {},
       "runtime_config.update" => { "retrospective_enabled" => true, "expected_lock_version" => 0 },
       "task_type.list" => { "limit" => 20 }, "workflow.list" => { "limit" => 20 },
@@ -298,7 +302,7 @@ module CliV1Contract
   def result_data
     completed_task = task.merge("status" => "completed", "workflow_status" => "completed").except("active_publication_id")
     data = {
-      "repository.register" => repository, "runtime_config.get" => runtime_config,
+      "repository.register" => repository, "repository.get" => repository, "runtime_config.get" => runtime_config,
       "runtime_config.update" => runtime_config, "task_type.list" => { "task_types" => [ task_type ] },
       "workflow.list" => { "workflows" => [ workflow_summary ] }, "workflow.get" => workflow_version,
       "workflow.export" => workflow_definition, "workflow_draft.get" => workflow_draft,
@@ -958,6 +962,13 @@ RSpec.describe CliV1Contract do
 
     expect([ schema.valid?(described_class.runtime_config),
       schema.valid?(described_class.runtime_config.except("retrospective_enabled")) ]).to eq([ true, false ])
+  end
+
+  it "keeps pre-upgrade worktree mutation responses valid for idempotent replay" do
+    legacy = described_class.worktree.except("git_common_dir_digest", "head_sha", "observed_state",
+      "observation_digest", "confirmed_at", "updated_at")
+
+    expect(described_class.definition("resources.json", "worktree_reservation")).to be_valid(legacy)
   end
 
   it "accepts private sanitized retrospective outcomes" do

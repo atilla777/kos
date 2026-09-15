@@ -20,12 +20,13 @@ Coordinate one current workflow status as its sole lease-owning main session. Us
 
 Use `kos-cli` and validate every complete version 1 response before using it.
 
-1. Read the exact task with `task get` in the supplied repository scope. Stop if the task is terminal, missing, scoped differently, or malformed.
-2. Read its immutable `workflow_version_id` with `workflow get`. Require the returned published definition, task type, current `workflow_status`, and status entry to agree with the task. Never use an active replacement workflow or a project-local workflow file.
-3. Read the current attempt, reservation, effect, publication, and artifacts named by authoritative state with `attempt get`, `worktree get`, `effect get`, `publication get`, and `artifact list` as applicable. Do not scan for substitute resources. Follow every opaque `artifact list` cursor to exhaustion without loops and require every page to retain the task and repository scope before evaluating evidence.
-4. Retain exact response identities and versions only for the operation being formed. Reread all operation-specific state immediately before every attempt-owned mutation or repository-adapter invocation.
+1. Read the registered repository with `repository get` in the supplied repository scope. Require its immutable ID to match that scope and use only this complete current snapshot for adapter repository and trust fields.
+2. Read the exact task with `task get` in the same repository scope. Stop if the task is terminal, missing, scoped differently, or malformed.
+3. Read its immutable `workflow_version_id` with `workflow get`. Require the returned published definition, task type, current `workflow_status`, and status entry to agree with the task. Never use an active replacement workflow or a project-local workflow file.
+4. Read the current attempt, reservation, effect, publication, and artifacts named by authoritative state with `attempt get`, `worktree get`, `effect get`, `publication get`, and `artifact list` as applicable. Do not scan for substitute resources. Follow every opaque `artifact list` cursor to exhaustion without loops and require every page to retain the task and repository scope before evaluating evidence.
+5. Retain exact response identities and versions only for the operation being formed. Reread all operation-specific state immediately before every attempt-owned mutation or repository-adapter invocation.
 
-If an adapter request needs a registered repository field or fresh reservation field that an implemented CLI read does not return, stop. Never source a Git common directory, trusted remote URL, current HEAD, observation, or trust setting from ambient configuration, workflow prose, direct Git, an old snapshot, or a guessed path.
+If an adapter request needs a field that the complete `repository get` or lifecycle-appropriate `worktree get` resource does not return, stop. Never source a Git common directory, trusted remote URL, current HEAD, observation, or trust setting from ambient configuration, workflow prose, direct Git, an old snapshot, or a guessed path.
 
 ## Own The Attempt
 
@@ -93,11 +94,13 @@ For every operation:
 
 For generic `commit`, `fetch`, and `rebase`, preserve `failed` and `unknown` outcomes exactly. If a complete closed unknown result can be formed from the durable intent and bounded adapter failure, record it once with `effect reconcile`; otherwise leave the intent unresolved and enter recovery. Version 1 cannot discover or externally observe an unknown generic effect without its ID and operation-specific evidence, so do not resume the child when that recovery cannot be completed.
 
+After reconciling a successful `commit`, do not return it to the child yet. Reread the complete repository, task, attempt, and confirmed reservation, require the durable reservation still names the commit request's old frozen HEAD, renew the lease budget, and invoke adapter `observe` with the successful commit SHA as `expected_head_sha`. Accept only a closed clean observation for that exact SHA, repository, reservation, and fencing token. Persist its `head_sha` and `evidence_digest` through `worktree reconcile`, reread the reservation, and require its confirmed durable HEAD, clean observed state, and observation digest to match exactly. Only then return the already reconciled commit effect result to the retained child. A dirty, mismatched, absent, stale, malformed, or unavailable observation stops without resuming the child or representing the commit as workflow success.
+
 For `worktree_remove`, return success only after an `absent` observation is durably accepted by `worktree release`; a failed removal, invalid response, or unavailable observation leaves cleanup unresolved and does not resume the child. For `push`, call `publication reconcile` only with concrete schema-valid remote tip and reachability evidence. `push_state_uncertain` has no such observation: preserve the unresolved publication, do not resume the child or push blindly, and enter publication recovery.
 
 Never fabricate missing evidence, retry because a response was lost, or send a result to the child before reconciliation. The owning attempt cannot complete, fail, or enter `needs_human` while a generic effect remains prepared or unknown.
 
-A commit or rebase may change repository HEAD while the context keeps its frozen HEAD. Do not request or accept another worktree-bound effect from that stale context unless the protocol has durably synchronized the reservation and a new finalized context authorizes it. Version 1 does not provide that complete synchronization path.
+A commit or rebase may change repository HEAD while the context keeps its frozen HEAD. The post-commit observation above synchronizes the reservation only so the executor can bind final planning or development evidence to that commit; do not accept another worktree-bound effect from the stale context. Rebase still requires durable synchronization followed by a new finalized context before another worktree-bound effect.
 
 ## Submit The Result
 
@@ -127,9 +130,7 @@ Validate the complete CLI response. On success, this invocation ends after the a
 The wider protocol design is not proof that an operation is installed. In the current version:
 
 - `publication complete` is unavailable, so publication cannot advance to `completed`.
-- No CLI read supplies the complete registered repository trust snapshot required by every adapter request.
 - No installed runtime-configuration read supplies a new task's authoritative worktree allocation path.
-- `worktree get` does not supply every fresh HEAD and observation field required for all adapter snapshots.
 - Task and attempt reads do not enumerate adopted generic effect IDs required for recovery.
 - No generic adapter observation operation can recover an unknown `commit`, `fetch`, or `rebase` effect.
 - No background lease keeper can prove continuous ownership while a foreground Task child blocks the parent.

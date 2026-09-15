@@ -82,8 +82,11 @@ Add `--force` to `apply` only after approving every planned update or conflict. 
 Create a task from an input body containing `task_type: quick-fix` and a version 1 `task_input` with `title` and the complete approved Markdown `approved_brief`:
 
 ```sh
+bin/kos repository get --repository UUID --json
 bin/kos task create --repository UUID --input task.json --idempotency-key task-create-1 --json
 ```
+
+The repository read returns the complete immutable registration and trust snapshot required by repository-adapter operations.
 
 Claim and maintain workflow-step ownership with the attempt lifecycle commands. Each mutation reads its versioned body from `--input` and requires an idempotency key:
 
@@ -109,7 +112,7 @@ bin/kos worktree reconcile --repository UUID --input observation.json --idempote
 bin/kos worktree release --repository UUID --input observation.json --idempotency-key worktree-release-1 --json
 ```
 
-KOS reserves and fences state but does not create or remove a Git worktree. Confirmation and observations must come from the owning orchestrator after `kos-repository` verifies the persisted allocation. Cleanup first records a matching clean worktree as `release_pending`, then records its absence after external removal; dirty or mismatched worktrees remain reserved for explicit resolution.
+KOS reserves and fences state but does not create or remove a Git worktree. `worktree get` returns its persisted allocation, ownership, confirmation HEAD, and latest observation. Confirmation and observations must come from the owning orchestrator after `kos-repository` verifies the persisted allocation. After a successful commit effect, the orchestrator observes the exact clean commit HEAD and records it through `worktree reconcile` before returning success to the executor. Cleanup first records a matching clean worktree as `release_pending`, then records its absence after external removal; dirty or mismatched worktrees remain reserved for explicit resolution.
 
 Prepare, inspect, and reconcile generic repository effects without executing Git through Rails:
 
