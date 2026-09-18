@@ -1,0 +1,24 @@
+#!/usr/bin/env ruby
+
+require "optparse"
+
+parser = OptionParser.new do |options|
+  options.banner = "Usage: kos [options]"
+  options.separator ""
+  options.separator "KOS task coordination CLI"
+  options.separator ""
+  options.on("-h", "--help", "Show this help") do
+    puts options
+    exit
+  end
+end
+
+if ARGV.empty?
+  puts parser
+  exit
+end
+
+parser.parse!
+
+warn "No commands are available yet. Run `kos --help` for usage."
+exit 1

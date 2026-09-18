@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+set -eu
+
+export RAILS_ENV=test
+exec bin/rails test "$@"

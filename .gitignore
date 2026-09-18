@@ -1,0 +1,16 @@
+/.bundle
+/.env*
+/.idea
+/.vscode
+/config/master.key
+/coverage
+/log/*
+/storage/*
+/tmp/*
+/vendor/bundle
+
+!/log/.keep
+!/storage/.keep
+!/tmp/.keep
+!/tmp/pids/.keep
+!/tmp/storage/.keep

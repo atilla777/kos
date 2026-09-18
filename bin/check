@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+set -eu
+
+bin/lint
+RAILS_ENV=test bin/rails db:prepare
+bin/test
