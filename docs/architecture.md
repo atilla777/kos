@@ -26,9 +26,11 @@ These rules govern implementation decisions in this repository.
 
 ## Current Foundation
 
-At `PLAN-001`, the application intentionally contains no KOS domain models,
-domain controllers, authentication, Git integration, or skills. The only HTTP
-route is Rails' readiness endpoint, and the CLI only prints help.
+At `PLAN-002`, future application controllers inherit bearer-token
+authentication while Rails' readiness endpoint remains public. Development and
+production SQLite databases live in the configured local KOS data directory,
+outside the repository. The application still contains no KOS domain models,
+domain controllers, Git integration, or skills, and the CLI only prints help.
 
 See [the product specification](specification.md) for the complete first-version
 contract.

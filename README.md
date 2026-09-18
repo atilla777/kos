@@ -16,6 +16,26 @@ Install Bundler if it is not already available:
 gem install bundler --version 4.0.20
 ```
 
+Set a non-empty API bearer token before running KOS outside the test
+environment:
+
+```sh
+export KOS_API_TOKEN="$(openssl rand -hex 32)"
+```
+
+Keep this value secret. Future application endpoints inherit bearer-token
+authentication from `ApplicationController`; send the token as
+`Authorization: Bearer <token>`. The readiness endpoint `GET /up` remains
+public.
+
+By default, development and production SQLite files live under
+`$XDG_DATA_HOME/kos`, or `~/.local/share/kos` when `XDG_DATA_HOME` is unset.
+Set `KOS_DATA_HOME` to override that directory. It must be on a local disk, not
+in a synchronized or network-mounted directory. `KOS_DATA_HOME` must be an
+absolute path outside the checkout; relative `XDG_DATA_HOME` values are ignored
+as required by the XDG specification. Tests always use `tmp/test.sqlite3` and
+ignore these data-directory variables.
+
 ## Setup
 
 From a fresh checkout, install dependencies and prepare the local database:

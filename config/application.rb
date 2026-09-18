@@ -1,4 +1,5 @@
 require_relative "boot"
+require_relative "kos"
 
 require "rails"
 # Pick the frameworks you want:
@@ -27,6 +28,8 @@ module Kos
     # not contain `.rb` files, or that should not be reloaded or eager loaded.
     # Common ones are `templates`, `generators`, or `middleware`, for example.
     config.autoload_lib(ignore: %w[assets tasks])
+
+    config.x.kos.api_token = ENV["KOS_API_TOKEN"]
 
     # Configuration for the application, engines, and railties goes here.
     #

@@ -1,0 +1,122 @@
+require "test_helper"
+require "open3"
+require "tmpdir"
+
+class ConfigurationTest < ActiveSupport::TestCase
+  test "uses the explicit KOS data home" do
+    environment = { "KOS_DATA_HOME" => "/var/lib/kos", "XDG_DATA_HOME" => "/ignored" }
+
+    assert_equal "/var/lib/kos", Kos::Configuration.data_home(environment, home: "/home/test")
+  end
+
+  test "uses the XDG data home when no explicit home is configured" do
+    environment = { "XDG_DATA_HOME" => "/home/test/data" }
+
+    assert_equal "/home/test/data/kos", Kos::Configuration.data_home(environment, home: "/ignored")
+  end
+
+  test "falls back to the local user data directory" do
+    assert_equal "/home/test/.local/share/kos", Kos::Configuration.data_home({}, home: "/home/test")
+  end
+
+  test "rejects a relative explicit data home" do
+    error = assert_raises(Kos::ConfigurationError) do
+      Kos::Configuration.data_home({ "KOS_DATA_HOME" => "storage" }, home: "/home/test")
+    end
+
+    assert_equal "KOS_DATA_HOME must be an absolute path", error.message
+  end
+
+  test "ignores a relative XDG data home" do
+    environment = { "XDG_DATA_HOME" => "relative-data" }
+
+    assert_equal "/home/test/.local/share/kos", Kos::Configuration.data_home(environment, home: "/home/test")
+  end
+
+  test "rejects a data home inside the application repository" do
+    error = assert_raises(Kos::ConfigurationError) do
+      Kos::Configuration.validate_data_home!("/srv/kos/app/data", repository_root: "/srv/kos/app")
+    end
+
+    assert_equal "KOS data home must be outside the application repository", error.message
+    assert_equal "/srv/kos/data",
+      Kos::Configuration.validate_data_home!("/srv/kos/data", repository_root: "/srv/kos/app")
+  end
+
+  test "rejects missing and blank API tokens" do
+    error = assert_raises(Kos::ConfigurationError) do
+      Kos::Configuration.validate_api_token!(nil)
+    end
+
+    assert_equal "KOS_API_TOKEN must be set to a non-empty value", error.message
+    assert_raises(Kos::ConfigurationError) { Kos::Configuration.validate_api_token!("  ") }
+  end
+
+  test "boots development with a token and creates its external data directory" do
+    Dir.mktmpdir("kos-data") do |temporary_directory|
+      data_home = File.join(temporary_directory, "data")
+      environment = {
+        "RAILS_ENV" => "development",
+        "KOS_API_TOKEN" => "development-token",
+        "KOS_DATA_HOME" => data_home
+      }
+
+      output, error, status = Open3.capture3(
+        environment,
+        Rails.root.join("bin/rails").to_s,
+        "runner",
+        "print Rails.application.config.database_configuration.fetch('development').fetch('database')"
+      )
+
+      assert_predicate status, :success?, error
+      assert_equal File.join(data_home, "development.sqlite3"), output
+      assert_path_exists data_home
+    end
+  end
+
+  test "refuses to boot development without a token" do
+    Dir.mktmpdir("kos-data") do |data_home|
+      environment = {
+        "RAILS_ENV" => "development",
+        "KOS_API_TOKEN" => nil,
+        "KOS_DATA_HOME" => data_home
+      }
+
+      _output, error, status = Open3.capture3(
+        environment,
+        Rails.root.join("bin/rails").to_s,
+        "runner",
+        "print 'booted'"
+      )
+
+      refute_predicate status, :success?
+      assert_includes error, "KOS_API_TOKEN must be set to a non-empty value"
+    end
+  end
+
+  test "refuses to boot production without a token" do
+    Dir.mktmpdir("kos-data") do |data_home|
+      environment = {
+        "RAILS_ENV" => "production",
+        "KOS_API_TOKEN" => nil,
+        "KOS_DATA_HOME" => data_home
+      }
+
+      _output, error, status = Open3.capture3(
+        environment,
+        Rails.root.join("bin/rails").to_s,
+        "runner",
+        "print 'booted'"
+      )
+
+      refute_predicate status, :success?
+      assert_includes error, "KOS_API_TOKEN must be set to a non-empty value"
+    end
+  end
+
+  test "keeps the test database inside the isolated temporary directory" do
+    database = Rails.application.config.database_configuration.fetch("test").fetch("database")
+
+    assert_equal "tmp/test.sqlite3", database
+  end
+end
