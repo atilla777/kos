@@ -161,7 +161,9 @@ Before each step, a skill verifies that its claim remains current.
 Reporting an attempt includes task ID, owner ID, claim version, step, and
 outcome. KOS verifies ownership, lease, claim version, current step, and allowed
 outcome, then atomically advances the step, pauses without changing it, or
-completes the task. A pause or completion releases ownership.
+completes the task. Every accepted attempt increments `claim_version`, fencing
+duplicate or delayed reports even when a workflow returns to the same step. A
+pause or completion releases ownership.
 
 After a lost response, the orchestrator reads the task. Stored status and step
 show whether the transition occurred; repeating a stale transition produces a

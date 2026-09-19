@@ -89,4 +89,28 @@ class TaskDependencyTest < ActiveSupport::TestCase
 
     assert_not dependency.update(task: first, blocker: third)
   end
+
+  test "allows dependency changes only before the first claim" do
+    project = create_project
+    task = create_task(project:)
+    blocker = create_task(project:)
+    dependency = TaskDependency.create!(task:, blocker:)
+
+    lifecycle = TaskLifecycle.new
+    blocker_claim = lifecycle.claim_next!(project:, owner_id: "blocker-session")
+    advanced = lifecycle.report_attempt!(task_id: blocker_claim.id, owner_id: "blocker-session",
+      claim_version: blocker_claim.claim_version, step: "develop", outcome: "ready")
+    lifecycle.report_attempt!(task_id: blocker_claim.id, owner_id: "blocker-session",
+      claim_version: advanced.claim_version, step: "check", outcome: "passed")
+    lifecycle.claim_next!(project:, owner_id: "session")
+
+    replacement = create_task(project:)
+    assert_not dependency.update(blocker: replacement)
+    assert_not dependency.destroy
+    assert_not TaskDependency.new(task:, blocker: replacement).valid?
+
+    cancelled = create_task(project:)
+    TaskLifecycle.new.cancel!(task_id: cancelled.id)
+    assert_not TaskDependency.new(task: cancelled, blocker: replacement).valid?
+  end
 end

@@ -15,6 +15,11 @@ class Task < ApplicationRecord
   validate :parent_does_not_create_cycle
   validate :project_is_immutable, on: :update
   validate :workflow_is_immutable, on: :update
+  validate :title_is_immutable, on: :update
+  validate :task_type_is_immutable, on: :update
+  validate :description_is_immutable_after_claim, on: :update
+  validate :parent_is_immutable_after_claim, on: :update
+  validate :lifecycle_state_changes_through_lifecycle, on: :update
 
   before_destroy :prevent_destroy
 
@@ -59,6 +64,39 @@ class Task < ApplicationRecord
 
   def workflow_is_immutable
     errors.add(:workflow, "cannot change after task creation") if will_save_change_to_workflow_id?
+  end
+
+  def description_is_immutable_after_claim
+    return unless will_save_change_to_description_markdown?
+    return if pending_and_unclaimed_in_database?
+
+    errors.add(:description_markdown, "can change only while the task is pending and unclaimed")
+  end
+
+  def parent_is_immutable_after_claim
+    return unless will_save_change_to_parent_id?
+    return if pending_and_unclaimed_in_database?
+
+    errors.add(:parent, "can change only while the task is pending and unclaimed")
+  end
+
+  def task_type_is_immutable
+    errors.add(:task_type, "cannot change after task creation") if will_save_change_to_task_type_id?
+  end
+
+  def title_is_immutable
+    errors.add(:title, "cannot change after task creation") if will_save_change_to_title?
+  end
+
+  def lifecycle_state_changes_through_lifecycle
+    lifecycle_fields = %w[status current_step owner_id claim_version lease_expires_at]
+    return unless lifecycle_fields.any? { |field| will_save_change_to_attribute?(field) }
+
+    errors.add(:base, "lifecycle state can change only through TaskLifecycle")
+  end
+
+  def pending_and_unclaimed_in_database?
+    self.class.where(id:).where(status: "pending", claim_version: 0).exists?
   end
 
   def prevent_destroy

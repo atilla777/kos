@@ -16,6 +16,15 @@ class Workflow < ApplicationRecord
     definition_json["steps"].filter_map { |step| step["id"] if step.is_a?(Hash) }
   end
 
+  def first_step_id
+    step_ids.first
+  end
+
+  def action_for(step_id, outcome)
+    step = definition_json["steps"].find { |candidate| candidate["id"] == step_id }
+    step&.dig("outcomes", outcome)
+  end
+
   private
 
   def definition_json_is_valid

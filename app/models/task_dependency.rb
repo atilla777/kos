@@ -6,6 +6,9 @@ class TaskDependency < ApplicationRecord
   validate :tasks_belong_to_same_project
   validate :task_does_not_block_itself
   validate :dependency_does_not_create_cycle
+  validate :task_has_not_been_claimed
+
+  before_destroy :prevent_change_after_claim
 
   private
 
@@ -40,5 +43,24 @@ class TaskDependency < ApplicationRecord
       dependencies = dependencies.where.not(id:) if id
       pending.concat(dependencies.pluck(:blocker_id))
     end
+  end
+
+  def task_has_not_been_claimed
+    protected_task_ids = [ task_id ]
+    protected_task_ids << task_id_in_database if persisted? && will_save_change_to_task_id?
+    return unless Task.where(id: protected_task_ids.compact).where.not(status: "pending").or(
+      Task.where(id: protected_task_ids.compact).where("claim_version > 0")
+    ).exists?
+
+    errors.add(:task, "dependencies can change only while the task is pending and unclaimed")
+  end
+
+  def prevent_change_after_claim
+    persisted_task_id = task_id_in_database || task_id
+    task = Task.find_by(id: persisted_task_id)
+    return if task&.status == "pending" && task.claim_version.zero?
+
+    errors.add(:task, "dependencies can change only while the task is pending and unclaimed")
+    throw :abort
   end
 end

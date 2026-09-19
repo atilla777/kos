@@ -2,10 +2,10 @@
 
 KOS is a small task state and coordination service for AI agents. This
 repository currently contains the minimal Rails API foundation, the five core
-domain tables and models, workflow validation, task graph invariants, and an
-empty command-line interface. Domain operations will be added in later changes.
-Persisted tasks retain their project and workflow and are cancelled rather than
-physically deleted.
+domain tables and models, workflow validation, task graph invariants, atomic
+task lifecycle operations, and an empty command-line interface. Persisted tasks
+retain their project and workflow and are cancelled rather than physically
+deleted.
 
 ## Prerequisites
 
@@ -38,6 +38,9 @@ in a synchronized or network-mounted directory. `KOS_DATA_HOME` must be an
 absolute path outside the checkout; relative `XDG_DATA_HOME` values are ignored
 as required by the XDG specification. Tests always use `tmp/test.sqlite3` and
 ignore these data-directory variables.
+
+Task ownership leases last six hours by default. Set `KOS_LEASE_SECONDS` to a
+positive integer to use another duration.
 
 ## Setup
 

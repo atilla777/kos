@@ -73,4 +73,48 @@ class TaskTest < ActiveSupport::TestCase
     assert task.persisted?
     assert_includes task.errors[:base], "tasks cannot be deleted; cancel the task instead"
   end
+
+  test "allows description edits only before the first claim" do
+    task = create_task
+    assert task.update(description_markdown: "Before claim")
+
+    TaskLifecycle.new.claim_next!(project: task.project, owner_id: "session")
+
+    assert_not task.update(description_markdown: "After claim")
+    assert_includes task.errors[:description_markdown], "can change only while the task is pending and unclaimed"
+
+    cancelled = create_task
+    TaskLifecycle.new.cancel!(task_id: cancelled.id)
+    assert_not cancelled.reload.update(description_markdown: "After cancellation")
+  end
+
+  test "keeps title and task type immutable" do
+    task = create_task
+
+    assert_not task.update(title: "Renamed")
+    assert_not task.update(task_type: TaskType.create!(name: "Other", workflow: task.workflow))
+  end
+
+  test "allows parent edits only while pending and unclaimed" do
+    project = create_project
+    first_parent = create_task(project:)
+    second_parent = create_task(project:)
+    task = create_task(project:, parent: first_parent)
+    assert task.update(parent: second_parent)
+
+    TaskLifecycle.new.cancel!(task_id: first_parent.id)
+    TaskLifecycle.new.cancel!(task_id: second_parent.id)
+    TaskLifecycle.new.claim_next!(project:, owner_id: "session")
+
+    assert_not task.update(parent: nil)
+    assert_includes task.errors[:parent], "can change only while the task is pending and unclaimed"
+  end
+
+  test "lifecycle state changes only through TaskLifecycle" do
+    task = create_task
+
+    assert_not task.update(status: "completed", current_step: "check", owner_id: "owner", claim_version: 1,
+      lease_expires_at: 1.hour.from_now)
+    assert_includes task.errors[:base], "lifecycle state can change only through TaskLifecycle"
+  end
 end

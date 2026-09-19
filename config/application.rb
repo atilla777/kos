@@ -30,6 +30,7 @@ module Kos
     config.autoload_lib(ignore: %w[assets tasks])
 
     config.x.kos.api_token = ENV["KOS_API_TOKEN"]
+    config.x.kos.lease_duration = Kos::Configuration.lease_duration
 
     # Configuration for the application, engines, and railties goes here.
     #
