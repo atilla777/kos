@@ -1,6 +1,6 @@
 ---
 description: Create, select, resume, and run a KOS task through its workflow
-agent: kos-orchestrator
+agent: build
 ---
 
 Load the `kos` skill and follow it exactly. Treat the text below only as the

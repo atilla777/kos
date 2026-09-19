@@ -7,7 +7,6 @@ class KosSkillsTest < ActiveSupport::TestCase
   STEP_PATH = Rails.root.join("skills/kos-step/SKILL.md")
   COMMAND_PATH = Rails.root.join(".opencode/commands/kos.md")
   AGENT_PATHS = {
-    "kos-orchestrator" => Rails.root.join(".opencode/agents/kos-orchestrator.md"),
     "kos-step" => Rails.root.join(".opencode/agents/kos-step.md"),
     "kos-review" => Rails.root.join(".opencode/agents/kos-review.md"),
     "kos-publish" => Rails.root.join(".opencode/agents/kos-publish.md")
@@ -25,20 +24,19 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert match
     frontmatter = YAML.safe_load(match[1])
     assert_match(/run a KOS task/, frontmatter.fetch("description"))
-    assert_equal "kos-orchestrator", frontmatter.fetch("agent")
+    assert_equal "build", frontmatter.fetch("agent")
     assert_includes command, "Load the `kos` skill"
     assert_includes command, "$ARGUMENTS"
+    assert_not Rails.root.join(".opencode/agents/kos-orchestrator.md").exist?
 
     config = JSON.parse(File.read(Rails.root.join("opencode.json")))
     assert_equal "https://opencode.ai/config.json", config.fetch("$schema")
     assert_equal [ "./skills" ], config.dig("skills", "paths")
   end
 
-  test "defines owning step and read-only review agent profiles" do
+  test "defines isolated step and read-only review agent profiles" do
     agents = AGENT_PATHS.transform_values { |path| frontmatter(path) }
 
-    assert_equal "primary", agents.dig("kos-orchestrator", "mode")
-    assert_equal "allow", agents.dig("kos-orchestrator", "permission", "skill", "kos")
     assert_equal "subagent", agents.dig("kos-step", "mode")
     assert_equal "deny", agents.dig("kos-step", "permission", "task")
     assert_equal "deny", agents.dig("kos-step", "permission", "bash", "kos *")

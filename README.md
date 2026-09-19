@@ -192,15 +192,15 @@ bin/test    # Run the test suite
 The canonical OpenCode integration consists of:
 
 - `.opencode/commands/kos.md`, the `/kos` entry point;
-- `.opencode/agents/`, the owning orchestrator plus isolated ordinary-step,
-  read-only-review, and publication agent profiles;
+- `.opencode/agents/`, the isolated ordinary-step, read-only-review, and
+  publication agent profiles;
 - `skills/kos/SKILL.md`, the lease-owning workflow orchestrator;
 - `skills/kos-step/SKILL.md`, the isolated one-step executor;
 - `skills/kos-git/SKILL.md`, the worktree and publication protocol.
 
 This checkout's `opencode.json` makes the canonical skill directory
 discoverable. For a global installation, copy the command to
-`~/.config/opencode/commands/kos.md`, the agent files to
+`~/.config/opencode/commands/kos.md`, the isolated agent files to
 `~/.config/opencode/agents/`, and each skill directory to
 `~/.config/opencode/skills/`. Restart OpenCode after installing or changing
 commands, agents, skills, or configuration because a running session does not
