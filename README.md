@@ -3,8 +3,8 @@
 KOS is a small task state and coordination service for AI agents. This
 repository contains the Rails state service, its authenticated JSON API, the
 five core domain tables and models, workflow validation, task graph invariants,
-atomic task lifecycle operations, a thin HTTP command-line client, and the
-distributable `kos-git` OpenCode skill.
+atomic task lifecycle operations, a thin HTTP command-line client, and
+distributable OpenCode orchestration, workflow-step, and Git skills.
 Persisted tasks retain their project and workflow and are cancelled rather than
 physically deleted.
 
@@ -109,7 +109,18 @@ different HTTP(S) base URL. Every request requires `KOS_API_TOKEN`:
 ```sh
 export KOS_API_URL="http://127.0.0.1:3000"
 export KOS_API_TOKEN="your-server-token"
+export KOS_CLI_PATH="$(pwd)/bin/kos"
 ```
+
+The `/kos` OpenCode orchestrator also requires administrator-installed project
+context. `KOS_PROJECT_ID`, `KOS_PROJECT_REMOTE_URL`, and
+`KOS_PROJECT_DEFAULT_BRANCH` identify the registered project without asking an
+ordinary user to manage internal IDs. Set `KOS_TASK_TYPE_ID` when `/kos` may
+create tasks. These values must match the records registered through the
+administrative CLI.
+`KOS_CLI_PATH` must be the absolute path to this version's installed CLI; the
+orchestrator validates its command inventory and never falls back to an
+unqualified `kos` executable.
 
 Display the available resources and actions:
 
@@ -173,11 +184,34 @@ bin/lint    # Check formatting and style
 bin/test    # Run the test suite
 ```
 
-## Git Skill
+## OpenCode Skills
 
-`skills/kos-git/SKILL.md` is the canonical OpenCode skill for task worktree
-setup, publication, and interrupted-operation recovery. It operates through
-standard Git commands and does not add Git behavior to Rails or the CLI.
+The canonical OpenCode integration consists of:
+
+- `.opencode/commands/kos.md`, the `/kos` entry point;
+- `.opencode/agents/`, the owning orchestrator plus isolated ordinary-step,
+  read-only-review, and publication agent profiles;
+- `skills/kos/SKILL.md`, the lease-owning workflow orchestrator;
+- `skills/kos-step/SKILL.md`, the isolated one-step executor;
+- `skills/kos-git/SKILL.md`, the worktree and publication protocol.
+
+This checkout's `opencode.json` makes the canonical skill directory
+discoverable. For a global installation, copy the command to
+`~/.config/opencode/commands/kos.md`, the agent files to
+`~/.config/opencode/agents/`, and each skill directory to
+`~/.config/opencode/skills/`. Restart OpenCode after installing or changing
+commands, agents, skills, or configuration because a running session does not
+reload them.
+
+The orchestrator uses only the public `kos` CLI for server state. It writes the
+current step artifact atomically to
+`<kos-data-home>/tasks/<task-id>/<step-id>.md` before reporting an outcome and
+recovers a lost report response by reading authoritative task state. The step
+executor cannot mutate KOS state or write artifacts, runs exactly one workflow
+step, and makes review independent and read-only.
+
+The Git skill operates through standard Git commands and does not add Git
+behavior to Rails or the CLI.
 
 The skill derives each worktree from the same data-home rules as KOS:
 
