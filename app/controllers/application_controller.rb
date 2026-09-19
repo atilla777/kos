@@ -1,7 +1,49 @@
 class ApplicationController < ActionController::API
+  rescue_from ActionController::BadRequest, ActionController::ParameterMissing,
+    ActionDispatch::Http::Parameters::ParseError, with: :render_bad_request
+  rescue_from ActiveRecord::RecordNotFound, with: :render_not_found
+  rescue_from ActiveRecord::RecordInvalid, with: :render_validation_failed
+  rescue_from TaskLifecycle::InvalidTransition, with: :render_invalid_transition
+  rescue_from TaskLifecycle::Conflict, with: :render_conflict
+
   before_action :authenticate_api_token
 
   private
+
+  def required_string(name)
+    value = params.require(name)
+    raise ActionController::BadRequest, "#{name} must be a non-empty string" unless value.is_a?(String) && value.present?
+
+    value
+  end
+
+  def required_integer(name)
+    value = params.require(name)
+    raise ActionController::BadRequest, "#{name} must be an integer" unless value.is_a?(Integer)
+
+    value
+  end
+
+  def optional_integer(name)
+    return unless params.key?(name)
+
+    value = params[name]
+    return if value.nil?
+    raise ActionController::BadRequest, "#{name} must be an integer or null" unless value.is_a?(Integer)
+
+    value
+  end
+
+  def optional_integer_array(name, default: nil)
+    return default unless params.key?(name)
+
+    value = params[name]
+    unless value.is_a?(Array) && value.all? { |item| item.is_a?(Integer) }
+      raise ActionController::BadRequest, "#{name} must be an array of integers"
+    end
+
+    value
+  end
 
   def authenticate_api_token
     scheme, token = request.authorization.to_s.split(" ", 2)
@@ -11,5 +53,25 @@ class ApplicationController < ActionController::API
       ActiveSupport::SecurityUtils.secure_compare(token, expected_token)
 
     render json: { error: "unauthorized" }, status: :unauthorized
+  end
+
+  def render_bad_request(error)
+    render json: { error: "bad_request", message: error.message }, status: :bad_request
+  end
+
+  def render_not_found
+    render json: { error: "not_found" }, status: :not_found
+  end
+
+  def render_validation_failed(error)
+    render json: { error: "validation_failed", details: error.record.errors.to_hash }, status: :unprocessable_entity
+  end
+
+  def render_invalid_transition(error)
+    render json: { error: "invalid_transition", message: error.message }, status: :unprocessable_entity
+  end
+
+  def render_conflict(error)
+    render json: { error: "conflict", message: error.message }, status: :conflict
   end
 end

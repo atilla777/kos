@@ -26,17 +26,18 @@ These rules govern implementation decisions in this repository.
 
 ## Current Foundation
 
-At `PLAN-005`, future application controllers inherit bearer-token
-authentication while Rails' readiness endpoint remains public. Development and
-production SQLite databases live in the configured local KOS data directory,
-outside the repository. The five domain tables and their structural Rails
-associations exist. Models validate immutable used workflow definitions,
-current steps, and acyclic same-project parent and blocker graphs. The lifecycle
-layer creates tasks from task types; atomically claims, resumes, transitions,
-pauses, completes, and cancels them; fences stale owners and repeated reports;
-and keeps claimed or cancelled task definitions immutable. Lease duration is
-configured by `KOS_LEASE_SECONDS`. The application still contains no domain
-controllers, Git integration, or skills, and the CLI only prints help.
+At `PLAN-006`, Rails exposes the required administrative and task lifecycle
+operations through a small bearer-authenticated JSON API while its readiness
+endpoint remains public. Explicit response projections include each task's
+snapshotted workflow and current step; known request, validation, transition,
+ownership, and lookup failures have stable JSON errors. Pre-claim task
+definition edits replace description, parent, and blockers atomically. The
+lifecycle layer creates, edits, claims, resumes, transitions, pauses, completes,
+and cancels tasks while fencing stale owners and repeated reports. Development
+and production SQLite databases live in the configured local KOS data directory
+outside the repository, and lease duration is configured by
+`KOS_LEASE_SECONDS`. The application still contains no Git integration or
+skills, and the CLI only prints help.
 
 See [the product specification](specification.md) for the complete first-version
 contract.

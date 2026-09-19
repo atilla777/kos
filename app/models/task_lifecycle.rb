@@ -1,4 +1,6 @@
 class TaskLifecycle
+  UNCHANGED = Object.new.freeze
+
   class Error < StandardError; end
   class Conflict < Error; end
   class InvalidTransition < Error; end
@@ -24,6 +26,23 @@ class TaskLifecycle
 
   def show!(task_id)
     Task.find(task_id)
+  end
+
+  def update_definition!(task_id:, description_markdown: UNCHANGED, parent: UNCHANGED, blockers: UNCHANGED)
+    Task.transaction do
+      task = lock_editable_task!(task_id)
+
+      task.description_markdown = description_markdown unless description_markdown.equal?(UNCHANGED)
+      task.parent = parent unless parent.equal?(UNCHANGED)
+      task.save! if task.changed?
+
+      unless blockers.equal?(UNCHANGED)
+        task.task_dependencies.each(&:destroy!)
+        blockers.each { |blocker| TaskDependency.create!(task:, blocker:) }
+      end
+
+      task
+    end
   end
 
   def claim_next!(project:, owner_id:)
@@ -105,6 +124,14 @@ class TaskLifecycle
   end
 
   private
+
+  def lock_editable_task!(task_id)
+    editable = Task.where(id: task_id, status: "pending", claim_version: 0)
+    return Task.find(task_id) if editable.update_all("id = id") == 1
+
+    Task.find(task_id)
+    raise Conflict, "task definition can change only while the task is pending and unclaimed"
+  end
 
   def eligible_tasks(project)
     incomplete = TaskDependency.where(blocker_id: Task.where.not(status: "completed")).select(:task_id)

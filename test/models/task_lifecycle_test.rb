@@ -382,4 +382,129 @@ class TaskLifecycleConcurrencyTest < ActiveSupport::TestCase
     assert_nil task.owner_id
     assert_operator task.claim_version, :>=, 2
   end
+
+  test "definition editing serializes with a concurrent claim" do
+    project = create_project
+    task = create_task(project:)
+    edit_locked = Queue.new
+    release_edit = Queue.new
+    claim_selected = Queue.new
+    release_claim = Queue.new
+    results = Queue.new
+
+    editing_lifecycle = Class.new(TaskLifecycle) do
+      define_method(:initialize) do
+        super()
+        @edit_locked = edit_locked
+        @release_edit = release_edit
+      end
+
+      private
+
+      define_method(:lock_editable_task!) do |task_id|
+        editable_task = super(task_id)
+        @edit_locked << true
+        @release_edit.pop
+        editable_task
+      end
+    end
+    claiming_lifecycle = Class.new(TaskLifecycle) do
+      define_method(:initialize) do
+        super()
+        @claim_selected = claim_selected
+        @release_claim = release_claim
+      end
+
+      private
+
+      define_method(:next_claimable_id) do |eligible|
+        task_id = super(eligible)
+        @claim_selected << true
+        @release_claim.pop
+        task_id
+      end
+    end
+
+    editor = Thread.new do
+      ActiveRecord::Base.connection_pool.with_connection do
+        results << editing_lifecycle.new.update_definition!(task_id: task.id, description_markdown: "Updated")
+      rescue StandardError => error
+        results << error
+      end
+    end
+    Timeout.timeout(5) { edit_locked.pop }
+    claimant = Thread.new do
+      ActiveRecord::Base.connection_pool.with_connection do
+        results << claiming_lifecycle.new.claim_next!(project:, owner_id: "session")
+      rescue StandardError => error
+        results << error
+      end
+    end
+    Timeout.timeout(5) { claim_selected.pop }
+    release_claim << true
+    assert_raises(Timeout::Error) { Timeout.timeout(0.1) { results.pop } }
+    release_edit << true
+    editor.join
+    claimant.join
+    outcomes = 2.times.map { results.pop }
+
+    assert_empty outcomes.grep(StandardError)
+    assert_equal "Updated", task.reload.description_markdown
+    assert_equal "active", task.status
+    assert_equal "session", task.owner_id
+  end
+
+  test "a definition edit conflicts when a concurrent claim wins" do
+    project = create_project
+    task = create_task(project:)
+    claim_locked = Queue.new
+    release_claim = Queue.new
+    edit_started = Queue.new
+    results = Queue.new
+
+    claiming_lifecycle = Class.new(TaskLifecycle) do
+      define_method(:initialize) do
+        super()
+        @claim_locked = claim_locked
+        @release_claim = release_claim
+      end
+
+      define_method(:claim_next!) do |**arguments|
+        Task.transaction do
+          claimed = super(**arguments)
+          @claim_locked << true
+          @release_claim.pop
+          claimed
+        end
+      end
+    end
+
+    claimant = Thread.new do
+      ActiveRecord::Base.connection_pool.with_connection do
+        results << claiming_lifecycle.new.claim_next!(project:, owner_id: "session")
+      rescue StandardError => error
+        results << error
+      end
+    end
+    Timeout.timeout(5) { claim_locked.pop }
+    editor = Thread.new do
+      ActiveRecord::Base.connection_pool.with_connection do
+        edit_started << true
+        results << TaskLifecycle.new.update_definition!(task_id: task.id, description_markdown: "Too late")
+      rescue StandardError => error
+        results << error
+      end
+    end
+    Timeout.timeout(5) { edit_started.pop }
+    assert_raises(Timeout::Error) { Timeout.timeout(0.1) { results.pop } }
+    release_claim << true
+    claimant.join
+    editor.join
+    outcomes = 2.times.map { results.pop }
+
+    assert_equal 1, outcomes.grep(Task).size
+    assert_equal 1, outcomes.grep(TaskLifecycle::Conflict).size
+    assert_equal "Description", task.reload.description_markdown
+    assert_equal "active", task.status
+  end
 end

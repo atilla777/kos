@@ -1,11 +1,11 @@
 # KOS
 
 KOS is a small task state and coordination service for AI agents. This
-repository currently contains the minimal Rails API foundation, the five core
-domain tables and models, workflow validation, task graph invariants, atomic
-task lifecycle operations, and an empty command-line interface. Persisted tasks
-retain their project and workflow and are cancelled rather than physically
-deleted.
+repository contains the Rails state service, its authenticated JSON API, the
+five core domain tables and models, workflow validation, task graph invariants,
+atomic task lifecycle operations, and an empty command-line interface.
+Persisted tasks retain their project and workflow and are cancelled rather than
+physically deleted.
 
 ## Prerequisites
 
@@ -65,6 +65,40 @@ bin/rails server
 ```
 
 The readiness endpoint is available at `http://127.0.0.1:3000/up`.
+
+## API
+
+All application endpoints accept JSON and require the configured bearer token.
+`GET /up` is the only public endpoint.
+
+```text
+POST  /projects
+POST  /workflows
+POST  /task_types
+PATCH /task_types/:id
+POST  /tasks
+GET   /tasks/:id
+PATCH /tasks/:id
+POST  /tasks/claim-next
+POST  /tasks/:id/resume
+POST  /tasks/:id/report-attempt
+POST  /tasks/:id/cancel
+```
+
+Request fields are top-level JSON properties. Task responses contain `task`,
+`workflow`, and `step` objects so an agent receives the stored state and the
+current instruction in one response. `claim-next` returns `204 No Content` when
+no task is available. Known failures use a stable `error` code with status
+`400`, `404`, `409`, or `422` as appropriate.
+
+For example:
+
+```sh
+curl --request POST http://127.0.0.1:3000/projects \
+  --header "Authorization: Bearer $KOS_API_TOKEN" \
+  --header "Content-Type: application/json" \
+  --data '{"name":"KOS","remote_url":"https://example.test/kos.git","default_branch":"main"}'
+```
 
 Display the CLI help:
 
