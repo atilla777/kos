@@ -9,6 +9,7 @@ Persisted tasks retain their project and workflow and are cancelled rather than
 physically deleted. Isolated integration scenarios verify restart and
 lost-response recovery, parallel worktrees, moved-base review repetition, and
 interrupted publication without duplicate commits.
+A real OpenCode `/kos` flow has been validated end to end.
 
 ## Prerequisites
 

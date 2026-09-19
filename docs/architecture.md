@@ -26,7 +26,7 @@ These rules govern implementation decisions in this repository.
 
 ## Current Foundation
 
-At `PLAN-011`, Rails exposes the required administrative and task lifecycle
+At `PLAN-012`, Rails exposes the required administrative and task lifecycle
 operations through a small bearer-authenticated JSON API while its readiness
 endpoint remains public. Explicit response projections include each task's
 snapshotted workflow and current step; known request, validation, transition,
@@ -53,6 +53,9 @@ one step to a fresh executor, requires independent read-only review, atomically
 writes the current Markdown artifact before reporting an outcome, and recovers
 uncertain reports by observing server state. No artifact state or orchestration
 runtime is added to Rails.
+One real `/kos` invocation creates and develops a task, checks it with
+`bin/check`, obtains independent read-only review, publishes one verified
+commit, and completes the task.
 
 See [the product specification](specification.md) for the complete first-version
 contract.
