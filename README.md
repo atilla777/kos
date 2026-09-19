@@ -3,7 +3,8 @@
 KOS is a small task state and coordination service for AI agents. This
 repository contains the Rails state service, its authenticated JSON API, the
 five core domain tables and models, workflow validation, task graph invariants,
-atomic task lifecycle operations, and a thin HTTP command-line client.
+atomic task lifecycle operations, a thin HTTP command-line client, and the
+distributable `kos-git` OpenCode skill.
 Persisted tasks retain their project and workflow and are cancelled rather than
 physically deleted.
 
@@ -171,6 +172,24 @@ bin/format  # Apply automatic formatting fixes
 bin/lint    # Check formatting and style
 bin/test    # Run the test suite
 ```
+
+## Git Skill
+
+`skills/kos-git/SKILL.md` is the canonical OpenCode skill for task worktree
+setup, publication, and interrupted-operation recovery. It operates through
+standard Git commands and does not add Git behavior to Rails or the CLI.
+
+The skill derives each worktree from the same data-home rules as KOS:
+
+```text
+<kos-data-home>/worktrees/<project-id>/<task-id>
+```
+
+It keeps development, checks, and review uncommitted. During publication it
+fetches the default branch, returns `base_moved` when checks and review must be
+repeated, creates one task commit, pushes without force, and confirms the result
+from observed remote state. Unexpected worktrees or ambiguous Git history are
+preserved and reported as blocked rather than deleted or repaired.
 
 ## Documentation
 

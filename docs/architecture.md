@@ -26,7 +26,7 @@ These rules govern implementation decisions in this repository.
 
 ## Current Foundation
 
-At `PLAN-007`, Rails exposes the required administrative and task lifecycle
+At `PLAN-009`, Rails exposes the required administrative and task lifecycle
 operations through a small bearer-authenticated JSON API while its readiness
 endpoint remains public. Explicit response projections include each task's
 snapshotted workflow and current step; known request, validation, transition,
@@ -39,8 +39,12 @@ outside the repository, and lease duration is configured by
 `KOS_LEASE_SECONDS`. A thin, stateless `kos` HTTP client exposes every current
 API operation, reads workflow JSON and task Markdown from files or standard
 input, preserves server responses, and reports local or transport failures as
-structured errors. The application still contains no artifact management, Git
-integration, or skills.
+structured errors. A distributable OpenCode Git skill derives task worktree
+paths from the configured KOS data home, isolates uncommitted task work, and
+defines observation-driven base-update, publication, and interruption-recovery
+procedures. It uses Git directly and adds no Git API, wrapper, broker, or
+persisted Git state to Rails. Markdown artifact management and orchestration
+remain unimplemented.
 
 See [the product specification](specification.md) for the complete first-version
 contract.
