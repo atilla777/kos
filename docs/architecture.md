@@ -53,7 +53,7 @@ one step to a fresh executor, requires independent read-only review, atomically
 writes the current Markdown artifact before reporting an outcome, and recovers
 uncertain reports by observing server state. No artifact state or orchestration
 runtime is added to Rails.
-One real `/kos` invocation creates and develops a task, checks it with
+A single real `/kos` invocation creates and develops a task, checks it with
 `bin/check`, obtains independent read-only review, publishes one verified
 commit, and completes the task.
 
