@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_19_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_19_010000) do
   create_table "projects", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "default_branch", null: false
@@ -25,6 +25,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_19_000000) do
     t.index ["blocker_id"], name: "index_task_dependencies_on_blocker_id"
     t.index ["task_id", "blocker_id"], name: "index_task_dependencies_on_task_id_and_blocker_id", unique: true
     t.index ["task_id"], name: "index_task_dependencies_on_task_id"
+    t.check_constraint "task_id != blocker_id", name: "task_dependencies_not_self"
   end
 
   create_table "task_types", force: :cascade do |t|
@@ -54,6 +55,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_19_000000) do
     t.index ["task_type_id"], name: "index_tasks_on_task_type_id"
     t.index ["workflow_id"], name: "index_tasks_on_workflow_id"
     t.check_constraint "claim_version >= 0", name: "tasks_claim_version_nonnegative"
+    t.check_constraint "parent_id IS NULL OR parent_id != id", name: "tasks_parent_not_self"
     t.check_constraint "status IN ('pending', 'active', 'needs_human', 'blocked', 'completed', 'cancelled')", name: "tasks_status"
   end
 

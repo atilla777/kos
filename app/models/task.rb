@@ -9,4 +9,60 @@ class Task < ApplicationRecord
   has_many :blockers, through: :task_dependencies
   has_many :blocking_task_dependencies, class_name: "TaskDependency", foreign_key: :blocker_id
   has_many :blocked_tasks, through: :blocking_task_dependencies, source: :task
+
+  validate :current_step_belongs_to_workflow
+  validate :parent_belongs_to_project
+  validate :parent_does_not_create_cycle
+  validate :project_is_immutable, on: :update
+  validate :workflow_is_immutable, on: :update
+
+  before_destroy :prevent_destroy
+
+  private
+
+  def current_step_belongs_to_workflow
+    return if workflow.nil? || workflow.step_ids.include?(current_step)
+
+    errors.add(:current_step, "must identify a step in the task workflow")
+  end
+
+  def parent_belongs_to_project
+    return if parent.nil? || project == parent.project
+
+    errors.add(:parent, "must belong to the same project")
+  end
+
+  def parent_does_not_create_cycle
+    ancestor = parent
+    visited = {}
+
+    while ancestor
+      if ancestor.equal?(self) || (id && ancestor.id == id)
+        errors.add(:parent, "cannot create a cycle")
+        return
+      end
+
+      key = ancestor.id || ancestor.object_id
+      if visited[key]
+        errors.add(:parent, "cannot belong to a cyclic hierarchy")
+        return
+      end
+
+      visited[key] = true
+      ancestor = ancestor.parent
+    end
+  end
+
+  def project_is_immutable
+    errors.add(:project, "cannot change after task creation") if will_save_change_to_project_id?
+  end
+
+  def workflow_is_immutable
+    errors.add(:workflow, "cannot change after task creation") if will_save_change_to_workflow_id?
+  end
+
+  def prevent_destroy
+    errors.add(:base, "tasks cannot be deleted; cancel the task instead")
+    throw :abort
+  end
 end

@@ -2,8 +2,10 @@
 
 KOS is a small task state and coordination service for AI agents. This
 repository currently contains the minimal Rails API foundation, the five core
-domain tables and models, and an empty command-line interface. Domain operations
-will be added in later changes.
+domain tables and models, workflow validation, task graph invariants, and an
+empty command-line interface. Domain operations will be added in later changes.
+Persisted tasks retain their project and workflow and are cancelled rather than
+physically deleted.
 
 ## Prerequisites
 

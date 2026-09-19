@@ -61,20 +61,36 @@ class DomainSchemaTest < ActiveSupport::TestCase
     assert_raises(ActiveRecord::InvalidForeignKey) { task.update_columns(project_id: -1) }
   end
 
-  test "enforces one dependency per task and blocker pair" do
+  test "rejects a task as its own parent in the database" do
     task = build_task
-    blocker = build_task
+
+    assert_raises(ActiveRecord::StatementInvalid) { task.update_columns(parent_id: task.id) }
+  end
+
+  test "rejects a task blocking itself in the database" do
+    task = build_task
+
+    assert_raises(ActiveRecord::StatementInvalid) do
+      TaskDependency.insert_all!([ { task_id: task.id, blocker_id: task.id } ])
+    end
+  end
+
+  test "enforces one dependency per task and blocker pair" do
+    project = create_project
+    task = create_task(project:)
+    blocker = create_task(project:)
     TaskDependency.create!(task:, blocker:)
 
-    assert_raises(ActiveRecord::RecordNotUnique) do
+    assert_raises(ActiveRecord::RecordInvalid) do
       TaskDependency.create!(task:, blocker:)
     end
   end
 
   test "exposes parent and blocking associations" do
-    parent = build_task
-    blocker = build_task
-    task = build_task(parent:)
+    project = create_project
+    parent = create_task(project:)
+    blocker = create_task(project:)
+    task = create_task(project:, parent:)
     TaskDependency.create!(task:, blocker:)
 
     assert_equal [ task ], parent.children.to_a
@@ -85,12 +101,6 @@ class DomainSchemaTest < ActiveSupport::TestCase
   private
 
   def build_task(parent: nil)
-    project = Project.create!(name: "Project", remote_url: "https://example.test/repository.git",
-      default_branch: "main")
-    workflow = Workflow.create!({ name: "Workflow", definition_json: {} })
-    task_type = TaskType.create!(name: "Type", workflow:)
-
-    Task.create!(project:, task_type:, workflow:, parent:, title: "Task",
-      description_markdown: "Description", current_step: "develop")
+    create_task(parent:)
   end
 end

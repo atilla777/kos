@@ -1,4 +1,101 @@
 class Workflow < ApplicationRecord
+  ROOT_KEYS = %w[steps].freeze
+  STEP_KEYS = %w[artifact_template id instruction name outcomes].freeze
+  ACTION_KEYS = %w[complete_task next_step pause].freeze
+  PAUSES = %w[blocked needs_human].freeze
+
   has_many :task_types
   has_many :tasks
+
+  validate :definition_json_is_valid
+  validate :definition_json_is_immutable, on: :update
+
+  def step_ids
+    return [] unless definition_json.is_a?(Hash) && definition_json["steps"].is_a?(Array)
+
+    definition_json["steps"].filter_map { |step| step["id"] if step.is_a?(Hash) }
+  end
+
+  private
+
+  def definition_json_is_valid
+    unless definition_json.is_a?(Hash) && definition_json.keys.sort == ROOT_KEYS
+      errors.add(:definition_json, "must be an object containing only steps")
+      return
+    end
+
+    steps = definition_json["steps"]
+    unless steps.is_a?(Array) && steps.any?
+      errors.add(:definition_json, "steps must be a non-empty array")
+      return
+    end
+
+    ids = []
+    targets = []
+    steps.each_with_index do |step, index|
+      validate_step(step, index, ids, targets)
+    end
+
+    errors.add(:definition_json, "step ids must be unique") if ids.uniq.length != ids.length
+    targets.each do |target|
+      errors.add(:definition_json, "next_step #{target.inspect} does not exist") unless ids.include?(target)
+    end
+  end
+
+  def validate_step(step, index, ids, targets)
+    unless step.is_a?(Hash) && step.keys.sort == STEP_KEYS
+      errors.add(:definition_json, "step #{index} must contain exactly the required fields")
+      return
+    end
+
+    id = step["id"]
+    ids << id if id.is_a?(String) && id.present?
+    errors.add(:definition_json, "step #{index} id must be a non-empty string") unless id.is_a?(String) && id.present?
+    errors.add(:definition_json, "step #{index} name must be a non-empty string") unless step["name"].is_a?(String) && step["name"].present?
+
+    %w[instruction artifact_template].each do |field|
+      errors.add(:definition_json, "step #{index} #{field} must be a string") unless step[field].is_a?(String)
+    end
+
+    validate_outcomes(step["outcomes"], index, targets)
+  end
+
+  def validate_outcomes(outcomes, step_index, targets)
+    unless outcomes.is_a?(Hash) && outcomes.any?
+      errors.add(:definition_json, "step #{step_index} outcomes must be a non-empty object")
+      return
+    end
+
+    outcomes.each do |name, action|
+      errors.add(:definition_json, "outcome names must be non-empty strings") unless name.is_a?(String) && name.present?
+      validate_action(action, step_index, name, targets)
+    end
+  end
+
+  def validate_action(action, step_index, outcome_name, targets)
+    unless action.is_a?(Hash) && action.keys.length == 1 && ACTION_KEYS.include?(action.keys.first)
+      errors.add(:definition_json, "outcome #{outcome_name.inspect} in step #{step_index} must have exactly one action")
+      return
+    end
+
+    key, value = action.first
+    case key
+    when "next_step"
+      if value.is_a?(String) && value.present?
+        targets << value
+      else
+        errors.add(:definition_json, "next_step must be a non-empty string")
+      end
+    when "pause"
+      errors.add(:definition_json, "pause must be needs_human or blocked") unless PAUSES.include?(value)
+    when "complete_task"
+      errors.add(:definition_json, "complete_task must be true") unless value == true
+    end
+  end
+
+  def definition_json_is_immutable
+    return unless will_save_change_to_definition_json? && tasks.exists?
+
+    errors.add(:definition_json, "cannot change after the workflow is used by a task")
+  end
 end
