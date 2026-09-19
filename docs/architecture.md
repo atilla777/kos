@@ -26,11 +26,13 @@ These rules govern implementation decisions in this repository.
 
 ## Current Foundation
 
-At `PLAN-002`, future application controllers inherit bearer-token
+At `PLAN-003`, future application controllers inherit bearer-token
 authentication while Rails' readiness endpoint remains public. Development and
 production SQLite databases live in the configured local KOS data directory,
-outside the repository. The application still contains no KOS domain models,
-domain controllers, Git integration, or skills, and the CLI only prints help.
+outside the repository. The five domain tables and their structural Rails
+associations exist, but workflow and dependency semantics are not implemented.
+The application still contains no domain controllers, Git integration, or
+skills, and the CLI only prints help.
 
 See [the product specification](specification.md) for the complete first-version
 contract.

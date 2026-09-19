@@ -4,6 +4,8 @@ ruby "3.4.10"
 
 # Bundle edge Rails instead: gem "rails", github: "rails/rails", branch: "main"
 gem "rails", "~> 8.1.3", ">= 8.1.3.1"
+# Rails 8.1 passes JSON parser options positionally, which json 3 no longer accepts.
+gem "json", "< 3"
 # Use sqlite3 as the database for Active Record
 gem "sqlite3", ">= 2.1"
 # Use the Puma web server [https://github.com/puma/puma]
