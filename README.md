@@ -6,7 +6,9 @@ five core domain tables and models, workflow validation, task graph invariants,
 atomic task lifecycle operations, a thin HTTP command-line client, and
 distributable OpenCode orchestration, workflow-step, and Git skills.
 Persisted tasks retain their project and workflow and are cancelled rather than
-physically deleted.
+physically deleted. Isolated integration scenarios verify restart and
+lost-response recovery, parallel worktrees, moved-base review repetition, and
+interrupted publication without duplicate commits.
 
 ## Prerequisites
 

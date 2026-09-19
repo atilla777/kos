@@ -1,10 +1,9 @@
 require "test_helper"
-require "fileutils"
-require "open3"
-require "tmpdir"
 require "yaml"
 
 class KosGitSkillTest < ActiveSupport::TestCase
+  include GitRepositoryHelpers
+
   SKILL_PATH = Rails.root.join("skills/kos-git/SKILL.md")
 
   test "is a discoverable distributable OpenCode skill" do
@@ -181,58 +180,5 @@ class KosGitSkillTest < ActiveSupport::TestCase
       assert_equal remote_before,
         git("--git-dir", repository[:remote].to_s, "rev-parse", "refs/heads/main").strip
     end
-  end
-
-  private
-
-  def with_repository
-    Dir.mktmpdir("kos-git-skill") do |directory|
-      root = Pathname(directory)
-      remote = root.join("remote.git")
-      seed = root.join("seed")
-      source = root.join("source")
-      publisher = root.join("publisher")
-
-      git("init", "--bare", "--initial-branch=main", remote.to_s)
-      git("init", "--initial-branch=main", seed.to_s)
-      configure_repository(seed)
-      File.write(seed.join("README.md"), "initial\n")
-      git("add", "README.md", chdir: seed)
-      git("commit", "-m", "Initial", chdir: seed)
-      git("remote", "add", "origin", remote.to_s, chdir: seed)
-      git("push", "-u", "origin", "main", chdir: seed)
-      git("clone", remote.to_s, source.to_s)
-      git("clone", remote.to_s, publisher.to_s)
-      configure_repository(source)
-      configure_repository(publisher)
-
-      yield({ root:, remote:, source:, publisher: })
-    end
-  end
-
-  def configure_repository(path)
-    git("config", "user.name", "KOS Test", chdir: path)
-    git("config", "user.email", "kos@example.test", chdir: path)
-  end
-
-  def git(*arguments, chdir: Rails.root)
-    environment = {
-      "GIT_CONFIG_NOSYSTEM" => "1",
-      "GIT_TERMINAL_PROMPT" => "0",
-      "LC_ALL" => "C"
-    }
-    output, error, status = Open3.capture3(environment, "git", *arguments, chdir: chdir.to_s)
-    assert_predicate status, :success?, "git #{arguments.join(" ")} failed:\n#{output}#{error}"
-    output
-  end
-
-  def git_success?(*arguments, chdir: Rails.root)
-    environment = {
-      "GIT_CONFIG_NOSYSTEM" => "1",
-      "GIT_TERMINAL_PROMPT" => "0",
-      "LC_ALL" => "C"
-    }
-    _output, _error, status = Open3.capture3(environment, "git", *arguments, chdir: chdir.to_s)
-    status.success?
   end
 end

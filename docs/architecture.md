@@ -26,7 +26,7 @@ These rules govern implementation decisions in this repository.
 
 ## Current Foundation
 
-At `PLAN-010`, Rails exposes the required administrative and task lifecycle
+At `PLAN-011`, Rails exposes the required administrative and task lifecycle
 operations through a small bearer-authenticated JSON API while its readiness
 endpoint remains public. Explicit response projections include each task's
 snapshotted workflow and current step; known request, validation, transition,
@@ -43,7 +43,11 @@ structured errors. A distributable OpenCode Git skill derives task worktree
 paths from the configured KOS data home, isolates uncommitted task work, and
 defines observation-driven base-update, publication, and interruption-recovery
 procedures. It uses Git directly and adds no Git API, wrapper, broker, or
-persisted Git state to Rails. The `/kos` OpenCode command loads a CLI-only
+persisted Git state to Rails. Integration scenarios with isolated persistent
+databases, data directories, Git repositories, and bare remotes verify restart
+and lost-response recovery, parallel task isolation, moved-base repetition of
+checks and read-only review, and observation-driven publication recovery without
+duplicate commits. The `/kos` OpenCode command loads a CLI-only
 orchestrator skill, which verifies ownership before each step, delegates exactly
 one step to a fresh executor, requires independent read-only review, atomically
 writes the current Markdown artifact before reporting an outcome, and recovers

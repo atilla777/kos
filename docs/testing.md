@@ -7,6 +7,10 @@
 - Concurrency tests cover claims, claim fencing, and atomic transitions.
 - CLI tests execute the public command rather than internal implementation.
 - Git integration tests use temporary repositories and a temporary bare remote.
+- Recovery scenarios use isolated persistent databases, data directories, and
+  subprocesses; they never inherit an ambient database URL or Git configuration.
+- Moved-base scenarios prove checks and read-only review repeat while staged,
+  unstaged, and untracked task work remains uncommitted.
 - The final acceptance test exercises a real `/kos` flow in OpenCode.
 
 ## Test Properties

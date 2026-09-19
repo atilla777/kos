@@ -1,6 +1,7 @@
 ENV["RAILS_ENV"] ||= "test"
 require_relative "../config/environment"
 require "rails/test_help"
+require_relative "support/git_repository_helpers"
 
 module ActiveSupport
   class TestCase
@@ -31,6 +32,43 @@ module ActiveSupport
             "outcomes" => {
               "passed" => { "complete_task" => true },
               "failed" => { "next_step" => "develop" },
+              "blocked" => { "pause" => "blocked" }
+            }
+          }
+        ]
+      }
+    end
+
+    def acceptance_workflow_definition
+      {
+        "steps" => [
+          {
+            "id" => "develop", "name" => "Develop", "instruction" => "Implement the task.",
+            "artifact_template" => "# Development",
+            "outcomes" => { "ready" => { "next_step" => "check" } }
+          },
+          {
+            "id" => "check", "name" => "Check", "instruction" => "Run the checks.",
+            "artifact_template" => "# Checks",
+            "outcomes" => {
+              "passed" => { "next_step" => "review" },
+              "failed" => { "next_step" => "develop" }
+            }
+          },
+          {
+            "id" => "review", "name" => "Review", "instruction" => "Review the changes.",
+            "artifact_template" => "# Review",
+            "outcomes" => {
+              "approved" => { "next_step" => "publish" },
+              "changes_requested" => { "next_step" => "develop" }
+            }
+          },
+          {
+            "id" => "publish", "name" => "Publish", "instruction" => "Publish the changes.",
+            "artifact_template" => "# Publication",
+            "outcomes" => {
+              "base_moved" => { "next_step" => "check" },
+              "published" => { "complete_task" => true },
               "blocked" => { "pause" => "blocked" }
             }
           }
