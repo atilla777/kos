@@ -26,7 +26,7 @@ These rules govern implementation decisions in this repository.
 
 ## Current Foundation
 
-At `PLAN-006`, Rails exposes the required administrative and task lifecycle
+At `PLAN-007`, Rails exposes the required administrative and task lifecycle
 operations through a small bearer-authenticated JSON API while its readiness
 endpoint remains public. Explicit response projections include each task's
 snapshotted workflow and current step; known request, validation, transition,
@@ -36,8 +36,11 @@ lifecycle layer creates, edits, claims, resumes, transitions, pauses, completes,
 and cancels tasks while fencing stale owners and repeated reports. Development
 and production SQLite databases live in the configured local KOS data directory
 outside the repository, and lease duration is configured by
-`KOS_LEASE_SECONDS`. The application still contains no Git integration or
-skills, and the CLI only prints help.
+`KOS_LEASE_SECONDS`. A thin, stateless `kos` HTTP client exposes every current
+API operation, reads workflow JSON and task Markdown from files or standard
+input, preserves server responses, and reports local or transport failures as
+structured errors. The application still contains no artifact management, Git
+integration, or skills.
 
 See [the product specification](specification.md) for the complete first-version
 contract.

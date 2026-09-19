@@ -3,7 +3,7 @@
 KOS is a small task state and coordination service for AI agents. This
 repository contains the Rails state service, its authenticated JSON API, the
 five core domain tables and models, workflow validation, task graph invariants,
-atomic task lifecycle operations, and an empty command-line interface.
+atomic task lifecycle operations, and a thin HTTP command-line client.
 Persisted tasks retain their project and workflow and are cancelled rather than
 physically deleted.
 
@@ -100,11 +100,61 @@ curl --request POST http://127.0.0.1:3000/projects \
   --data '{"name":"KOS","remote_url":"https://example.test/kos.git","default_branch":"main"}'
 ```
 
-Display the CLI help:
+## CLI
+
+`bin/kos` uses `http://127.0.0.1:3000` by default. Set `KOS_API_URL` to use a
+different HTTP(S) base URL. Every request requires `KOS_API_TOKEN`:
+
+```sh
+export KOS_API_URL="http://127.0.0.1:3000"
+export KOS_API_TOKEN="your-server-token"
+```
+
+Display the available resources and actions:
 
 ```sh
 bin/kos --help
 ```
+
+The CLI exposes every current API operation:
+
+```text
+kos project create
+kos workflow create
+kos task-type create
+kos task-type update ID
+kos task create
+kos task update ID
+kos task show ID
+kos task claim-next
+kos task resume ID
+kos task report-attempt ID
+kos task cancel ID
+```
+
+Use command help for exact options. Workflow definitions are read with
+`--definition-file FILE`. Task descriptions are read with
+`--description-file FILE`; pass `-` as the file to read from standard input.
+Repeat `--blocker-id ID` to provide multiple blockers. On task updates,
+`--clear-parent` and `--clear-blockers` explicitly remove those relationships.
+
+For example:
+
+```sh
+bin/kos task create \
+  --project-id 1 \
+  --task-type-id 1 \
+  --title "Document the CLI" \
+  --description-file task.md
+
+bin/kos task claim-next --project-id 1 --owner-id opencode-session-1
+```
+
+Server response bodies are written unchanged to stdout. A `204 No Content`
+response succeeds without output. HTTP failures preserve the server body and
+exit with status 1. CLI usage, configuration, and local-input failures are JSON
+on stderr with status 2; transport failures use status 3. CLI-generated errors
+never include the bearer token.
 
 ## Verify
 
