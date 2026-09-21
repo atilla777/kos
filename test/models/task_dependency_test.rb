@@ -34,7 +34,7 @@ class TaskDependencyTest < ActiveSupport::TestCase
 
   test "rejects unsaved tasks from different unsaved projects" do
     workflow = create_workflow
-    task_type = TaskType.create!(name: "Type", workflow:)
+    task_type = create_task_type(workflow:)
     task = Task.new(project: Project.new(name: "First", remote_url: "https://example.test/first.git",
       default_branch: "main"), task_type:, workflow:, title: "Task", description_markdown: "Description",
       current_step: "develop")

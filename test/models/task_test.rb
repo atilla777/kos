@@ -92,7 +92,7 @@ class TaskTest < ActiveSupport::TestCase
     task = create_task
 
     assert_not task.update(title: "Renamed")
-    assert_not task.update(task_type: TaskType.create!(name: "Other", workflow: task.workflow))
+    assert_not task.update(task_type: create_task_type(name: "Other", workflow: task.workflow))
   end
 
   test "allows parent edits only while pending and unclaimed" do

@@ -1,6 +1,7 @@
 class TaskTypesController < ApplicationController
   def create
-    task_type = TaskType.create!(name: required_string(:name), workflow: Workflow.find(required_integer(:workflow_id)))
+    task_type = TaskType.create!(key: required_string(:key), name: required_string(:name),
+      workflow: Workflow.find(required_integer(:workflow_id)))
 
     render json: { task_type: serialize(task_type) }, status: :created
   end
@@ -15,6 +16,6 @@ class TaskTypesController < ApplicationController
   private
 
   def serialize(task_type)
-    task_type.as_json(only: %i[id name workflow_id created_at updated_at])
+    task_type.as_json(only: %i[id key name workflow_id created_at updated_at])
   end
 end

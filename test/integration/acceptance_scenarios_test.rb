@@ -66,7 +66,7 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
     with_repository do |repository|
       project = create_project(remote_url: repository[:remote].to_s)
       workflow = create_workflow(definition: acceptance_workflow_definition)
-      task_type = TaskType.create!(name: "Acceptance", workflow:)
+      task_type = create_task_type(name: "Acceptance", workflow:)
       first = create_task(project:, workflow:, task_type:, title: "First")
       second = create_task(project:, workflow:, task_type:, title: "Second")
       lifecycle = TaskLifecycle.new
@@ -142,7 +142,7 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
   def claimed_acceptance_task
     project = create_project
     workflow = create_workflow(definition: acceptance_workflow_definition)
-    task_type = TaskType.create!(name: "Acceptance", workflow:)
+    task_type = create_task_type(name: "Acceptance", workflow:)
     create_task(project:, workflow:, task_type:, title: "Publish")
     lifecycle = TaskLifecycle.new
     [ lifecycle.claim_next!(project:, owner_id: "owner"), lifecycle ]
@@ -336,7 +336,7 @@ class RestartRecoveryScenarioTest < ActiveSupport::TestCase
       workflow_file.flush
       workflow = run_kos_json(system, "workflow", "create", "--name", "Acceptance",
         "--definition-file", workflow_file.path).fetch("workflow")
-      task_type = run_kos_json(system, "task-type", "create", "--name", "Acceptance", "--workflow-id",
+      task_type = run_kos_json(system, "task-type", "create", "--key", "acceptance", "--name", "Acceptance", "--workflow-id",
         workflow.fetch("id").to_s).fetch("task_type")
       Tempfile.create([ "task", ".md" ]) do |description_file|
         description_file.write("Integration task\n")

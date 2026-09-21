@@ -89,10 +89,16 @@ module ActiveSupport
       Workflow.create!(name:, definition_json: definition)
     end
 
+    def create_task_type(name: "Type", key: nil, workflow: nil)
+      workflow ||= create_workflow
+      key ||= "custom-test-#{SecureRandom.hex(8)}"
+      TaskType.create!(key:, name:, workflow:)
+    end
+
     def create_task(project: nil, workflow: nil, task_type: nil, parent: nil, current_step: "develop", title: "Task")
       project ||= create_project
       workflow ||= create_workflow
-      task_type ||= TaskType.create!(name: "Type", workflow:)
+      task_type ||= create_task_type(workflow:)
 
       Task.create!(project:, task_type:, workflow:, parent:, title:,
         description_markdown: "Description", current_step:)

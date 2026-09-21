@@ -10,7 +10,7 @@ class TaskLifecycleTest < ActiveSupport::TestCase
   test "creates a task with the task type workflow and its first step" do
     project = create_project
     original_workflow = create_workflow
-    task_type = TaskType.create!(name: "Type", workflow: original_workflow)
+    task_type = create_task_type(workflow: original_workflow)
 
     task = @lifecycle.create!(project:, task_type:, title: "Lifecycle", description_markdown: "Description")
 
@@ -23,7 +23,7 @@ class TaskLifecycleTest < ActiveSupport::TestCase
   test "creates blockers atomically" do
     project = create_project
     workflow = create_workflow
-    task_type = TaskType.create!(name: "Type", workflow:)
+    task_type = create_task_type(workflow:)
     blocker = create_task(project:, workflow:, task_type:)
 
     task = @lifecycle.create!(project:, task_type:, title: "Blocked", description_markdown: "Description",
@@ -35,7 +35,7 @@ class TaskLifecycleTest < ActiveSupport::TestCase
   test "rolls task creation back when a blocker is invalid" do
     project = create_project
     workflow = create_workflow
-    task_type = TaskType.create!(name: "Type", workflow:)
+    task_type = create_task_type(workflow:)
     other_project_blocker = create_task
 
     assert_no_difference -> { project.tasks.count } do
@@ -50,7 +50,7 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     project = create_project
     original_workflow = create_workflow(name: "Original")
     replacement_workflow = create_workflow(name: "Replacement")
-    task_type = TaskType.create!(name: "Type", workflow: original_workflow)
+    task_type = create_task_type(workflow: original_workflow)
 
     first = @lifecycle.create!(project:, task_type:, title: "First", description_markdown: "Description")
     task_type.update!(workflow: replacement_workflow)
@@ -220,7 +220,7 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     definition["steps"][0]["outcomes"]["again"] = { "next_step" => "develop" }
     project = create_project
     workflow = create_workflow(definition:)
-    task_type = TaskType.create!(name: "Type", workflow:)
+    task_type = create_task_type(workflow:)
     create_task(project:, workflow:, task_type:)
     task = @lifecycle.claim_next!(project:, owner_id: "session")
 

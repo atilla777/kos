@@ -22,8 +22,9 @@ class AdministrationApiTest < ActionDispatch::IntegrationTest
     workflow_id = response.parsed_body.dig("workflow", "id")
     assert_equal valid_workflow_definition, response.parsed_body.dig("workflow", "definition_json")
 
-    post task_types_path, params: { name: "Feature", workflow_id: }, headers: @headers, as: :json
+    post task_types_path, params: { key: "feature", name: "Feature", workflow_id: }, headers: @headers, as: :json
     assert_response :created
+    assert_equal "feature", response.parsed_body.dig("task_type", "key")
     assert_equal workflow_id, response.parsed_body.dig("task_type", "workflow_id")
   end
 
@@ -40,14 +41,28 @@ class AdministrationApiTest < ActionDispatch::IntegrationTest
   test "changes a task type workflow without changing existing tasks" do
     original = create_workflow(name: "Original")
     replacement = create_workflow(name: "Replacement")
-    task_type = TaskType.create!(name: "Feature", workflow: original)
+    task_type = create_task_type(name: "Feature", key: "feature", workflow: original)
     task = create_task(workflow: original, task_type:)
 
     patch task_type_path(task_type), params: { workflow_id: replacement.id }, headers: @headers, as: :json
 
     assert_response :success
+    assert_equal "feature", response.parsed_body.dig("task_type", "key")
     assert_equal replacement.id, response.parsed_body.dig("task_type", "workflow_id")
     assert_equal original, task.reload.workflow
+  end
+
+  test "rejects duplicate and reserved task type keys" do
+    workflow = create_workflow
+    create_task_type(key: "feature", workflow:)
+
+    [ "feature", "brief", "development", "fix" ].each do |key|
+      post task_types_path, params: { key:, name: key.titleize, workflow_id: workflow.id }, headers: @headers, as: :json
+
+      assert_response :unprocessable_entity
+      assert_equal "validation_failed", response.parsed_body["error"]
+      assert response.parsed_body.fetch("details").key?("key")
+    end
   end
 
   test "returns stable errors for malformed and invalid administration requests" do
@@ -60,7 +75,8 @@ class AdministrationApiTest < ActionDispatch::IntegrationTest
     assert_equal "validation_failed", response.parsed_body["error"]
     assert response.parsed_body.fetch("details").key?("definition_json")
 
-    post task_types_path, params: { name: "Missing workflow", workflow_id: -1 }, headers: @headers, as: :json
+    post task_types_path, params: { key: "missing", name: "Missing workflow", workflow_id: -1 }, headers: @headers,
+      as: :json
     assert_response :not_found
     assert_equal({ "error" => "not_found" }, response.parsed_body)
   end

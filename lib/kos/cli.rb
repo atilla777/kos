@@ -114,10 +114,11 @@ module Kos
 
     def task_type_create
       values = parse_options("kos task-type create", {
+        "--key KEY" => [ :key, String, "Stable task type key" ],
         "--name NAME" => [ :name, String, "Task type name" ],
         "--workflow-id ID" => [ :workflow_id, Integer, "Workflow ID" ]
       })
-      require_values!(values, :name, :workflow_id)
+      require_values!(values, :key, :name, :workflow_id)
       [ :post, "/task_types", values ]
     end
 

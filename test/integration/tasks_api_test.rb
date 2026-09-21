@@ -5,7 +5,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     @headers = { "Authorization" => "Bearer test-api-token" }
     @project = create_project
     @workflow = create_workflow
-    @task_type = TaskType.create!(name: "Feature", workflow: @workflow)
+    @task_type = create_task_type(name: "Feature", workflow: @workflow)
   end
 
   test "creates and shows a task with its workflow current step and dependencies" do
@@ -34,7 +34,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     definition["steps"].each { |step| step.delete("model_tier") }
     workflow = Workflow.new(name: "Legacy", definition_json: definition)
     workflow.save!(validate: false)
-    task_type = TaskType.create!(name: "Legacy", workflow:)
+    task_type = create_task_type(name: "Legacy", workflow:)
     task = create_task(project: @project, workflow:, task_type:)
 
     get task_path(task), headers: @headers, as: :json

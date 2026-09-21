@@ -28,6 +28,15 @@ class CliTest < ActiveSupport::TestCase
     assert_empty error
   end
 
+  test "requires a task type key" do
+    _output, error, status = run_cli("task-type", "create", "--name", "Feature", "--workflow-id", "4",
+      environment: {})
+
+    assert_equal 2, status.exitstatus
+    assert_equal "usage_error", JSON.parse(error).fetch("error")
+    assert_includes JSON.parse(error).fetch("message"), "--key"
+  end
+
   test "maps every API operation to its HTTP request" do
     Tempfile.create([ "workflow", ".json" ]) do |workflow_file|
       workflow_file.write(JSON.generate(steps: [ { id: "develop" } ]))
@@ -43,8 +52,8 @@ class CliTest < ActiveSupport::TestCase
             { "name" => "KOS", "remote_url" => "git@example.test:kos.git", "default_branch" => "main" } ],
           [ [ "workflow", "create", "--name", "Default", "--definition-file", workflow_file.path ],
             "POST", "/workflows", { "name" => "Default", "definition_json" => { "steps" => [ { "id" => "develop" } ] } } ],
-          [ [ "task-type", "create", "--name", "Feature", "--workflow-id", "4" ],
-            "POST", "/task_types", { "name" => "Feature", "workflow_id" => 4 } ],
+          [ [ "task-type", "create", "--key", "feature", "--name", "Feature", "--workflow-id", "4" ],
+            "POST", "/task_types", { "key" => "feature", "name" => "Feature", "workflow_id" => 4 } ],
           [ [ "task-type", "update", "7", "--workflow-id", "5" ],
             "PATCH", "/task_types/7", { "workflow_id" => 5 } ],
           [ [ "task", "create", "--project-id", "1", "--task-type-id", "2", "--title", "CLI task",

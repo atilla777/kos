@@ -2,8 +2,8 @@
 
 KOS is a small task state and coordination service for AI agents. This
 repository contains the Rails state service, its authenticated JSON API, the
-five core domain tables and models, workflow validation, task graph invariants,
-atomic task lifecycle operations, a thin HTTP command-line client, and
+five core domain tables and models, an idempotent built-in task catalog,
+workflow validation, task graph invariants, atomic task lifecycle operations, a thin HTTP command-line client, and
 distributable OpenCode orchestration, workflow-step, and Git skills.
 Persisted tasks retain their project and workflow and are cancelled rather than
 physically deleted. Isolated integration scenarios verify restart and
@@ -112,9 +112,12 @@ bin/rails db:prepare
 bin/rails server
 ```
 
-Use the administrative CLI commands below to register the project, workflow,
-and task type. Then expose their trusted installation context to the OpenCode
-process:
+Database preparation automatically installs the built-in `brief`,
+`development`, and `fix` task types and their canonical workflows. Use the
+administrative CLI commands below only to register the project and any custom
+workflows or task types. Custom task types require a stable `--key`; the three
+built-in keys are reserved. Then expose the trusted installation context to the
+OpenCode process:
 
 ```sh
 export KOS_PROJECT_ID="<registered-project-id>"
@@ -128,8 +131,10 @@ one real `/kos` task before treating the installation as ready.
 
 To update KOS, stop the service and active orchestrators, check out the new tag,
 repeat `gem build` and `gem install`, update the copied OpenCode files from that
-tag, run `bin/rails db:prepare`, and restart Rails and OpenCode. Never mix the
-CLI or skills from different KOS revisions.
+tag, run `bin/rails db:prepare` and `bin/rails db:seed`, and restart Rails and
+OpenCode. The idempotent seed installs new canonical workflow revisions and
+repoints only built-in task types; existing tasks keep their snapshotted
+workflow. Never mix the CLI or skills from different KOS revisions.
 
 When developing KOS, prepare the empty test database explicitly:
 
@@ -225,7 +230,9 @@ kos task report-attempt ID
 kos task cancel ID
 ```
 
-Use command help for exact options. Workflow definitions are read with
+Use command help for exact options. Administrative task type creation requires
+`--key KEY`; `brief`, `development`, and `fix` cannot be used for custom types.
+Workflow definitions are read with
 `--definition-file FILE`. Task descriptions are read with
 `--description-file FILE`; pass `-` as the file to read from standard input.
 Repeat `--blocker-id ID` to provide multiple blockers. On task updates,

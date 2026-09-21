@@ -63,6 +63,15 @@ A single real `/kos` invocation creates and develops a task, checks it with
 `bin/check`, obtains independent read-only review, publishes one verified
 commit, and completes the task.
 
+`PLAN-014` adds stable unique task type keys. Its migration assigns existing
+types deterministic non-reserved keys without inferring identity from display
+names and rejects partial or reserved-key states. Database seeds transactionally
+install the canonical `brief`, `development`, and `fix` catalog. Reruns reuse an
+identical current definition or create a new immutable workflow row and repoint
+only the built-in type, so existing task snapshots and custom catalog entries
+remain unchanged. Typed task selection and the new command orchestrators remain
+later-plan capabilities.
+
 ## Built-In Scenario Target
 
 The next version installs three global built-in task types identified by stable

@@ -50,7 +50,7 @@ class WorkflowTest < ActiveSupport::TestCase
     assert workflow.valid?
     assert_equal "advanced", workflow.step_for("develop").fetch("model_tier")
     assert workflow.definition_for_execution.fetch("steps").all? { |step| step["model_tier"] == "advanced" }
-    task_type = TaskType.create!(name: "Legacy", workflow:)
+    task_type = create_task_type(name: "Legacy", workflow:)
     task = create_task(workflow:, task_type:)
     assert_equal workflow, task.workflow
   end
@@ -109,7 +109,7 @@ class WorkflowTest < ActiveSupport::TestCase
 
   test "allows definition changes before a task uses the workflow" do
     workflow = create_workflow
-    TaskType.create!(name: "Type", workflow:)
+    create_task_type(workflow:)
 
     definition = valid_workflow_definition
     definition["steps"][0]["name"] = "Implementation"

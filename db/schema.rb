@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_19_010000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_21_000000) do
   create_table "projects", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "default_branch", null: false
@@ -30,9 +30,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_19_010000) do
 
   create_table "task_types", force: :cascade do |t|
     t.datetime "created_at", null: false
+    t.string "key", null: false
     t.string "name", null: false
     t.datetime "updated_at", null: false
     t.integer "workflow_id", null: false
+    t.index ["key"], name: "index_task_types_on_key", unique: true
     t.index ["workflow_id"], name: "index_task_types_on_workflow_id"
   end
 

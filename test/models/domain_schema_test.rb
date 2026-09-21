@@ -13,7 +13,7 @@ class DomainSchemaTest < ActiveSupport::TestCase
     required_columns = {
       Project => %w[name remote_url default_branch created_at updated_at],
       Workflow => %w[name definition_json created_at],
-      TaskType => %w[name workflow_id created_at updated_at],
+      TaskType => %w[key name workflow_id created_at updated_at],
       Task => %w[project_id task_type_id workflow_id title description_markdown status current_step
         claim_version created_at updated_at],
       TaskDependency => %w[task_id blocker_id]
@@ -28,6 +28,16 @@ class DomainSchemaTest < ActiveSupport::TestCase
     assert Task.columns_hash.fetch("lease_expires_at").null
     assert_equal "pending", Task.columns_hash.fetch("status").default
     assert_equal 0, Task.columns_hash.fetch("claim_version").default
+  end
+
+  test "enforces unique task type keys in the database" do
+    workflow = create_workflow
+    create_task_type(key: "feature", workflow:)
+
+    assert_raises(ActiveRecord::RecordNotUnique) do
+      TaskType.insert_all!([ { key: "feature", name: "Duplicate", workflow_id: workflow.id,
+        created_at: Time.current, updated_at: Time.current } ])
+    end
   end
 
   test "defines every domain foreign key" do
