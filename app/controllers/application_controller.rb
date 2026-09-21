@@ -3,6 +3,7 @@ class ApplicationController < ActionController::API
     ActionDispatch::Http::Parameters::ParseError, with: :render_bad_request
   rescue_from ActiveRecord::RecordNotFound, with: :render_not_found
   rescue_from ActiveRecord::RecordInvalid, with: :render_validation_failed
+  rescue_from ActiveRecord::RecordNotUnique, with: :render_record_not_unique
   rescue_from TaskLifecycle::InvalidTransition, with: :render_invalid_transition
   rescue_from TaskLifecycle::Conflict, with: :render_conflict
 
@@ -32,6 +33,13 @@ class ApplicationController < ActionController::API
     raise ActionController::BadRequest, "#{name} must be an integer or null" unless value.is_a?(Integer)
 
     value
+  end
+
+  def required_query_integer(name)
+    value = params.require(name)
+    Integer(value, 10)
+  rescue ArgumentError, TypeError
+    raise ActionController::BadRequest, "#{name} must be an integer"
   end
 
   def optional_integer_array(name, default: nil)
@@ -65,6 +73,10 @@ class ApplicationController < ActionController::API
 
   def render_validation_failed(error)
     render json: { error: "validation_failed", details: error.record.errors.to_hash }, status: :unprocessable_entity
+  end
+
+  def render_record_not_unique
+    render json: { error: "conflict", message: "a unique value is already in use" }, status: :conflict
   end
 
   def render_invalid_transition(error)

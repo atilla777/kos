@@ -60,7 +60,7 @@ module Kos
           project create
           workflow create
           task-type create | update
-          task create | update | show | claim-next | resume | report-attempt | cancel
+          task create | create-and-claim | update | show | show-owned | claim-next | claim | resumable | resume | report-attempt | cancel
 
         Options:
           -v, --version             Show the installed CLI version
@@ -80,9 +80,13 @@ module Kos
       when [ "task-type", "create" ] then task_type_create
       when [ "task-type", "update" ] then task_type_update
       when [ "task", "create" ] then task_create
+      when [ "task", "create-and-claim" ] then task_create_and_claim
       when [ "task", "update" ] then task_update
       when [ "task", "show" ] then task_show
+      when [ "task", "show-owned" ] then task_show_owned
       when [ "task", "claim-next" ] then task_claim_next
+      when [ "task", "claim" ] then task_claim
+      when [ "task", "resumable" ] then task_resumable
       when [ "task", "resume" ] then task_resume
       when [ "task", "report-attempt" ] then task_report_attempt
       when [ "task", "cancel" ] then task_cancel
@@ -133,9 +137,18 @@ module Kos
 
     def task_create
       values = parse_task_definition_options("kos task create", update: false)
-      require_values!(values, :project_id, :task_type_id, :title, :description_markdown)
+      require_values!(values, :project_id, :title, :description_markdown)
+      require_task_type_selector!(values)
       values[:blocker_ids] ||= []
       [ :post, "/tasks", values ]
+    end
+
+    def task_create_and_claim
+      values = parse_task_definition_options("kos task create-and-claim", update: false, owner: true)
+      require_values!(values, :project_id, :title, :description_markdown, :owner_id)
+      require_task_type_selector!(values)
+      values[:blocker_ids] ||= []
+      [ :post, "/tasks/create-and-claim", values ]
     end
 
     def task_update
@@ -152,12 +165,37 @@ module Kos
       [ :get, "/tasks/#{id}", nil ]
     end
 
-    def task_claim_next
-      values = parse_options("kos task claim-next", owner_options.merge(
+    def task_show_owned
+      values = parse_options("kos task show-owned", owner_options.merge(
         "--project-id ID" => [ :project_id, Integer, "Project ID" ]
       ))
       require_values!(values, :project_id, :owner_id)
+      [ :get, query_path("/tasks/show-owned", values), nil ]
+    end
+
+    def task_claim_next
+      values = parse_options("kos task claim-next", owner_options.merge(
+        "--project-id ID" => [ :project_id, Integer, "Project ID" ],
+        "--task-type-key KEY" => [ :task_type_key, String, "Filter by task type key" ]
+      ))
+      require_values!(values, :project_id, :owner_id)
       [ :post, "/tasks/claim-next", values ]
+    end
+
+    def task_claim
+      id = shift_id!("task")
+      values = parse_options("kos task claim ID", owner_options)
+      require_values!(values, :owner_id)
+      [ :post, "/tasks/#{id}/claim", values ]
+    end
+
+    def task_resumable
+      values = parse_options("kos task resumable", {
+        "--project-id ID" => [ :project_id, Integer, "Project ID" ],
+        "--task-type-key KEY" => [ :task_type_key, String, "Task type key" ]
+      })
+      require_values!(values, :project_id, :task_type_key)
+      [ :get, query_path("/tasks/resumable", values), nil ]
     end
 
     def task_resume
@@ -187,11 +225,13 @@ module Kos
       [ :post, "/tasks/#{id}/cancel", {} ]
     end
 
-    def parse_task_definition_options(usage, update:)
+    def parse_task_definition_options(usage, update:, owner: false)
       values = {}
       parser = option_parser(usage)
       parser.on("--project-id ID", Integer, "Project ID") { |value| values[:project_id] = value } unless update
       parser.on("--task-type-id ID", Integer, "Task type ID") { |value| values[:task_type_id] = value } unless update
+      parser.on("--task-type-key KEY", String, "Stable task type key") { |value| values[:task_type_key] = value } unless update
+      parser.on("--owner-id OWNER", String, "Orchestrator session ID") { |value| values[:owner_id] = value } if owner
       parser.on("--title TITLE", String, "Task title") { |value| values[:title] = value } unless update
       parser.on("--description-file FILE", String, "Markdown file, or - for STDIN") do |value|
         values[:description_markdown] = read_file(value)
@@ -265,6 +305,13 @@ module Kos
       raise Error.new("usage_error", "missing required options: #{switches.join(", ")}")
     end
 
+    def require_task_type_selector!(values)
+      selectors = %i[task_type_key task_type_id].select { |name| values.key?(name) }
+      return if selectors.one?
+
+      raise Error.new("usage_error", "provide exactly one of --task-type-key or --task-type-id")
+    end
+
     def shift_id!(label)
       return 0 if %w[-h --help].include?(@arguments.first)
 
@@ -325,10 +372,16 @@ module Kos
         raise Error.new("configuration_error", "KOS_API_URL must be an HTTP(S) base URL")
       end
 
-      uri.path = [ uri.path.sub(%r{/+$}, ""), path ].join
+      request_path, query = path.split("?", 2)
+      uri.path = [ uri.path.sub(%r{/+$}, ""), request_path ].join
+      uri.query = query
       uri
     rescue URI::InvalidURIError
       raise Error.new("configuration_error", "KOS_API_URL must be an HTTP(S) base URL")
+    end
+
+    def query_path(path, values)
+      "#{path}?#{URI.encode_www_form(values)}"
     end
 
     def api_token

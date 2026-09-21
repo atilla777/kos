@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_21_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_21_010000) do
   create_table "projects", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "default_branch", null: false
@@ -52,6 +52,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_21_000000) do
     t.string "title", null: false
     t.datetime "updated_at", null: false
     t.integer "workflow_id", null: false
+    t.index ["owner_id"], name: "index_tasks_on_owner_id", unique: true, where: "owner_id IS NOT NULL"
     t.index ["parent_id"], name: "index_tasks_on_parent_id"
     t.index ["project_id"], name: "index_tasks_on_project_id"
     t.index ["task_type_id"], name: "index_tasks_on_task_type_id"

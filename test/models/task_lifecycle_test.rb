@@ -46,6 +46,20 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     end
   end
 
+  test "create and claim rolls back when a blocker is incomplete" do
+    project = create_project
+    workflow = create_workflow
+    task_type = create_task_type(workflow:)
+    blocker = create_task(project:, workflow:, task_type:)
+
+    assert_no_difference -> { project.tasks.count } do
+      assert_raises(TaskLifecycle::Conflict) do
+        @lifecycle.create_and_claim!(project:, task_type:, title: "Blocked", description_markdown: "Description",
+          owner_id: "session", blockers: [ blocker ])
+      end
+    end
+  end
+
   test "snapshots the task type workflow at creation" do
     project = create_project
     original_workflow = create_workflow(name: "Original")
@@ -86,6 +100,87 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     assert_equal 1, claimed.claim_version
     assert_equal @now + 2.hours, claimed.lease_expires_at
     assert_nil @lifecycle.claim_next!(project:, owner_id: "session-2")
+  end
+
+  test "claim next filters by task type" do
+    project = create_project
+    workflow = create_workflow
+    other_type = create_task_type(name: "Other", workflow:)
+    requested_type = create_task_type(name: "Requested", workflow:)
+    create_task(project:, workflow:, task_type: other_type, title: "Older")
+    requested = create_task(project:, workflow:, task_type: requested_type, title: "Requested")
+
+    claimed = @lifecycle.claim_next!(project:, task_type: requested_type, owner_id: "session")
+
+    assert_equal requested, claimed
+    assert_equal "pending", project.tasks.find_by(title: "Older").status
+  end
+
+  test "claims an exact available task and rejects incomplete blockers" do
+    project = create_project
+    blocker = create_task(project:, title: "Blocker")
+    blocked = create_task(project:, title: "Blocked")
+    TaskDependency.create!(task: blocked, blocker:)
+
+    assert_raises(TaskLifecycle::Conflict) do
+      @lifecycle.claim!(task_id: blocked.id, owner_id: "session")
+    end
+    assert_equal blocker, @lifecycle.claim!(task_id: blocker.id, owner_id: "session")
+  end
+
+  test "create and claim is idempotent for an exact definition" do
+    project = create_project
+    workflow = create_workflow
+    task_type = create_task_type(workflow:)
+    blocker = create_task(project:, workflow:, task_type:)
+    blocker = @lifecycle.claim!(task_id: blocker.id, owner_id: "blocker-session")
+    blocker = @lifecycle.report_attempt!(task_id: blocker.id, owner_id: "blocker-session",
+      claim_version: blocker.claim_version, step: "develop", outcome: "ready")
+    blocker = @lifecycle.report_attempt!(task_id: blocker.id, owner_id: "blocker-session",
+      claim_version: blocker.claim_version, step: "check", outcome: "passed")
+    arguments = {
+      project:, task_type:, title: "Created", description_markdown: "Description", owner_id: "session",
+      blockers: [ blocker ]
+    }
+
+    first = @lifecycle.create_and_claim!(**arguments)
+    repeated = @lifecycle.create_and_claim!(**arguments)
+
+    assert_equal first, repeated
+    assert_equal 2, project.tasks.count
+    assert_equal "active", first.status
+    assert_equal 1, first.claim_version
+    assert_equal @now + 2.hours, first.lease_expires_at
+    assert_raises(TaskLifecycle::Conflict) do
+      @lifecycle.create_and_claim!(**arguments.merge(title: "Different"))
+    end
+  end
+
+  test "one owner cannot claim two tasks" do
+    project = create_project
+    first = create_task(project:, title: "First")
+    second = create_task(project:, title: "Second")
+
+    assert_equal first, @lifecycle.claim!(task_id: first.id, owner_id: "session")
+    assert_raises(TaskLifecycle::Conflict) { @lifecycle.claim!(task_id: second.id, owner_id: "session") }
+    assert_equal "pending", second.reload.status
+  end
+
+  test "owned and resumable queries do not change lifecycle state" do
+    project = create_project
+    workflow = create_workflow
+    task_type = create_task_type(workflow:)
+    active = create_task(project:, workflow:, task_type:, title: "Active")
+    paused = create_task(project:, workflow:, task_type:, title: "Paused")
+    active = @lifecycle.claim!(task_id: active.id, owner_id: "session")
+    paused = @lifecycle.claim!(task_id: paused.id, owner_id: "pause-session")
+    paused = @lifecycle.report_attempt!(task_id: paused.id, owner_id: "pause-session",
+      claim_version: paused.claim_version, step: "develop", outcome: "question")
+
+    assert_equal active, @lifecycle.show_owned(project:, owner_id: "session")
+    assert_equal [ active, paused ], @lifecycle.resumable(project:, task_type:).to_a
+    assert_equal 1, active.reload.claim_version
+    assert_equal 2, paused.reload.claim_version
   end
 
   test "cancelled blockers remain incomplete" do
@@ -294,7 +389,8 @@ class TaskLifecycleConcurrencyTest < ActiveSupport::TestCase
     threads = 2.times.map do |index|
       Thread.new do
         ActiveRecord::Base.connection_pool.with_connection do
-          result = coordinated_lifecycle.new.claim_next!(project:, owner_id: "session-#{index}")
+          result = coordinated_lifecycle.new.claim_next!(project:, task_type: task.task_type,
+            owner_id: "session-#{index}")
         rescue StandardError => error
           result = error
         ensure
@@ -314,6 +410,107 @@ class TaskLifecycleConcurrencyTest < ActiveSupport::TestCase
     assert_equal [ task.id ], claims.map(&:id)
     assert_equal 1, task.reload.claim_version
     assert_includes %w[session-0 session-1], task.owner_id
+  end
+
+  test "two sessions cannot claim the same exact task" do
+    task = create_task
+    selected = Queue.new
+    release = Queue.new
+    results = Queue.new
+    coordinated_lifecycle = Class.new(TaskLifecycle) do
+      define_method(:initialize) do
+        super()
+        @selected = selected
+        @release = release
+      end
+
+      private
+
+      define_method(:claim_from_scope) do |scope, **arguments|
+        @selected << true
+        @release.pop
+        super(scope, **arguments)
+      end
+    end
+
+    threads = 2.times.map do |index|
+      Thread.new do
+        ActiveRecord::Base.connection_pool.with_connection do
+          result = coordinated_lifecycle.new.claim!(task_id: task.id, owner_id: "session-#{index}")
+        rescue StandardError => error
+          result = error
+        ensure
+          results << result
+        end
+      end
+    end
+    Timeout.timeout(5) { 2.times { selected.pop } }
+    2.times { release << true }
+    threads.each(&:join)
+    outcomes = 2.times.map { results.pop }
+
+    assert_equal 1, outcomes.grep(Task).size
+    assert_equal 1, outcomes.grep(TaskLifecycle::Conflict).size
+    assert_equal 1, task.reload.claim_version
+  end
+
+  test "concurrent identical create and claim requests return one task" do
+    project = create_project
+    workflow = create_workflow
+    task_type = create_task_type(workflow:)
+    transaction_acquired = Queue.new
+    release = Queue.new
+    second_started = Queue.new
+    results = Queue.new
+    arguments = {
+      project:, task_type:, title: "Created", description_markdown: "Description", owner_id: "session"
+    }
+    coordinated_lifecycle = Class.new(TaskLifecycle) do
+      define_method(:initialize) do
+        super()
+        @transaction_acquired = transaction_acquired
+        @release = release
+      end
+
+      private
+
+      define_method(:create_claimed_task!) do |**attributes|
+        @transaction_acquired << true
+        @release.pop
+        super(**attributes)
+      end
+    end
+
+    first = Thread.new do
+      ActiveRecord::Base.connection_pool.with_connection do
+        result = coordinated_lifecycle.new.create_and_claim!(**arguments)
+      rescue StandardError => error
+        result = error
+      ensure
+        results << result
+      end
+    end
+    Timeout.timeout(5) { transaction_acquired.pop }
+    second = Thread.new do
+      ActiveRecord::Base.connection_pool.with_connection do
+        second_started << true
+        result = TaskLifecycle.new.create_and_claim!(**arguments)
+      rescue StandardError => error
+        result = error
+      ensure
+        results << result
+      end
+    end
+    Timeout.timeout(5) { second_started.pop }
+    assert_raises(Timeout::Error) { Timeout.timeout(0.1) { results.pop } }
+    release << true
+    first.join
+    second.join
+    outcomes = 2.times.map { results.pop }
+
+    assert_empty outcomes.grep(StandardError)
+    assert_equal 1, outcomes.map(&:id).uniq.size
+    assert_equal 1, Task.where(project:, owner_id: "session").count
   end
 
   test "the same claim cannot report one transition twice concurrently" do

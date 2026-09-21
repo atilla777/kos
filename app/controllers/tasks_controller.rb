@@ -2,9 +2,23 @@ class TasksController < ApplicationController
   def create
     task = lifecycle.create!(
       project: Project.find(required_integer(:project_id)),
-      task_type: TaskType.find(required_integer(:task_type_id)),
+      task_type: find_task_type,
       title: required_string(:title),
       description_markdown: required_string(:description_markdown),
+      parent: find_optional_task(:parent_id),
+      blockers: find_tasks(optional_integer_array(:blocker_ids, default: []))
+    )
+
+    render json: serialize(task), status: :created
+  end
+
+  def create_and_claim
+    task = lifecycle.create_and_claim!(
+      project: Project.find(required_integer(:project_id)),
+      task_type: find_task_type,
+      title: required_string(:title),
+      description_markdown: required_string(:description_markdown),
+      owner_id: required_string(:owner_id),
       parent: find_optional_task(:parent_id),
       blockers: find_tasks(optional_integer_array(:blocker_ids, default: []))
     )
@@ -27,13 +41,37 @@ class TasksController < ApplicationController
   end
 
   def claim_next
+    task_type = TaskType.find_by!(key: required_string(:task_type_key)) if params.key?(:task_type_key)
     task = lifecycle.claim_next!(
       project: Project.find(required_integer(:project_id)),
+      owner_id: required_string(:owner_id),
+      task_type:
+    )
+    return head :no_content unless task
+
+    render json: serialize(task)
+  end
+
+  def claim
+    render json: serialize(lifecycle.claim!(task_id: params[:id], owner_id: required_string(:owner_id)))
+  end
+
+  def show_owned
+    task = lifecycle.show_owned(
+      project: Project.find(required_query_integer(:project_id)),
       owner_id: required_string(:owner_id)
     )
     return head :no_content unless task
 
     render json: serialize(task)
+  end
+
+  def resumable
+    tasks = lifecycle.resumable(
+      project: Project.find(required_query_integer(:project_id)),
+      task_type: TaskType.find_by!(key: required_string(:task_type_key))
+    )
+    render json: tasks.map { |task| serialize(task) }
   end
 
   def resume
@@ -80,14 +118,24 @@ class TasksController < ApplicationController
     Task.find(ids)
   end
 
+  def find_task_type
+    selectors = %i[task_type_key task_type_id].select { |name| params.key?(name) }
+    raise ActionController::BadRequest, "provide exactly one task type selector" unless selectors.one?
+
+    return TaskType.find_by!(key: required_string(:task_type_key)) if selectors.first == :task_type_key
+
+    TaskType.find(required_integer(:task_type_id))
+  end
+
   def serialize(task)
-    task = Task.includes(:workflow, :blockers).find(task.id)
+    task = Task.includes(:task_type, :workflow, :blockers).find(task.id)
     workflow = task.workflow
     step = workflow.step_for(task.current_step)
 
     {
       task: task.as_json(only: %i[id project_id task_type_id workflow_id parent_id title description_markdown status
-        current_step owner_id claim_version lease_expires_at created_at updated_at]).merge("blocker_ids" => task.blocker_ids.sort),
+        current_step owner_id claim_version lease_expires_at created_at updated_at]).merge(
+          "task_type_key" => task.task_type.key, "blocker_ids" => task.blocker_ids.sort),
       workflow: workflow.as_json(only: %i[id name created_at]).merge("definition_json" => workflow.definition_for_execution),
       step:
     }

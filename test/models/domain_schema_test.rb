@@ -40,6 +40,15 @@ class DomainSchemaTest < ActiveSupport::TestCase
     end
   end
 
+  test "enforces one task per non-empty owner in the database" do
+    first = create_task
+    second = create_task
+    first.update_columns(owner_id: "session")
+
+    assert_raises(ActiveRecord::RecordNotUnique) { second.update_columns(owner_id: "session") }
+    assert_nil second.reload.owner_id
+  end
+
   test "defines every domain foreign key" do
     foreign_keys = DOMAIN_TABLES.flat_map do |table|
       ActiveRecord::Base.connection.foreign_keys(table).map do |foreign_key|

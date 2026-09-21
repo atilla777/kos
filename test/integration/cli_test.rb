@@ -60,12 +60,28 @@ class CliTest < ActiveSupport::TestCase
             "--description-file", description_file.path, "--parent-id", "3", "--blocker-id", "4", "--blocker-id", "5" ],
             "POST", "/tasks", { "project_id" => 1, "task_type_id" => 2, "title" => "CLI task",
               "description_markdown" => "# Task\n\nMultiline description.\n", "parent_id" => 3, "blocker_ids" => [ 4, 5 ] } ],
+          [ [ "task", "create", "--project-id", "1", "--task-type-key", "development", "--title", "Typed",
+            "--description-file", description_file.path ],
+            "POST", "/tasks", { "project_id" => 1, "task_type_key" => "development", "title" => "Typed",
+              "description_markdown" => "# Task\n\nMultiline description.\n", "blocker_ids" => [] } ],
+          [ [ "task", "create-and-claim", "--project-id", "1", "--task-type-key", "fix", "--title", "Fix",
+            "--description-file", description_file.path, "--owner-id", "intent-owner" ],
+            "POST", "/tasks/create-and-claim", { "project_id" => 1, "task_type_key" => "fix", "title" => "Fix",
+              "description_markdown" => "# Task\n\nMultiline description.\n", "owner_id" => "intent-owner",
+              "blocker_ids" => [] } ],
           [ [ "task", "update", "9", "--description-file", "-", "--clear-parent", "--clear-blockers" ],
             "PATCH", "/tasks/9", { "description_markdown" => "Updated through STDIN\n", "parent_id" => nil, "blocker_ids" => [] },
             "Updated through STDIN\n" ],
           [ [ "task", "show", "9" ], "GET", "/tasks/9", nil ],
-          [ [ "task", "claim-next", "--project-id", "1", "--owner-id", "session-1" ],
-            "POST", "/tasks/claim-next", { "project_id" => 1, "owner_id" => "session-1" } ],
+          [ [ "task", "show-owned", "--project-id", "1", "--owner-id", "session-1" ],
+            "GET", "/tasks/show-owned?project_id=1&owner_id=session-1", nil ],
+          [ [ "task", "claim-next", "--project-id", "1", "--task-type-key", "development", "--owner-id", "session-1" ],
+            "POST", "/tasks/claim-next", { "project_id" => 1, "task_type_key" => "development",
+              "owner_id" => "session-1" } ],
+          [ [ "task", "claim", "9", "--owner-id", "session-1" ],
+            "POST", "/tasks/9/claim", { "owner_id" => "session-1" } ],
+          [ [ "task", "resumable", "--project-id", "1", "--task-type-key", "fix" ],
+            "GET", "/tasks/resumable?project_id=1&task_type_key=fix", nil ],
           [ [ "task", "resume", "9", "--owner-id", "session-2", "--takeover-confirmed" ],
             "POST", "/tasks/9/resume", { "owner_id" => "session-2", "takeover_confirmed" => true } ],
           [ [ "task", "report-attempt", "9", "--owner-id", "session-2", "--claim-version", "6",
@@ -87,6 +103,23 @@ class CliTest < ActiveSupport::TestCase
           expected_payload.nil? ? assert_nil(request.fetch(:body)) : assert_equal(expected_payload, request.fetch(:body))
         end
       end
+    end
+  end
+
+  test "requires exactly one task type selector for creation" do
+    Tempfile.create([ "description", ".md" ]) do |description_file|
+      description_file.write("Description")
+      description_file.flush
+      base = [ "task", "create", "--project-id", "1", "--title", "Task", "--description-file", description_file.path ]
+
+      _output, error, status = run_cli(*base, environment: {})
+      assert_equal 2, status.exitstatus
+      assert_includes JSON.parse(error).fetch("message"), "exactly one"
+
+      _output, error, status = run_cli(*base, "--task-type-id", "2", "--task-type-key", "development",
+        environment: {})
+      assert_equal 2, status.exitstatus
+      assert_includes JSON.parse(error).fetch("message"), "exactly one"
     end
   end
 

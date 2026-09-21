@@ -69,8 +69,12 @@ names and rejects partial or reserved-key states. Database seeds transactionally
 install the canonical `brief`, `development`, and `fix` catalog. Reruns reuse an
 identical current definition or create a new immutable workflow row and repoint
 only the built-in type, so existing task snapshots and custom catalog entries
-remain unchanged. Typed task selection and the new command orchestrators remain
-later-plan capabilities.
+remain unchanged. `PLAN-015` adds type-key task creation and filtered
+next-claim, exact task claim, owner-idempotent atomic create-and-claim, owned
+task observation, and resumable selection through the Rails API and thin CLI.
+A partial unique database index enforces that one nonempty owner identifies at
+most one task. Numeric task type IDs remain available for administrative
+compatibility; OpenCode command changes remain later-plan work.
 
 ## Built-In Scenario Target
 

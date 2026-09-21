@@ -29,6 +29,101 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     assert_equal task_id, response.parsed_body.dig("task", "id")
   end
 
+  test "creates tasks by type key while preserving numeric creation" do
+    post tasks_path, params: task_parameters.except(:task_type_id).merge(task_type_key: @task_type.key),
+      headers: @headers, as: :json
+
+    assert_response :created
+    assert_equal @task_type.id, response.parsed_body.dig("task", "task_type_id")
+    assert_equal @task_type.key, response.parsed_body.dig("task", "task_type_key")
+
+    post tasks_path, params: task_parameters.merge(task_type_key: @task_type.key), headers: @headers, as: :json
+    assert_response :bad_request
+
+    post tasks_path, params: task_parameters.except(:task_type_id).merge(task_type_key: "missing"),
+      headers: @headers, as: :json
+    assert_response :not_found
+    assert_equal "not_found", response.parsed_body["error"]
+  end
+
+  test "creates and claims idempotently by owner and exact definition" do
+    parameters = task_parameters.except(:task_type_id).merge(task_type_key: @task_type.key, owner_id: "session")
+
+    post tasks_create_and_claim_path, params: parameters, headers: @headers, as: :json
+    assert_response :created
+    task_id = response.parsed_body.dig("task", "id")
+
+    assert_no_difference -> { Task.count } do
+      post tasks_create_and_claim_path, params: parameters, headers: @headers, as: :json
+    end
+    assert_response :created
+    assert_equal task_id, response.parsed_body.dig("task", "id")
+
+    post tasks_create_and_claim_path, params: parameters.merge(title: "Different"), headers: @headers, as: :json
+    assert_response :conflict
+  end
+
+  test "create and claim rejects incomplete blockers without creating a task" do
+    blocker = create_task(project: @project, workflow: @workflow, task_type: @task_type)
+    parameters = task_parameters.except(:task_type_id).merge(
+      task_type_key: @task_type.key, owner_id: "session", blocker_ids: [ blocker.id ]
+    )
+
+    assert_no_difference -> { Task.count } do
+      post tasks_create_and_claim_path, params: parameters, headers: @headers, as: :json
+    end
+    assert_response :conflict
+    assert_equal "conflict", response.parsed_body["error"]
+  end
+
+  test "filters next claim by type and claims a specific task" do
+    other_type = create_task_type(name: "Other", workflow: @workflow)
+    other = create_task(project: @project, workflow: @workflow, task_type: other_type)
+    requested = create_task(project: @project, workflow: @workflow, task_type: @task_type)
+
+    post tasks_claim_next_path, params: {
+      project_id: @project.id, task_type_key: @task_type.key, owner_id: "typed"
+    }, headers: @headers, as: :json
+    assert_response :success
+    assert_equal requested.id, response.parsed_body.dig("task", "id")
+
+    post claim_task_path(other), params: { owner_id: "exact" }, headers: @headers, as: :json
+    assert_response :success
+    assert_equal other.id, response.parsed_body.dig("task", "id")
+  end
+
+  test "rejects exact claims for blocked tasks and owner collisions" do
+    blocker = create_task(project: @project, workflow: @workflow, task_type: @task_type)
+    blocked = create_task(project: @project, workflow: @workflow, task_type: @task_type)
+    TaskDependency.create!(task: blocked, blocker:)
+
+    post claim_task_path(blocked), params: { owner_id: "session" }, headers: @headers, as: :json
+    assert_response :conflict
+
+    post claim_task_path(blocker), params: { owner_id: "session" }, headers: @headers, as: :json
+    assert_response :success
+    available = create_task(project: @project, workflow: @workflow, task_type: @task_type)
+    post claim_task_path(available), params: { owner_id: "session" }, headers: @headers, as: :json
+    assert_response :conflict
+  end
+
+  test "shows an owned task and lists resumable tasks by type without mutation" do
+    active = create_task(project: @project, workflow: @workflow, task_type: @task_type)
+    post claim_task_path(active), params: { owner_id: "session" }, headers: @headers, as: :json
+
+    get tasks_show_owned_path, params: { project_id: @project.id, owner_id: "session" }, headers: @headers
+    assert_response :success
+    assert_equal active.id, response.parsed_body.dig("task", "id")
+
+    get tasks_resumable_path, params: { project_id: @project.id, task_type_key: @task_type.key }, headers: @headers
+    assert_response :success
+    assert_equal [ active.id ], response.parsed_body.map { |item| item.dig("task", "id") }
+    assert_equal 1, active.reload.claim_version
+
+    get tasks_show_owned_path, params: { project_id: @project.id, owner_id: "missing" }, headers: @headers
+    assert_response :no_content
+  end
+
   test "projects advanced tiers throughout a persisted legacy workflow" do
     definition = valid_workflow_definition.deep_dup
     definition["steps"].each { |step| step.delete("model_tier") }
@@ -174,14 +269,27 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
     post tasks_claim_next_path, params: { project_id: @project.id, owner_id: "" }, headers: @headers, as: :json
     assert_response :bad_request
+
+    post tasks_claim_next_path, params: {
+      project_id: @project.id, owner_id: "session", task_type_key: "missing"
+    }, headers: @headers, as: :json
+    assert_response :not_found
+
+    get tasks_resumable_path, params: { project_id: "not-an-id", task_type_key: @task_type.key }, headers: @headers
+    assert_response :bad_request
+    assert_equal "bad_request", response.parsed_body["error"]
   end
 
   test "requires authentication on every task route" do
     requests = [
       -> { post tasks_path, params: {}, as: :json },
+      -> { post tasks_create_and_claim_path, params: {}, as: :json },
       -> { get task_path(1), as: :json },
+      -> { get tasks_show_owned_path, as: :json },
+      -> { get tasks_resumable_path, as: :json },
       -> { patch task_path(1), params: {}, as: :json },
       -> { post tasks_claim_next_path, params: {}, as: :json },
+      -> { post claim_task_path(1), params: {}, as: :json },
       -> { post resume_task_path(1), params: {}, as: :json },
       -> { post report_attempt_task_path(1), params: {}, as: :json },
       -> { post cancel_task_path(1), params: {}, as: :json }

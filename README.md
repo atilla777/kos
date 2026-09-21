@@ -163,9 +163,13 @@ POST  /workflows
 POST  /task_types
 PATCH /task_types/:id
 POST  /tasks
+POST  /tasks/create-and-claim
 GET   /tasks/:id
 PATCH /tasks/:id
+GET   /tasks/show-owned
+GET   /tasks/resumable
 POST  /tasks/claim-next
+POST  /tasks/:id/claim
 POST  /tasks/:id/resume
 POST  /tasks/:id/report-attempt
 POST  /tasks/:id/cancel
@@ -174,7 +178,9 @@ POST  /tasks/:id/cancel
 Request fields are top-level JSON properties. Task responses contain `task`,
 `workflow`, and `step` objects so an agent receives the stored state and the
 current instruction in one response. `claim-next` returns `204 No Content` when
-no task is available. Known failures use a stable `error` code with status
+no task is available, and `show-owned` does the same when its owner has no task
+in the requested project. Task creation accepts exactly one of a stable
+`task_type_key` or an administrative numeric `task_type_id`. Known failures use a stable `error` code with status
 `400`, `404`, `409`, or `422` as appropriate.
 
 For example:
@@ -222,9 +228,13 @@ kos workflow create
 kos task-type create
 kos task-type update ID
 kos task create
+kos task create-and-claim
 kos task update ID
 kos task show ID
+kos task show-owned
 kos task claim-next
+kos task claim ID
+kos task resumable
 kos task resume ID
 kos task report-attempt ID
 kos task cancel ID
@@ -232,6 +242,9 @@ kos task cancel ID
 
 Use command help for exact options. Administrative task type creation requires
 `--key KEY`; `brief`, `development`, and `fix` cannot be used for custom types.
+Task creation accepts exactly one of `--task-type-key KEY` or
+`--task-type-id ID`. `claim-next` optionally filters by one
+`--task-type-key KEY`; `resumable` requires one.
 Workflow definitions are read with
 `--definition-file FILE`. Task descriptions are read with
 `--description-file FILE`; pass `-` as the file to read from standard input.
@@ -243,11 +256,11 @@ For example:
 ```sh
 kos task create \
   --project-id 1 \
-  --task-type-id 1 \
+  --task-type-key development \
   --title "Document the CLI" \
   --description-file task.md
 
-kos task claim-next --project-id 1 --owner-id opencode-session-1
+kos task claim-next --project-id 1 --task-type-key development --owner-id opencode-session-1
 ```
 
 Server response bodies are written unchanged to stdout. A `204 No Content`

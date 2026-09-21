@@ -45,31 +45,66 @@ class TaskLifecycle
     end
   end
 
-  def claim_next!(project:, owner_id:)
+  def create_and_claim!(project:, task_type:, title:, description_markdown:, owner_id:, parent: nil, blockers: [])
     validate_owner!(owner_id)
+    attributes = { project:, task_type:, title:, description_markdown:, parent:, blockers: }
+
+    Task.transaction do
+      existing = Task.find_by(owner_id:)
+      return verify_matching_definition!(existing, **attributes) if existing
+
+      create_claimed_task!(**attributes, owner_id:)
+    end
+  rescue ActiveRecord::RecordNotUnique
+    existing = Task.find_by(owner_id:)
+    raise Conflict, "owner already identifies another task" unless existing
+
+    verify_matching_definition!(existing, **attributes)
+  end
+
+  def claim_next!(project:, owner_id:, task_type: nil)
+    validate_owner!(owner_id)
+    ensure_owner_available!(owner_id)
 
     loop do
       now = @clock.call
-      eligible = eligible_tasks(project)
+      eligible = eligible_tasks(project, task_type:)
       task_id = next_claimable_id(eligible)
       return if task_id.nil?
 
-      claimed = Task.transaction do
-        updated = eligible.where(id: task_id).update_all(
-          status: "active",
-          owner_id:,
-          claim_version: Arel.sql("claim_version + 1"),
-          lease_expires_at: now + @lease_duration,
-          updated_at: now
-        )
-        Task.find(task_id) if updated == 1
-      end
+      claimed = claim_from_scope(eligible.where(id: task_id), task_id:, owner_id:, now:)
       return claimed if claimed
     end
+  rescue ActiveRecord::RecordNotUnique
+    raise Conflict, "owner already identifies another task"
+  end
+
+  def claim!(task_id:, owner_id:)
+    validate_owner!(owner_id)
+    task = Task.find(task_id)
+    ensure_owner_available!(owner_id)
+    now = @clock.call
+    claimed = claim_from_scope(eligible_tasks(task.project).where(id: task.id), task_id: task.id, owner_id:, now:)
+    raise Conflict, "task cannot be claimed from its current state" unless claimed
+
+    claimed
+  rescue ActiveRecord::RecordNotUnique
+    raise Conflict, "owner already identifies another task"
+  end
+
+  def show_owned(project:, owner_id:)
+    validate_owner!(owner_id)
+    Task.find_by(project:, owner_id:, status: "active")
+  end
+
+  def resumable(project:, task_type:)
+    Task.where(project:, task_type:, status: [ "active", *PAUSED_STATUSES ]).order(:created_at, :id)
   end
 
   def resume!(task_id:, owner_id:, takeover_confirmed: false)
     validate_owner!(owner_id)
+    Task.find(task_id)
+    ensure_owner_available!(owner_id, task_id:)
     now = @clock.call
     resumable = Task.where(id: task_id, status: PAUSED_STATUSES)
     active = Task.where(id: task_id, status: "active")
@@ -87,6 +122,8 @@ class TaskLifecycle
 
       Task.find(task_id)
     end
+  rescue ActiveRecord::RecordNotUnique
+    raise Conflict, "owner already identifies another task"
   end
 
   def report_attempt!(task_id:, owner_id:, claim_version:, step:, outcome:)
@@ -133,13 +170,61 @@ class TaskLifecycle
     raise Conflict, "task definition can change only while the task is pending and unclaimed"
   end
 
-  def eligible_tasks(project)
+  def eligible_tasks(project, task_type: nil)
     incomplete = TaskDependency.where(blocker_id: Task.where.not(status: "completed")).select(:task_id)
-    Task.where(project:, status: "pending").where.not(id: incomplete).order(:created_at, :id)
+    tasks = Task.where(project:, status: "pending").where.not(id: incomplete)
+    tasks = tasks.where(task_type:) if task_type
+    tasks.order(:created_at, :id)
   end
 
   def next_claimable_id(eligible)
     eligible.pick(:id)
+  end
+
+  def claim_from_scope(scope, task_id:, owner_id:, now:)
+    Task.transaction do
+      updated = scope.update_all(
+        status: "active",
+        owner_id:,
+        claim_version: Arel.sql("claim_version + 1"),
+        lease_expires_at: now + @lease_duration,
+        updated_at: now
+      )
+      Task.find(task_id) if updated == 1
+    end
+  end
+
+  def ensure_owner_available!(owner_id, task_id: nil)
+    owned = Task.find_by(owner_id:)
+    return unless owned && owned.id != task_id.to_i
+
+    raise Conflict, "owner already identifies another task"
+  end
+
+  def verify_matching_definition!(task, project:, task_type:, title:, description_markdown:, parent:, blockers:)
+    matches = task.project_id == project.id && task.task_type_id == task_type.id && task.title == title &&
+      task.description_markdown == description_markdown && task.parent_id == parent&.id &&
+      task.blocker_ids.sort == blockers.map(&:id).sort
+    raise Conflict, "owner already identifies a task with a different definition" unless matches
+
+    task
+  end
+
+  def create_claimed_task!(project:, task_type:, title:, description_markdown:, owner_id:, parent:, blockers:)
+    ensure_blockers_completed!(blockers)
+    task_type = TaskType.find(task_type.id)
+    now = @clock.call
+    task = Task.create!(project:, task_type:, workflow: task_type.workflow, parent:, title:, description_markdown:,
+      current_step: task_type.workflow.first_step_id)
+    blockers.each { |blocker| TaskDependency.create!(task:, blocker:) }
+    Task.where(id: task.id).update_all(status: "active", owner_id:, claim_version: 1,
+      lease_expires_at: now + @lease_duration, updated_at: now)
+    task.reload
+  end
+
+  def ensure_blockers_completed!(blockers)
+    completed = Task.where(id: blockers.map(&:id), status: "completed").count
+    raise Conflict, "task cannot be claimed while a blocker is incomplete" unless completed == blockers.size
   end
 
   def transition_changes(action, task, now)
