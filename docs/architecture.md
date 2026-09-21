@@ -25,6 +25,8 @@ These rules govern implementation decisions in this repository.
 - Never create a task commit before the publication step.
 - Keep concrete model identifiers in OpenCode agent configuration, not workflow
   or task state.
+- Keep product behavior in the repository's `specs/` OKF bundle, technical
+  design in `docs/`, and execution evidence in external task artifacts.
 
 ## Current Foundation
 
@@ -61,5 +63,77 @@ A single real `/kos` invocation creates and develops a task, checks it with
 `bin/check`, obtains independent read-only review, publishes one verified
 commit, and completes the task.
 
-See [the product specification](specification.md) for the complete first-version
+## Built-In Scenario Target
+
+The next version installs three global built-in task types identified by stable
+machine keys: `brief`, `development`, and `fix`. Bootstrap is idempotent. A
+changed canonical definition creates a new immutable workflow row and repoints
+only its built-in type; existing tasks retain their snapshotted workflow.
+Projects and custom workflow definitions remain administrative concerns.
+
+Rails continues to know only task types, immutable workflow definitions,
+ownership, dependencies, and transitions. It adds typed selection, exact claim,
+idempotent create-and-claim by unique owner, resumable-task observation, and
+atomic brief-child materialization as explicit state operations, but does not
+learn how to plan, diagnose, check code, interpret OKF, run agents, or publish
+Git changes. Child materialization is fenced by the brief ownership and current
+publication point and is recovered through a read-only graph projection.
+
+The CLI remains a stateless transport for every server operation. User-facing
+skills select built-ins by stable key, not numeric `KOS_TASK_TYPE_ID`. The
+server and CLI do not choose which OpenCode process or model executes a step.
+
+Command orchestration is split by user intent:
+
+- `/kos` takes the next available `development` task and accepts no task text.
+- `/kos-fix <problem>` creates and exactly claims one `fix` task.
+- `/kos-brief <request>` creates and exactly claims one `brief` task.
+
+Development and fix steps use fresh isolated agents. Advanced read-only agents
+perform `plan` and `diagnose`; an implementation agent changes code and runs all
+required project checks; a documentation agent uses `okf`; another advanced
+read-only agent performs `review`; and the publication agent alone may commit
+or push. A moved base returns to `implement`, so checks, documentation, and
+review all repeat. The built-in workflows have no separate `check` step, but
+the generic workflow validator does not reserve or reject that ID.
+
+Brief elaboration runs in the main conversational agent rather than a one-shot
+step agent. This preserves questions, user answers, repository context, the OKF
+change, and the proposed child graph in one orchestration. Review and
+publication still use independent isolated agents. The orchestrator validates
+the reviewed graph without mutation before publication. After publication is
+observed, it materializes that graph and reports the publication outcome only
+after the graph is observed. `complete` and `materialize` are not executable
+workflow steps.
+
+Graph validation persists no server-side gate. It returns a digest of the
+canonical definition; the orchestrator retains the reviewed bytes and digest,
+and passes that expected digest to materialization. The server transactionally
+revalidates and compares the digest before inserting children. The orchestrator
+also blocks before the request when its retained bytes differ. Rails remains
+responsible for current database invariants, not for remembering review
+evidence.
+
+Command skills persist a non-secret local intent before an atomic create and
+claim. The unique owner ID makes retries idempotent and lets a restarted command
+observe the created active task without exposing an internal ID. Commands query
+resumable tasks of their own built-in type before starting new work. Human
+answers are atomically preserved in step-specific sidecars before resume, so a
+second process interruption does not discard them. This recovery state remains
+in the data home and never becomes Rails domain state.
+
+The shared `okf` skill operates only on `specs/` in the supplied task worktree.
+It preserves unknown frontmatter and unrelated content, maintains concept links
+and indexes, and never infers product requirements from implementation details.
+Rails stores no OKF documents or lifecycle status. `docs/architecture.md` and
+`docs/testing.md` remain technical contracts, while `plan.md`, `diagnose.md`,
+`implement.md`, `document.md`, `review.md`, and `publish.md` remain external
+execution artifacts.
+
+These target boundaries are normative even while `PLAN-014` through `PLAN-021`
+implement and prove them incrementally. The current foundation above describes
+what has already been demonstrated; it is not permission to expose partially
+implemented built-in scenarios as ready.
+
+See [the product specification](specification.md) for the complete product
 contract.
