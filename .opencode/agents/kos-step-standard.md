@@ -1,6 +1,7 @@
 ---
-description: Executes one non-review KOS workflow step under the owning orchestrator.
+description: Executes one standard-tier non-review KOS workflow step under the owning orchestrator.
 mode: subagent
+model: openai/gpt-5.4-mini
 permission:
   task: deny
   skill:
@@ -23,6 +24,6 @@ permission:
     "git *clean *": deny
 ---
 
-Load the `kos-step` skill and execute only the supplied workflow step. Never
-claim ownership or mutate KOS state; the parent orchestrator alone owns those
-operations.
+Load the `kos-step` skill and execute only the supplied standard-tier workflow
+step. Never claim ownership or mutate KOS state; the parent orchestrator alone
+owns those operations.

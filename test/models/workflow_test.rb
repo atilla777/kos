@@ -28,6 +28,33 @@ class WorkflowTest < ActiveSupport::TestCase
     assert_not Workflow.new(name: "Workflow", definition_json: definition).valid?
   end
 
+  test "requires an explicit standard or advanced model tier for new workflows" do
+    definition = valid_workflow_definition
+    definition["steps"][0].delete("model_tier")
+    assert_not Workflow.new(name: "Workflow", definition_json: definition).valid?
+
+    [ "", "fast", nil, [] ].each do |tier|
+      definition = valid_workflow_definition
+      definition["steps"][0]["model_tier"] = tier
+      assert_not Workflow.new(name: "Workflow", definition_json: definition).valid?
+    end
+  end
+
+  test "uses advanced as the effective tier for an unchanged persisted legacy workflow" do
+    definition = valid_workflow_definition.deep_dup
+    definition["steps"].each { |step| step.delete("model_tier") }
+    workflow = Workflow.new(name: "Legacy", definition_json: definition)
+    workflow.save!(validate: false)
+    workflow.reload
+
+    assert workflow.valid?
+    assert_equal "advanced", workflow.step_for("develop").fetch("model_tier")
+    assert workflow.definition_for_execution.fetch("steps").all? { |step| step["model_tier"] == "advanced" }
+    task_type = TaskType.create!(name: "Legacy", workflow:)
+    task = create_task(workflow:, task_type:)
+    assert_equal workflow, task.workflow
+  end
+
   test "requires non-empty unique step ids and names" do
     definition = valid_workflow_definition
     definition["steps"][0]["id"] = ""

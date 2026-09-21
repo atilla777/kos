@@ -7,7 +7,8 @@ class KosSkillsTest < ActiveSupport::TestCase
   STEP_PATH = Rails.root.join("skills/kos-step/SKILL.md")
   COMMAND_PATH = Rails.root.join(".opencode/commands/kos.md")
   AGENT_PATHS = {
-    "kos-step" => Rails.root.join(".opencode/agents/kos-step.md"),
+    "kos-step-standard" => Rails.root.join(".opencode/agents/kos-step-standard.md"),
+    "kos-step-advanced" => Rails.root.join(".opencode/agents/kos-step-advanced.md"),
     "kos-review" => Rails.root.join(".opencode/agents/kos-review.md"),
     "kos-publish" => Rails.root.join(".opencode/agents/kos-publish.md")
   }.freeze
@@ -34,20 +35,26 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_equal [ "./skills" ], config.dig("skills", "paths")
   end
 
-  test "defines isolated step and read-only review agent profiles" do
+  test "defines tiered isolated step and worktree-read-only review agent profiles" do
     agents = AGENT_PATHS.transform_values { |path| frontmatter(path) }
 
-    assert_equal "subagent", agents.dig("kos-step", "mode")
-    assert_equal "deny", agents.dig("kos-step", "permission", "task")
-    assert_equal "deny", agents.dig("kos-step", "permission", "bash", "kos *")
-    assert_nil agents.dig("kos-step", "permission", "skill", "kos-git")
-    assert_equal "deny", agents.dig("kos-step", "permission", "bash", "git *commit *")
-    assert_equal "allow", agents.dig("kos-step", "permission", "external_directory")
+    assert_equal "subagent", agents.dig("kos-step-standard", "mode")
+    assert_equal "openai/gpt-5.4-mini", agents.dig("kos-step-standard", "model")
+    assert_equal "deny", agents.dig("kos-step-standard", "permission", "task")
+    assert_equal "deny", agents.dig("kos-step-standard", "permission", "bash", "kos *")
+    assert_nil agents.dig("kos-step-standard", "permission", "skill", "kos-git")
+    assert_equal "deny", agents.dig("kos-step-standard", "permission", "bash", "git *commit *")
+    assert_equal "allow", agents.dig("kos-step-standard", "permission", "external_directory")
+    assert_equal "openai/gpt-5.6-sol", agents.dig("kos-step-advanced", "model")
     assert_equal "subagent", agents.dig("kos-review", "mode")
-    assert_equal "deny", agents.dig("kos-review", "permission", "edit")
+    assert_equal "openai/gpt-5.6-sol", agents.dig("kos-review", "model")
+    assert_equal "deny", agents.dig("kos-review", "permission", "edit", "*")
+    assert_equal "allow", agents.dig("kos-review", "permission", "edit", "~/.local/share/kos/tasks/*/review.md")
+    assert_equal "allow", agents.dig("kos-review", "permission", "edit", "~/.local/share/kos/tasks/*/.review-*.tmp")
     assert_equal "deny", agents.dig("kos-review", "permission", "bash")
     assert_equal "allow", agents.dig("kos-review", "permission", "external_directory")
     assert_equal "subagent", agents.dig("kos-publish", "mode")
+    assert_equal "openai/gpt-5.4-mini", agents.dig("kos-publish", "model")
     assert_equal "allow", agents.dig("kos-publish", "permission", "skill", "kos-git")
   end
 
@@ -56,14 +63,16 @@ class KosSkillsTest < ActiveSupport::TestCase
 
     [
       "Runtime Inputs", "Select Or Create", "Resolve Local Paths",
-      "Run The Workflow", "Save The Artifact First", "Report And Continue",
+      "Run The Workflow", "Verify The Artifact First", "Report And Continue",
       "Recover A Lost Report Response", "Cancellation During Publication",
       "Stop Conditions"
     ].each { |heading| assert_match(/^## #{Regexp.escape(heading)}$/, source) }
 
     assert_includes source, "CLI as the only interface to KOS state"
     assert_includes source, "KOS_CLI_PATH"
-    assert_includes source, "each needed task command's `--help`"
+    assert_includes source, "<kos-cli> --version"
+    assert_includes source, "each needed task command's"
+    assert_includes source, "`--help`"
     assert_includes source, "Never fall back to an ambient `kos` command"
     assert_includes source, "KOS_PROJECT_REMOTE_URL"
     assert_includes source, "KOS_PROJECT_DEFAULT_BRANCH"
@@ -77,14 +86,15 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_includes source, "only `publish` may commit"
     assert_includes source, "`kos-publish` agent"
     assert_includes source, "different agent"
-    assert_includes source, "read-only `kos-review` permission profile"
+    assert_includes source, "`kos-review` permission profile"
     assert_includes source, "the complete current diff"
     assert_includes source, "record HEAD and complete status immediately before dispatch"
     assert_includes source, "require HEAD to remain unchanged"
     assert_includes source, "<kos-data-home>/tasks/<task-id>/<step-id>.md"
-    assert_includes source, "`fsync`"
-    assert_includes source, "directory `fsync` is `blocked`"
-    assert_includes source, "Only after the artifact is durable"
+    assert_includes source, "`kos-step-standard`"
+    assert_includes source, "`kos-step-advanced`"
+    assert_includes source, "The child, never the orchestrator or Rails"
+    assert_includes source, "Only after the artifact is complete and verified"
     assert_match(/one\s+retry of the identical report is safe/, source)
     assert_includes source, "HTTP 5xx"
     assert_includes source, "already published"
@@ -96,7 +106,7 @@ class KosSkillsTest < ActiveSupport::TestCase
 
     [
       "Accept One Context", "Authority Boundary", "Execute And Verify",
-      "Independent Review", "Publication", "Return One Result"
+      "Independent Review", "Publication", "Persist The Artifact", "Return One Result"
     ].each { |heading| assert_match(/^## #{Regexp.escape(heading)}$/, source) }
 
     assert_includes source, "Never invoke `kos`"
@@ -106,8 +116,11 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_includes source, "remain read-only"
     assert_includes source, "Load and follow `kos-git`"
     assert_includes source, "exactly one outcome key"
-    assert_includes source, '"artifact_markdown"'
-    assert_includes source, "Do not write `publish.md`"
+    assert_includes source, '"outcome":"<exact allowed key>"'
+    assert_not_includes source, '"artifact_markdown"'
+    assert_includes source, "atomically replace only the exact supplied"
+    assert_includes source, "different file identity"
+    assert_includes source, "Write the observed publication facts"
   end
 
   private

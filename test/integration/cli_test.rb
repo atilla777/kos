@@ -20,6 +20,14 @@ class CliTest < ActiveSupport::TestCase
     assert_empty error
   end
 
+  test "prints its version without configuration" do
+    output, error, status = run_cli("--version", environment: {})
+
+    assert_predicate status, :success?
+    assert_equal "kos #{Kos::VERSION}\n", output
+    assert_empty error
+  end
+
   test "maps every API operation to its HTTP request" do
     Tempfile.create([ "workflow", ".json" ]) do |workflow_file|
       workflow_file.write(JSON.generate(steps: [ { id: "develop" } ]))
@@ -207,7 +215,9 @@ class CliTest < ActiveSupport::TestCase
   end
 
   def run_cli(*arguments, environment:, stdin_data: "")
-    isolated_environment = { "RUBYOPT" => nil, "RUBYLIB" => nil }.merge(environment)
+    isolated_environment = {
+      "KOS_API_TOKEN" => nil, "KOS_API_URL" => nil, "RUBYOPT" => nil, "RUBYLIB" => nil
+    }.merge(environment)
     Open3.capture3(isolated_environment, RbConfig.ruby, "--disable-gems", Rails.root.join("bin/kos").to_s, *arguments,
       stdin_data:)
   end

@@ -8,6 +8,7 @@
 /storage/*
 /tmp/*
 /vendor/bundle
+/*.gem
 
 !/log/.keep
 !/storage/.keep

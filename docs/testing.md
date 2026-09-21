@@ -6,6 +6,7 @@
 - Request or integration tests cover REST contracts and persistence effects.
 - Concurrency tests cover claims, claim fencing, and atomic transitions.
 - CLI tests execute the public command rather than internal implementation.
+- Gem packaging tests build and install the CLI into an isolated gem home.
 - Git integration tests use temporary repositories and a temporary bare remote.
 - Recovery scenarios use isolated persistent databases, data directories, and
   subprocesses; they never inherit an ambient database URL or Git configuration.

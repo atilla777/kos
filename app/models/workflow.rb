@@ -1,8 +1,10 @@
 class Workflow < ApplicationRecord
   ROOT_KEYS = %w[steps].freeze
-  STEP_KEYS = %w[artifact_template id instruction name outcomes].freeze
+  STEP_KEYS = %w[artifact_template id instruction model_tier name outcomes].freeze
+  LEGACY_STEP_KEYS = %w[artifact_template id instruction name outcomes].freeze
   ACTION_KEYS = %w[complete_task next_step pause].freeze
   PAUSES = %w[blocked needs_human].freeze
+  MODEL_TIERS = %w[standard advanced].freeze
 
   has_many :task_types
   has_many :tasks
@@ -23,6 +25,16 @@ class Workflow < ApplicationRecord
   def action_for(step_id, outcome)
     step = definition_json["steps"].find { |candidate| candidate["id"] == step_id }
     step&.dig("outcomes", outcome)
+  end
+
+  def step_for(step_id)
+    definition_for_execution["steps"].find { |candidate| candidate["id"] == step_id }
+  end
+
+  def definition_for_execution
+    definition_json.merge("steps" => definition_json["steps"].map do |step|
+      step.merge("model_tier" => step.fetch("model_tier", "advanced"))
+    end)
   end
 
   private
@@ -52,7 +64,7 @@ class Workflow < ApplicationRecord
   end
 
   def validate_step(step, index, ids, targets)
-    unless step.is_a?(Hash) && step.keys.sort == STEP_KEYS
+    unless step.is_a?(Hash) && valid_step_keys?(step.keys.sort)
       errors.add(:definition_json, "step #{index} must contain exactly the required fields")
       return
     end
@@ -65,8 +77,19 @@ class Workflow < ApplicationRecord
     %w[instruction artifact_template].each do |field|
       errors.add(:definition_json, "step #{index} #{field} must be a string") unless step[field].is_a?(String)
     end
+    unless MODEL_TIERS.include?(step.fetch("model_tier", "advanced"))
+      errors.add(:definition_json, "step #{index} model_tier must be standard or advanced")
+    end
 
     validate_outcomes(step["outcomes"], index, targets)
+  end
+
+  def valid_step_keys?(keys)
+    keys == STEP_KEYS || legacy_definition_unchanged? && keys == LEGACY_STEP_KEYS
+  end
+
+  def legacy_definition_unchanged?
+    persisted? && !will_save_change_to_definition_json?
   end
 
   def validate_outcomes(outcomes, step_index, targets)

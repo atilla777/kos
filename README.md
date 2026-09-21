@@ -46,15 +46,92 @@ ignore these data-directory variables.
 Task ownership leases last six hours by default. Set `KOS_LEASE_SECONDS` to a
 positive integer to use another duration.
 
-## Setup
+## Deploy With An Agent
 
-From a fresh checkout, install dependencies and prepare the local database:
+An installation agent should perform this complete procedure from one fixed Git
+tag. The Rails service, installed CLI gem, command, skills, and agent profiles
+must all come from that same revision.
+
+Fetch the selected release and install the server dependencies:
 
 ```sh
+git fetch --tags
+git checkout <release-tag>
 bin/setup --skip-server
 ```
 
-Prepare the empty test database explicitly:
+Build and install the CLI with standard RubyGems commands. Build outside the
+checkout so the package is not mistaken for project state:
+
+```sh
+gem build kos.gemspec --output /tmp/kos.gem
+gem install /tmp/kos.gem
+kos --version
+kos --help
+```
+
+Resolve and retain the absolute installed executable path. The orchestrator
+does not fall back to an ambient executable:
+
+```sh
+export KOS_CLI_PATH="$(realpath "$(command -v kos)")"
+"$KOS_CLI_PATH" --version
+```
+
+Install the OpenCode integration globally from the same checkout:
+
+```sh
+mkdir -p ~/.config/opencode/commands ~/.config/opencode/agents ~/.config/opencode/skills
+rm -f ~/.config/opencode/agents/kos-step.md
+cp .opencode/commands/kos.md ~/.config/opencode/commands/kos.md
+cp .opencode/agents/kos-*.md ~/.config/opencode/agents/
+cp -R skills/kos skills/kos-step skills/kos-git ~/.config/opencode/skills/
+```
+
+The shipped model mapping is:
+
+```text
+standard = openai/gpt-5.4-mini
+advanced = openai/gpt-5.6-sol
+```
+
+An administrator may change the concrete `model:` values in the installed
+agent profiles while preserving their standard or advanced role. Run
+`opencode models` first and use complete `provider/model-id` values. When
+`KOS_DATA_HOME` or `XDG_DATA_HOME` changes the default data path, replace the
+review profile's two `~/.local/share/kos/tasks/*/` edit permissions with the
+absolute configured `<kos-data-home>/tasks/*/` paths; keep every other edit
+denied.
+
+Configure the service, prepare its database, and start Rails:
+
+```sh
+export KOS_API_TOKEN="$(openssl rand -hex 32)"
+export KOS_API_URL="http://127.0.0.1:3000"
+bin/rails db:prepare
+bin/rails server
+```
+
+Use the administrative CLI commands below to register the project, workflow,
+and task type. Then expose their trusted installation context to the OpenCode
+process:
+
+```sh
+export KOS_PROJECT_ID="<registered-project-id>"
+export KOS_PROJECT_REMOTE_URL="<registered-project-remote-url>"
+export KOS_PROJECT_DEFAULT_BRANCH="<registered-default-branch>"
+export KOS_TASK_TYPE_ID="<registered-task-type-id>"
+```
+
+Restart OpenCode after installation or model changes, verify `GET /up`, and run
+one real `/kos` task before treating the installation as ready.
+
+To update KOS, stop the service and active orchestrators, check out the new tag,
+repeat `gem build` and `gem install`, update the copied OpenCode files from that
+tag, run `bin/rails db:prepare`, and restart Rails and OpenCode. Never mix the
+CLI or skills from different KOS revisions.
+
+When developing KOS, prepare the empty test database explicitly:
 
 ```sh
 RAILS_ENV=test bin/rails db:prepare
@@ -106,13 +183,13 @@ curl --request POST http://127.0.0.1:3000/projects \
 
 ## CLI
 
-`bin/kos` uses `http://127.0.0.1:3000` by default. Set `KOS_API_URL` to use a
+The installed `kos` executable uses `http://127.0.0.1:3000` by default. Set `KOS_API_URL` to use a
 different HTTP(S) base URL. Every request requires `KOS_API_TOKEN`:
 
 ```sh
 export KOS_API_URL="http://127.0.0.1:3000"
 export KOS_API_TOKEN="your-server-token"
-export KOS_CLI_PATH="$(pwd)/bin/kos"
+export KOS_CLI_PATH="$(realpath "$(command -v kos)")"
 ```
 
 The `/kos` OpenCode orchestrator also requires administrator-installed project
@@ -128,7 +205,8 @@ unqualified `kos` executable.
 Display the available resources and actions:
 
 ```sh
-bin/kos --help
+kos --version
+kos --help
 ```
 
 The CLI exposes every current API operation:
@@ -156,13 +234,13 @@ Repeat `--blocker-id ID` to provide multiple blockers. On task updates,
 For example:
 
 ```sh
-bin/kos task create \
+kos task create \
   --project-id 1 \
   --task-type-id 1 \
   --title "Document the CLI" \
   --description-file task.md
 
-bin/kos task claim-next --project-id 1 --owner-id opencode-session-1
+kos task claim-next --project-id 1 --owner-id opencode-session-1
 ```
 
 Server response bodies are written unchanged to stdout. A `204 No Content`
@@ -192,8 +270,8 @@ bin/test    # Run the test suite
 The canonical OpenCode integration consists of:
 
 - `.opencode/commands/kos.md`, the `/kos` entry point;
-- `.opencode/agents/`, the isolated ordinary-step, read-only-review, and
-  publication agent profiles;
+- `.opencode/agents/`, the isolated standard-step, advanced-step,
+  worktree-read-only review, and publication agent profiles;
 - `skills/kos/SKILL.md`, the lease-owning workflow orchestrator;
 - `skills/kos-step/SKILL.md`, the isolated one-step executor;
 - `skills/kos-git/SKILL.md`, the worktree and publication protocol.
@@ -206,12 +284,18 @@ discoverable. For a global installation, copy the command to
 commands, agents, skills, or configuration because a running session does not
 reload them.
 
-The orchestrator uses only the public `kos` CLI for server state. It writes the
-current step artifact atomically to
-`<kos-data-home>/tasks/<task-id>/<step-id>.md` before reporting an outcome and
-recovers a lost report response by reading authoritative task state. The step
-executor cannot mutate KOS state or write artifacts, runs exactly one workflow
-step, and makes review independent and read-only.
+The orchestrator uses only the public `kos` CLI for server state. A step
+executor runs exactly one workflow step and atomically writes
+`<kos-data-home>/tasks/<task-id>/<step-id>.md` before returning its outcome. The
+orchestrator verifies that file before reporting the outcome and recovers a lost
+report response by reading authoritative task state. The executor cannot mutate
+KOS state. Review is independent and read-only for the worktree while still
+writing its external artifact.
+
+Every new workflow step declares `model_tier` as `standard` or `advanced`.
+Ordinary steps use the matching profile; `review` is advanced and `publish` is
+standard. Persisted legacy workflows without the field safely execute as
+advanced.
 
 The Git skill operates through standard Git commands and does not add Git
 behavior to Rails or the CLI.

@@ -21,11 +21,29 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     assert_equal [ blocker.id ], response.parsed_body.dig("task", "blocker_ids")
     assert_equal @workflow.id, response.parsed_body.dig("workflow", "id")
     assert_equal "develop", response.parsed_body.dig("step", "id")
+    assert_equal "advanced", response.parsed_body.dig("step", "model_tier")
     assert_equal "Implement the task.", response.parsed_body.dig("step", "instruction")
 
     get task_path(task_id), headers: @headers, as: :json
     assert_response :success
     assert_equal task_id, response.parsed_body.dig("task", "id")
+  end
+
+  test "projects advanced tiers throughout a persisted legacy workflow" do
+    definition = valid_workflow_definition.deep_dup
+    definition["steps"].each { |step| step.delete("model_tier") }
+    workflow = Workflow.new(name: "Legacy", definition_json: definition)
+    workflow.save!(validate: false)
+    task_type = TaskType.create!(name: "Legacy", workflow:)
+    task = create_task(project: @project, workflow:, task_type:)
+
+    get task_path(task), headers: @headers, as: :json
+
+    assert_response :success
+    assert_equal "advanced", response.parsed_body.dig("step", "model_tier")
+    assert response.parsed_body.dig("workflow", "definition_json", "steps").all? do |step|
+      step["model_tier"] == "advanced"
+    end
   end
 
   test "updates an unclaimed definition and rolls back all changes when a blocker is invalid" do

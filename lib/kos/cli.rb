@@ -3,6 +3,7 @@ require "net/http"
 require "openssl"
 require "optparse"
 require "uri"
+require_relative "version"
 
 module Kos
   class CLI
@@ -27,6 +28,7 @@ module Kos
     end
 
     def run
+      return print_version if @arguments == [ "--version" ] || @arguments == [ "-v" ]
       return print_help if @arguments.empty? || @arguments == [ "--help" ] || @arguments == [ "-h" ]
 
       method, path, payload = command
@@ -43,6 +45,11 @@ module Kos
 
     private
 
+    def print_version
+      @stdout.puts("kos #{Kos::VERSION}")
+      0
+    end
+
     def print_help
       @stdout.puts <<~HELP
         Usage: kos <resource> <action> [options]
@@ -54,6 +61,9 @@ module Kos
           workflow create
           task-type create | update
           task create | update | show | claim-next | resume | report-attempt | cancel
+
+        Options:
+          -v, --version             Show the installed CLI version
 
         Run `kos <resource> <action> --help` for command options.
       HELP

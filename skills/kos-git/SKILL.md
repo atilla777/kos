@@ -250,8 +250,8 @@ Always observe local and remote state before mutation.
 
 ## Result
 
-Return observed facts to the orchestrator: worktree path, pre- and post-action
+Return observed facts to the calling `kos-step`: worktree path, pre- and post-action
 HEAD, fetched base SHA, candidate SHA when one exists, observed remote SHA, the
 result (`ready`, `base_moved`, `published`, or `blocked`), and a precise reason
-for a blocker. The orchestrator writes the step artifact and reports the
-workflow outcome; this skill does neither.
+for a blocker. The calling step writes the artifact and the orchestrator reports
+the workflow outcome; this skill does neither.

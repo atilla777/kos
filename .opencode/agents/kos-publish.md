@@ -1,6 +1,7 @@
 ---
 description: Executes only the KOS publish step through the verified Git protocol.
 mode: subagent
+model: openai/gpt-5.4-mini
 permission:
   task: deny
   skill:

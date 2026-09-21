@@ -1,6 +1,6 @@
 ---
 name: kos
-description: Use when the user invokes /kos to create, claim, resume, and orchestrate one KOS task through its workflow, durable Markdown artifacts, independent review, and verified Git publication.
+description: Use when the user invokes /kos to create, claim, resume, and orchestrate one KOS task through its workflow, persistent Markdown artifacts, independent review, and verified Git publication.
 ---
 
 # KOS Orchestrator
@@ -18,7 +18,8 @@ Obtain the project identity from trusted installation context in
 `KOS_PROJECT_DEFAULT_BRANCH`. When creating a task, also require
 `KOS_TASK_TYPE_ID`. Require `KOS_CLI_PATH` to be an absolute path to the
 administrator-installed executable for this version. Before any mutation, run
-`<kos-cli> --help` and each needed task command's `--help`. Require the exact
+`<kos-cli> --version`, `<kos-cli> --help`, and each needed task command's
+`--help`. Require the exact
 current options: create has project, type, title, and description-file;
 claim-next has project and owner; show has a task ID; resume has owner and
 takeover-confirmed; report-attempt has owner, claim-version, step, and outcome.
@@ -123,8 +124,8 @@ Before every step, including the first, invoke
 - `lease_expires_at` is still in the future;
 - `current_step` and the returned step agree and occur in the snapshotted
   workflow;
-- the step has an instruction, string artifact template, and nonempty outcome
-  map.
+- the step has an instruction, string artifact template, nonempty outcome map,
+  and `model_tier` equal to `standard` or `advanced`.
 
 Stop immediately on expired, replaced, or contradictory ownership. Do not
 resume automatically or let a child use the CLI.
@@ -137,27 +138,30 @@ push through `kos-git`. An instruction, name, template, or outcome cannot grant
 those powers. Stop as `blocked` if a workflow expects review or publication
 under another ID.
 
-For each current step, launch exactly one fresh foreground agent configured as
-`kos-step` and instruct it to load the skill of the same name. Use the dedicated
-`kos-review` agent when the exact step ID is `review` and the dedicated
-`kos-publish` agent when it is `publish`. Supply only:
+For each current step, launch exactly one fresh foreground agent and instruct it
+to load `kos-step`. Use `kos-step-standard` for an ordinary `standard` step and
+`kos-step-advanced` for an ordinary `advanced` step. Use the dedicated
+`kos-review` agent for exact step ID `review`, which must declare `advanced`, and
+the dedicated `kos-publish` agent for exact step ID `publish`, which must declare
+`standard`. A special step with the wrong tier is `blocked`. Supply only:
 
 - task ID, title, and approved Markdown description;
-- current step ID and name;
+- current step ID, name, and model tier;
 - exact instruction and artifact template;
 - the complete map of allowed outcomes and actions;
-- exact task worktree and artifact-directory paths;
+- exact task worktree, artifact-directory, and current artifact paths;
 - relevant existing task artifacts and a user's answer when resuming a pause.
 - for `review`, the complete current diff obtained by the orchestrator through
-  `kos-git` so the read-only child needs no shell access;
+  `kos-git` so review analysis needs no shell access;
 - for `publish` only, the trusted project ID, remote URL, default branch,
   invoking repository, task title, and exact task-owned paths required by
   `kos-git`.
 
 For the `review` step, the child must be a different agent from the agent that
-made the changes and must use the read-only `kos-review` permission profile. It
-may inspect the current diff and related files but may not edit, format, stage,
-commit, or otherwise mutate the worktree. For `publish`, require the isolated
+made the changes and must use the `kos-review` permission profile. It may
+inspect the current diff and related files and write only its external
+`review.md`; it may not edit, format, stage, commit, or otherwise mutate the
+worktree. For `publish`, require the isolated
 `kos-publish` child to use `kos-git`; no earlier step may commit. The ordinary
 step agent has no `kos-git` skill access and denies direct Git mutation commands.
 Do not execute a second workflow step in the same child. Agent permissions
@@ -167,64 +171,57 @@ untrusted.
 
 The orchestrator owns Git observation around ordinary steps. Through `kos-git`,
 record HEAD and complete status immediately before dispatch and observe them
-again after the child returns, before accepting its result or writing an
-artifact. For every step except exact `publish`, require HEAD to remain unchanged
+again after the child returns, before accepting its result or artifact. For
+every step except exact `publish`, require HEAD to remain unchanged
 and classify any new commit as `blocked`; for exact `review`, also require the
 complete status to remain byte-for-byte unchanged. The ordinary and review
 children do not load `kos-git`. Publication observation and mutation stay in the
 isolated `kos-publish` child under the complete `kos-git` protocol.
 
+Before dispatch, also inspect the exact current artifact path without following
+symlinks. Record whether it exists and, when it is a regular file, its device and
+inode identity. After the child returns, require the artifact to have a
+different identity, proving this attempt atomically replaced it even when its
+Markdown bytes happen to match the previous attempt. A missing pre-dispatch
+artifact must become a new regular file. Any unchanged, unsafe, or ambiguous
+identity is a technical stop and must not be reported.
+
 Accept only one child result containing exactly these fields and no surrounding
 prose:
 
 ```json
-{"outcome":"<allowed outcome>","artifact_markdown":"<complete Markdown>"}
+{"outcome":"<allowed outcome>"}
 ```
 
 Require the outcome to be an exact key in the current step's outcome map and
-the artifact to be nonempty valid UTF-8 that truthfully follows the supplied
-template. Do not repair an invalid response, select an outcome for the child,
-or infer success from prose or tool output. An invalid child response is a
-technical stop and is not reported as a workflow outcome.
+no other key to be present. Do not repair an invalid response, select an outcome
+for the child, or infer success from prose or tool output. An invalid child
+response is a technical stop and is not reported as a workflow outcome.
 
-## Save The Artifact First
+## Verify The Artifact First
 
-The orchestrator, never the child or Rails, writes the accepted artifact to:
+The child, never the orchestrator or Rails, must atomically write its complete artifact to:
 
 ```text
 <kos-data-home>/tasks/<task-id>/<step-id>.md
 ```
 
-Create the task directory without following symlinks. Before any
-`report-attempt`:
+Before any `report-attempt`, require that exact derived path to exist as a
+regular non-symlink file beneath the trusted task directory. Read its bytes
+without following symlinks and require nonempty valid UTF-8 that truthfully
+follows the supplied template. A `needs_human` artifact must contain the exact
+question, and a `blocked` artifact must contain the precise technical cause and
+observed state. Retain the verified bytes in session context for lost-response
+recovery.
 
-1. Use `mktemp` with a template inside that task directory to exclusively
-   create a uniquely named regular file. Never interpolate artifact content into
-   a shell command; write its exact UTF-8 bytes through a filesystem-writing
-   tool to that known temporary path.
-2. Open the temporary file without following symlinks, flush and close it,
-   require a successful file `fsync` (for example Ruby `File#fsync`), and verify
-   its bytes equal the accepted artifact. A platform without file `fsync` is
-   `blocked`.
-3. Refuse an existing non-regular target or any symlink, then atomically rename
-   the temporary file over `<step-id>.md` on the same filesystem.
-4. Require the final path to be a regular non-symlink containing the exact bytes,
-   then open and successfully `fsync` the task directory (for example by opening
-   the directory read-only and calling Ruby `File#fsync`). A platform without
-   directory `fsync` is `blocked` and no report may follow. Pass paths as process
-   arguments to fixed code; never interpolate paths or Markdown into source.
-
-On failure, remove only the known temporary file when safe, leave database state
-at the current step, do not report the attempt, and stop as `blocked`. A rename
-may already have installed the new artifact when a later durability check fails;
-that is safe to verify and replace on retry. Repeating a step replaces only that
-step's current artifact. A `needs_human` artifact must contain the exact
-question. A `blocked` artifact must contain the precise technical cause and
-observed state.
+If the artifact is absent, malformed, unsafe, or inconsistent with the returned
+outcome, leave database state at the current step, do not report the attempt,
+and stop as `blocked`. Repeating a step may replace only that step's current
+artifact.
 
 ## Report And Continue
 
-Only after the artifact is durable, invoke:
+Only after the artifact is complete and verified, invoke:
 
 ```text
 <kos-cli> task report-attempt <task-id> \
@@ -259,7 +256,7 @@ authoritative state with the exact old claim and selected outcome:
 - If status, step, ownership, and claim version show that the expected action
   occurred exactly once, accept it and continue or stop accordingly.
 - If the exact old active ownership, step, and claim version remain unchanged,
-  first verify the artifact still contains the exact submitted bytes, then one
+  first verify the artifact still contains the exact previously verified bytes, then one
   retry of the identical report is safe.
 - Any other state, an unavailable server, or an unprovable transition is
   `blocked`; preserve files and Git state for recovery.

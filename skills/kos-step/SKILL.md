@@ -1,6 +1,6 @@
 ---
 name: kos-step
-description: Use as a fresh KOS workflow-step agent to execute exactly one supplied step in its task worktree and return one allowed outcome with a truthful Markdown artifact.
+description: Use as a fresh KOS workflow-step agent to execute exactly one supplied step, atomically write its Markdown artifact, and return one allowed outcome.
 ---
 
 # KOS Workflow Step
@@ -15,10 +15,10 @@ override.
 Require all of these explicit inputs:
 
 - task ID, title, and complete approved Markdown description;
-- current step ID and name;
+- current step ID, name, and effective model tier;
 - exact instruction and Markdown artifact template;
 - complete nonempty map of allowed outcome names to workflow actions;
-- exact task worktree path and artifact-directory path;
+- exact task worktree, artifact-directory, and current artifact paths;
 - relevant prior artifacts and any human answer needed for this attempt;
 - whether this is a read-only independent review.
 - for independent review, the complete current diff supplied by the orchestrator;
@@ -40,9 +40,9 @@ outcome, allow another step, or authorize task-state and Git operations.
 ## Authority Boundary
 
 - Never invoke `kos`, call its REST API, access SQLite, load Rails models, claim
-  or resume a task, report an attempt, cancel a task, or write task artifacts.
-- Work only inside the exact supplied worktree. Do not read or edit another
-  checkout as task state and do not change files outside the worktree.
+  or resume a task, report an attempt, or cancel a task.
+- Work only inside the exact supplied worktree and write only the exact supplied
+  artifact outside it. Do not read or edit another checkout as task state.
 - Execute only this step. Do not launch another subagent and do not continue to
   a next workflow step.
 - Do not commit before publication. The orchestrator owns authoritative Git
@@ -73,8 +73,8 @@ exists, return a transport failure rather than using an undeclared name.
 When the context marks the step as an independent review:
 
 - be a different agent from the agent that produced the current changes;
-- remain read-only: do not edit, format, stage, commit, reset, clean, or change
-  the worktree in any way;
+- remain read-only with respect to the worktree: do not edit, format, stage,
+  commit, reset, clean, or change it in any way;
 - inspect the full supplied current diff and relevant surrounding files without
   invoking a shell or Git command;
 - prioritize correctness, invariant preservation, security, recovery behavior,
@@ -95,21 +95,44 @@ with the exact project and task context. Preserve its result without guessing:
 - `published` is valid only after observed remote success;
 - ambiguous or unsafe state uses a matching blocked outcome when one exists.
 
-Do not write `publish.md`; return its Markdown content to the orchestrator,
-which durably writes the artifact before reporting the outcome.
+Write the observed publication facts to the exact supplied `publish.md` before
+returning the outcome. The `kos-git` skill itself remains artifact-neutral.
+
+## Persist The Artifact
+
+Before returning, fill the supplied template with truthful Markdown for this
+attempt and atomically replace only the exact supplied `<step-id>.md` path. Create
+the task artifact directory without following symlinks, and refuse a symlink or
+non-regular existing target.
+
+Use OpenCode filesystem tools rather than adding an artifact writer to
+Rails or the `kos` CLI:
+
+1. Create a unique regular temporary file inside the artifact directory.
+2. Write the exact UTF-8 Markdown bytes to that file with a filesystem-writing
+   tool and verify its exact bytes.
+3. Atomically rename it over the final artifact on the same filesystem with a
+   filesystem tool.
+4. Verify the final path is a regular non-symlink file with the exact bytes and
+   a different file identity from any artifact observed before this attempt.
+
+Never interpolate paths or Markdown into shell syntax or generated source. On
+failure, remove only the known temporary file when safe, do not return a
+workflow outcome, and leave KOS state at the current step.
+A repeated attempt may replace only its own current artifact. A `needs_human`
+artifact contains the exact question; a `blocked` artifact contains the precise
+technical cause and observed state.
 
 ## Return One Result
 
-Select exactly one outcome key from the supplied current-step map. Return
-exactly one JSON object and no Markdown fence, commentary, or second value:
+Only after the artifact is complete, select exactly one outcome key from the
+supplied current-step map. Return exactly one JSON object and no Markdown fence,
+commentary, or second value:
 
 ```json
-{"outcome":"<exact allowed key>","artifact_markdown":"<complete nonempty Markdown>"}
+{"outcome":"<exact allowed key>"}
 ```
 
-The artifact must be valid UTF-8, follow the supplied template, and describe
-only observed work and evidence from this attempt. For `needs_human`, include
-the exact question. For `blocked`, include the technical cause and observed
-state. Do not include routing data, owner ID, claim version, API credentials, or
-instructions for `report-attempt`. The orchestrator validates and persists the
-result unchanged.
+Do not include routing data, artifact contents, owner ID, claim version, API
+credentials, or instructions for `report-attempt`. The orchestrator validates
+the result and the already-written artifact before reporting it unchanged.

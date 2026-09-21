@@ -70,14 +70,19 @@ The `kos` CLI is the agents' only programmatic interface to Rails. It sends
 requests and emits structured responses. It never accesses SQLite directly and
 does not contain a runtime broker.
 
+The CLI is packaged as a Ruby gem from this repository. Deployments build and
+install it with standard RubyGems commands from the same Git revision as the
+installed OpenCode integration.
+
 The `/kos` skill is the user entry point and orchestrator. It discusses and
 creates or selects a task, claims it, asks KOS for the current step, invokes a
 step executor, reports the outcome, and continues until publication, a human
 question, or a technical stop. There is no separate orchestrator program.
 
 The generic step executor receives the task description, current step,
-instruction, artifact template, worktree path, and artifact directory. It runs
-only that step and returns one allowed outcome.
+instruction, artifact template, model tier, worktree path, artifact directory,
+and exact artifact path. It runs only that step, atomically writes the current
+Markdown artifact, and returns one allowed outcome.
 
 The Git skill creates and verifies worktrees, observes actual Git state,
 preserves uncommitted changes, updates from the default branch, commits only at
@@ -120,8 +125,12 @@ blocking dependencies are completed.
 ## Workflow
 
 A workflow is one JSON document containing an ordered `steps` array. Every step
-has a unique ID, name, instruction, artifact template, and outcome map. A task's
-initial `current_step` is the first step ID.
+has a unique ID, name, instruction, artifact template, model tier, and outcome
+map. A task's initial `current_step` is the first step ID. The model tier is
+`standard` or `advanced`; it selects an installation-defined OpenCode agent
+profile without persisting a concrete provider or model in KOS. New workflows
+require it. Persisted legacy definitions without it are projected as
+`advanced` so immutable workflows remain runnable.
 
 Every outcome defines exactly one action:
 
@@ -189,9 +198,11 @@ step may replace that file; a complete attempt history is not required.
 `needs_human` records the exact question, and `blocked` records the technical
 cause and observed state. KOS neither parses nor registers these files.
 
-The orchestrator atomically writes an artifact through a temporary file and
-rename before reporting the outcome to KOS. It must never advance database
-state before the artifact is durable.
+The step executor atomically replaces an artifact through a temporary file and
+rename before returning its outcome. The orchestrator verifies the exact
+artifact and proves its file identity changed during the attempt before
+reporting the outcome to KOS. It must never advance database state before the
+artifact is complete.
 
 Worktree paths are derived, not stored. The Git skill creates a worktree from
 the repository where `/kos` was invoked and verifies that its remote matches
@@ -206,9 +217,10 @@ the worktree, current diff, and `develop.md`.
 Checks inspect the current uncommitted worktree. The agent chooses commands
 from project rules; KOS neither stores nor interprets their results.
 
-Review is read-only and performed by another agent against the current diff and
-related files. Requested changes return to development, checks, and review.
-KOS does not bind review to a SHA.
+Review is performed by another agent against the current diff and related
+files. It is read-only for the task worktree but writes its external
+`review.md`. Requested changes return to development, checks, and review. KOS
+does not bind review to a SHA.
 
 The first commit is created during publication. Publication must:
 
@@ -219,7 +231,7 @@ The first commit is created during publication. Publication must:
 4. Otherwise stage only task files and create one commit containing the task
    number in its message.
 5. Push without force and observe the remote result.
-6. Write `publish.md` and return `published`.
+6. The publication step writes `publish.md` and returns `published`.
 
 KOS does not store the commit SHA. If publication is interrupted, the next
 session observes Git first. It does not duplicate an already remote commit,

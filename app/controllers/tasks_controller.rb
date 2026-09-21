@@ -83,12 +83,12 @@ class TasksController < ApplicationController
   def serialize(task)
     task = Task.includes(:workflow, :blockers).find(task.id)
     workflow = task.workflow
-    step = workflow.definition_json.fetch("steps").find { |candidate| candidate.fetch("id") == task.current_step }
+    step = workflow.step_for(task.current_step)
 
     {
       task: task.as_json(only: %i[id project_id task_type_id workflow_id parent_id title description_markdown status
         current_step owner_id claim_version lease_expires_at created_at updated_at]).merge("blocker_ids" => task.blocker_ids.sort),
-      workflow: workflow.as_json(only: %i[id name definition_json created_at]),
+      workflow: workflow.as_json(only: %i[id name created_at]).merge("definition_json" => workflow.definition_for_execution),
       step:
     }
   end

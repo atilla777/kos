@@ -17,6 +17,7 @@ module ActiveSupport
           {
             "id" => "develop",
             "name" => "Develop",
+            "model_tier" => "advanced",
             "instruction" => "Implement the task.",
             "artifact_template" => "# Development",
             "outcomes" => {
@@ -27,6 +28,7 @@ module ActiveSupport
           {
             "id" => "check",
             "name" => "Check",
+            "model_tier" => "standard",
             "instruction" => "Run the checks.",
             "artifact_template" => "# Checks",
             "outcomes" => {
@@ -43,12 +45,13 @@ module ActiveSupport
       {
         "steps" => [
           {
-            "id" => "develop", "name" => "Develop", "instruction" => "Implement the task.",
+            "id" => "develop", "name" => "Develop", "model_tier" => "advanced",
+            "instruction" => "Implement the task.",
             "artifact_template" => "# Development",
             "outcomes" => { "ready" => { "next_step" => "check" } }
           },
           {
-            "id" => "check", "name" => "Check", "instruction" => "Run the checks.",
+            "id" => "check", "name" => "Check", "model_tier" => "standard", "instruction" => "Run the checks.",
             "artifact_template" => "# Checks",
             "outcomes" => {
               "passed" => { "next_step" => "review" },
@@ -56,7 +59,8 @@ module ActiveSupport
             }
           },
           {
-            "id" => "review", "name" => "Review", "instruction" => "Review the changes.",
+            "id" => "review", "name" => "Review", "model_tier" => "advanced",
+            "instruction" => "Review the changes.",
             "artifact_template" => "# Review",
             "outcomes" => {
               "approved" => { "next_step" => "publish" },
@@ -64,7 +68,8 @@ module ActiveSupport
             }
           },
           {
-            "id" => "publish", "name" => "Publish", "instruction" => "Publish the changes.",
+            "id" => "publish", "name" => "Publish", "model_tier" => "standard",
+            "instruction" => "Publish the changes.",
             "artifact_template" => "# Publication",
             "outcomes" => {
               "base_moved" => { "next_step" => "check" },

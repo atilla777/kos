@@ -1,5 +1,6 @@
 require_relative "boot"
 require_relative "kos"
+require_relative "../lib/kos/version"
 
 require "rails"
 # Pick the frameworks you want:
