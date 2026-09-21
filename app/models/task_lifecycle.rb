@@ -16,6 +16,7 @@ class TaskLifecycle
 
   def create!(project:, task_type:, title:, description_markdown:, parent: nil, blockers: [])
     Task.transaction do
+      reject_brief_child_definition!(parent)
       task_type = TaskType.find(task_type.id)
       task = Task.create!(project:, task_type:, workflow: task_type.workflow, parent:, title:, description_markdown:,
         current_step: task_type.workflow.first_step_id)
@@ -31,6 +32,9 @@ class TaskLifecycle
   def update_definition!(task_id:, description_markdown: UNCHANGED, parent: UNCHANGED, blockers: UNCHANGED)
     Task.transaction do
       task = lock_editable_task!(task_id)
+      proposed_parent = parent.equal?(UNCHANGED) ? task.parent : parent
+      reject_brief_child_definition!(task.parent)
+      reject_brief_child_definition!(proposed_parent)
 
       task.description_markdown = description_markdown unless description_markdown.equal?(UNCHANGED)
       task.parent = parent unless parent.equal?(UNCHANGED)
@@ -211,6 +215,7 @@ class TaskLifecycle
   end
 
   def create_claimed_task!(project:, task_type:, title:, description_markdown:, owner_id:, parent:, blockers:)
+    reject_brief_child_definition!(parent)
     ensure_blockers_completed!(blockers)
     task_type = TaskType.find(task_type.id)
     now = @clock.call
@@ -225,6 +230,12 @@ class TaskLifecycle
   def ensure_blockers_completed!(blockers)
     completed = Task.where(id: blockers.map(&:id), status: "completed").count
     raise Conflict, "task cannot be claimed while a blocker is incomplete" unless completed == blockers.size
+  end
+
+  def reject_brief_child_definition!(parent)
+    return unless parent&.task_type&.key == "brief"
+
+    raise Conflict, "brief child graphs can change only through materialization"
   end
 
   def transition_changes(action, task, now)

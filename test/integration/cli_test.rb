@@ -46,7 +46,13 @@ class CliTest < ActiveSupport::TestCase
         description_file.write("# Task\n\nMultiline description.\n")
         description_file.flush
 
-        cases = [
+        Tempfile.create([ "children", ".json" ]) do |children_file|
+          children_file.write(JSON.generate(children: [ {
+            key: "child", title: "Child", description_markdown: "Work", blocker_keys: []
+          } ]))
+          children_file.flush
+
+          cases = [
           [ [ "project", "create", "--name", "KOS", "--remote-url", "git@example.test:kos.git",
             "--default-branch", "main" ], "POST", "/projects",
             { "name" => "KOS", "remote_url" => "git@example.test:kos.git", "default_branch" => "main" } ],
@@ -88,19 +94,31 @@ class CliTest < ActiveSupport::TestCase
             "--step", "develop", "--outcome", "ready" ],
             "POST", "/tasks/9/report-attempt", { "owner_id" => "session-2", "claim_version" => 6,
               "step" => "develop", "outcome" => "ready" } ],
-          [ [ "task", "cancel", "9" ], "POST", "/tasks/9/cancel", {} ]
-        ]
+            [ [ "task", "cancel", "9" ], "POST", "/tasks/9/cancel", {} ],
+            [ [ "task", "validate-children", "9", "--definition-file", children_file.path ],
+              "POST", "/tasks/9/validate-children", { "children" => [ {
+                "key" => "child", "title" => "Child", "description_markdown" => "Work", "blocker_keys" => []
+              } ] } ],
+            [ [ "task", "materialize-children", "9", "--definition-file", children_file.path,
+              "--owner-id", "brief-owner", "--claim-version", "3", "--expected-digest", "sha256:abc" ],
+              "POST", "/tasks/9/materialize-children", { "owner_id" => "brief-owner", "claim_version" => 3,
+                "expected_digest" => "sha256:abc", "children" => [ {
+                  "key" => "child", "title" => "Child", "description_markdown" => "Work", "blocker_keys" => []
+                } ] } ],
+            [ [ "task", "children", "9" ], "GET", "/tasks/9/children", nil ]
+          ]
 
-        cases.each do |arguments, expected_method, expected_path, expected_payload, stdin_data|
-          output, error, status, request = run_cli_with_server(*arguments, stdin_data: stdin_data.to_s)
+          cases.each do |arguments, expected_method, expected_path, expected_payload, stdin_data|
+            output, error, status, request = run_cli_with_server(*arguments, stdin_data: stdin_data.to_s)
 
-          assert_predicate status, :success?, arguments.join(" ")
-          assert_equal "{\"task\":{\"id\":9}}", output
-          assert_empty error
-          assert_equal expected_method, request.fetch(:method)
-          assert_equal "/api#{expected_path}", request.fetch(:path)
-          assert_equal "Bearer test-secret", request.fetch(:headers).fetch("authorization")
-          expected_payload.nil? ? assert_nil(request.fetch(:body)) : assert_equal(expected_payload, request.fetch(:body))
+            assert_predicate status, :success?, arguments.join(" ")
+            assert_equal "{\"task\":{\"id\":9}}", output
+            assert_empty error
+            assert_equal expected_method, request.fetch(:method)
+            assert_equal "/api#{expected_path}", request.fetch(:path)
+            assert_equal "Bearer test-secret", request.fetch(:headers).fetch("authorization")
+            expected_payload.nil? ? assert_nil(request.fetch(:body)) : assert_equal(expected_payload, request.fetch(:body))
+          end
         end
       end
     end

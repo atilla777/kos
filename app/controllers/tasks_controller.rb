@@ -101,10 +101,51 @@ class TasksController < ApplicationController
     render json: serialize(lifecycle.cancel!(task_id: params[:id]))
   end
 
+  def validate_children
+    result = task_graph.validate!(parent: Task.find(params[:id]), children: required_children)
+    render json: result
+  end
+
+  def materialize_children
+    result = task_graph.materialize!(
+      parent_id: params[:id],
+      owner_id: required_string(:owner_id),
+      claim_version: required_integer(:claim_version),
+      expected_digest: required_string(:expected_digest),
+      children: required_children
+    )
+    render json: { digest: result.fetch(:digest), children: result.fetch(:children).map { |task| serialize(task) } },
+      status: :created
+  end
+
+  def children
+    result = task_graph.observe(parent: Task.find(params[:id]))
+    render json: {
+      parent_id: result.fetch(:parent_id),
+      digest: result.fetch(:digest),
+      children: result.fetch(:children).map do |entry|
+        serialize(entry.fetch(:task)).merge("sibling_blocker_ids" => entry.fetch(:sibling_blocker_ids))
+      end
+    }
+  end
+
   private
 
   def lifecycle
     @lifecycle ||= TaskLifecycle.new
+  end
+
+  def task_graph
+    @task_graph ||= BriefTaskGraph.new
+  end
+
+  def required_children
+    raise ActionController::ParameterMissing, :children unless params.key?(:children)
+
+    value = params[:children]
+    raise ActionController::BadRequest, "children must be an array" unless value.is_a?(Array)
+
+    value.map { |child| child.respond_to?(:to_unsafe_h) ? child.to_unsafe_h : child }
   end
 
   def find_optional_task(name)

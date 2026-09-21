@@ -250,6 +250,58 @@ class RestartRecoveryScenarioTest < ActiveSupport::TestCase
     end
   end
 
+  test "a dropped materialization response is recovered through the public child graph" do
+    with_running_system do |system|
+      project = run_kos_json(system, "project", "create", "--name", "Brief recovery", "--remote-url",
+        "https://example.test/brief-recovery.git", "--default-branch", "main").fetch("project")
+      Tempfile.create([ "brief", ".md" ]) do |description_file|
+        description_file.write("Specify recovery\n")
+        description_file.flush
+        claim = run_kos_json(system, "task", "create-and-claim", "--project-id", project.fetch("id").to_s,
+          "--task-type-key", "brief", "--title", "Recovery brief", "--description-file", description_file.path,
+          "--owner-id", "brief-owner").fetch("task")
+        task_id = claim.fetch("id")
+        claim = run_kos_json(system, "task", "report-attempt", task_id.to_s, "--owner-id", "brief-owner",
+          "--claim-version", claim.fetch("claim_version").to_s, "--step", "brief", "--outcome", "specified")
+          .fetch("task")
+        claim = run_kos_json(system, "task", "report-attempt", task_id.to_s, "--owner-id", "brief-owner",
+          "--claim-version", claim.fetch("claim_version").to_s, "--step", "review", "--outcome", "approved")
+          .fetch("task")
+
+        Tempfile.create([ "children", ".json" ]) do |graph_file|
+          graph_file.write(JSON.generate(children: [ {
+            key: "child", title: "Recovered child", description_markdown: "Implement", blocker_keys: []
+          } ]))
+          graph_file.flush
+          digest = run_kos_json(system, "task", "validate-children", task_id.to_s,
+            "--definition-file", graph_file.path).fetch("digest")
+          proxy = dropping_proxy(system.fetch(:port))
+
+          _output, error, status = run_kos(system, "task", "materialize-children", task_id.to_s,
+            "--definition-file", graph_file.path, "--owner-id", "brief-owner", "--claim-version",
+            claim.fetch("claim_version").to_s, "--expected-digest", digest, api_url: proxy.fetch(:url))
+          joined = proxy.fetch(:thread).join(5)
+          cleanup_proxy(proxy)
+          assert joined, "response-dropping proxy did not finish"
+          assert_empty proxy.fetch(:errors)
+          assert_equal 3, status.exitstatus
+          assert_equal "transport_error", JSON.parse(error).fetch("error")
+
+          output, retry_error, retry_status = run_kos(system, "task", "materialize-children", task_id.to_s,
+            "--definition-file", graph_file.path, "--owner-id", "brief-owner", "--claim-version",
+            claim.fetch("claim_version").to_s, "--expected-digest", digest)
+          assert_equal 1, retry_status.exitstatus
+          assert_empty retry_error
+          assert_equal "conflict", JSON.parse(output).fetch("error")
+
+          observed = run_kos_json(system, "task", "children", task_id.to_s)
+          assert_equal digest, observed.fetch("digest")
+          assert_equal [ "Recovered child" ], observed.fetch("children").map { |entry| entry.dig("task", "title") }
+        end
+      end
+    end
+  end
+
   private
 
   def with_running_system

@@ -74,7 +74,15 @@ next-claim, exact task claim, owner-idempotent atomic create-and-claim, owned
 task observation, and resumable selection through the Rails API and thin CLI.
 A partial unique database index enforces that one nonempty owner identifies at
 most one task. Numeric task type IDs remain available for administrative
-compatibility; OpenCode command changes remain later-plan work.
+compatibility. `PLAN-016` adds canonical read-only brief graph validation,
+fenced transactional materialization, and complete child observation through
+the API and CLI. Local batch keys are canonicalized to deterministic positions,
+so observation can reproduce the validated digest without adding persisted
+graph state. Every child snapshots the current development workflow and is
+blocked by its brief parent plus declared siblings. Public lifecycle operations
+cannot add or redefine brief children outside materialization, preserving the
+reviewed graph until those tasks are claimed. OpenCode command changes remain
+later-plan work.
 
 ## Built-In Scenario Target
 

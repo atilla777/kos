@@ -63,6 +63,67 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     assert_response :conflict
   end
 
+  test "validates materializes and observes a brief child graph" do
+    brief, claim = claimed_brief_at_publish
+    children = [
+      { key: "core", title: "Core", description_markdown: "Build core", blocker_keys: [] },
+      { key: "surface", title: "Surface", description_markdown: "Build surface", blocker_keys: [ "core" ] }
+    ]
+
+    post validate_children_task_path(brief), params: { children: }, headers: @headers, as: :json
+    assert_response :success
+    digest = response.parsed_body.fetch("digest")
+
+    assert_difference -> { Task.count }, 2 do
+      post materialize_children_task_path(brief), params: {
+        owner_id: "brief-owner", claim_version: claim.claim_version, expected_digest: digest, children:
+      }, headers: @headers, as: :json
+    end
+    assert_response :created
+    assert_equal digest, response.parsed_body.fetch("digest")
+    materialized = response.parsed_body.fetch("children")
+    assert_equal [ "Core", "Surface" ], materialized.map { |entry| entry.dig("task", "title") }
+
+    core_id = materialized.find { |entry| entry.dig("task", "title") == "Core" }.dig("task", "id")
+    patch task_path(core_id), params: { parent_id: nil, blocker_ids: [] }, headers: @headers, as: :json
+    assert_response :conflict
+
+    post tasks_path, params: task_parameters.merge(parent_id: brief.id), headers: @headers, as: :json
+    assert_response :conflict
+
+    get children_task_path(brief), headers: @headers, as: :json
+    assert_response :success
+    assert_equal digest, response.parsed_body.fetch("digest")
+    observed = response.parsed_body.fetch("children")
+    core_id = observed.find { |entry| entry.dig("task", "title") == "Core" }.dig("task", "id")
+    surface = observed.find { |entry| entry.dig("task", "title") == "Surface" }
+    assert_equal [ core_id ], surface.fetch("sibling_blocker_ids")
+  end
+
+  test "child graph endpoints return stable errors without partial writes" do
+    brief, claim = claimed_brief_at_publish
+    children = [ { key: "child", title: "Child", description_markdown: "Work", blocker_keys: [] } ]
+
+    post validate_children_task_path(brief), params: { children: [ children.first.merge(blocker_ids: [ -1 ]) ] },
+      headers: @headers, as: :json
+    assert_response :unprocessable_entity
+    assert_equal "invalid_graph", response.parsed_body.fetch("error")
+
+    digest = BriefTaskGraph.new.validate!(parent: brief, children:)[:digest]
+    assert_no_difference -> { Task.count } do
+      post materialize_children_task_path(brief), params: {
+        owner_id: "wrong-owner", claim_version: claim.claim_version, expected_digest: digest, children:
+      }, headers: @headers, as: :json
+    end
+    assert_response :conflict
+    assert_equal "conflict", response.parsed_body.fetch("error")
+
+    post materialize_children_task_path(brief), params: {
+      owner_id: "brief-owner", claim_version: claim.claim_version, expected_digest: "sha256:wrong", children:
+    }, headers: @headers, as: :json
+    assert_response :conflict
+  end
+
   test "create and claim rejects incomplete blockers without creating a task" do
     blocker = create_task(project: @project, workflow: @workflow, task_type: @task_type)
     parameters = task_parameters.except(:task_type_id).merge(
@@ -292,7 +353,10 @@ class TasksApiTest < ActionDispatch::IntegrationTest
       -> { post claim_task_path(1), params: {}, as: :json },
       -> { post resume_task_path(1), params: {}, as: :json },
       -> { post report_attempt_task_path(1), params: {}, as: :json },
-      -> { post cancel_task_path(1), params: {}, as: :json }
+      -> { post cancel_task_path(1), params: {}, as: :json },
+      -> { post validate_children_task_path(1), params: {}, as: :json },
+      -> { post materialize_children_task_path(1), params: {}, as: :json },
+      -> { get children_task_path(1), as: :json }
     ]
 
     requests.each do |request|
@@ -317,5 +381,18 @@ class TasksApiTest < ActionDispatch::IntegrationTest
       title: "API task",
       description_markdown: "Created through the API"
     }
+  end
+
+  def claimed_brief_at_publish
+    BuiltInCatalog.install!
+    brief_type = TaskType.find_by!(key: "brief")
+    lifecycle = TaskLifecycle.new
+    brief = lifecycle.create!(project: @project, task_type: brief_type, title: "Brief", description_markdown: "Request")
+    claim = lifecycle.claim!(task_id: brief.id, owner_id: "brief-owner")
+    claim = lifecycle.report_attempt!(task_id: brief.id, owner_id: "brief-owner", claim_version: claim.claim_version,
+      step: "brief", outcome: "specified")
+    claim = lifecycle.report_attempt!(task_id: brief.id, owner_id: "brief-owner", claim_version: claim.claim_version,
+      step: "review", outcome: "approved")
+    [ brief, claim ]
   end
 end

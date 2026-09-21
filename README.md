@@ -173,6 +173,9 @@ POST  /tasks/:id/claim
 POST  /tasks/:id/resume
 POST  /tasks/:id/report-attempt
 POST  /tasks/:id/cancel
+POST  /tasks/:id/validate-children
+POST  /tasks/:id/materialize-children
+GET   /tasks/:id/children
 ```
 
 Request fields are top-level JSON properties. Task responses contain `task`,
@@ -238,6 +241,9 @@ kos task resumable
 kos task resume ID
 kos task report-attempt ID
 kos task cancel ID
+kos task validate-children ID
+kos task materialize-children ID
+kos task children ID
 ```
 
 Use command help for exact options. Administrative task type creation requires
@@ -245,6 +251,12 @@ Use command help for exact options. Administrative task type creation requires
 Task creation accepts exactly one of `--task-type-key KEY` or
 `--task-type-id ID`. `claim-next` optionally filters by one
 `--task-type-key KEY`; `resumable` requires one.
+Brief child graph commands read a JSON object containing `children` from
+`--definition-file FILE`. Each child contains exactly `key`, `title`,
+`description_markdown`, and `blocker_keys`. Validation returns a canonical
+digest. Materialization requires that digest plus the current brief owner and
+claim version; `children` returns the complete observed graph and a comparable
+digest for lost-response recovery.
 Workflow definitions are read with
 `--definition-file FILE`. Task descriptions are read with
 `--description-file FILE`; pass `-` as the file to read from standard input.
