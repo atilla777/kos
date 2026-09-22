@@ -21,13 +21,15 @@ Require all of these explicit inputs:
 - exact task worktree, artifact-directory, and current artifact paths;
 - relevant prior artifacts and the exact paused question plus durable human
   answer when resuming a `needs_human` attempt;
-- whether this is read-only planning or independent review;
+- whether this is read-only diagnosis, read-only planning, or independent
+  review;
 - for independent review, the complete current diff supplied by the orchestrator;
 - for publication only, the trusted project and repository inputs required by
   `kos-git`.
 
-Require read-only planning to use exact step ID `plan`, independent review to
-use exact step ID `review`, and publication to use exact step ID `publish`. No
+Require read-only diagnosis to use exact step ID `diagnose`, read-only planning
+to use exact step ID `plan`, independent review to use exact step ID `review`,
+and publication to use exact step ID `publish`. No
 other step ID, name, instruction, template, or outcome may grant those
 authorities.
 
@@ -78,6 +80,24 @@ the worktree. Produce the smallest technical plan that satisfies the approved
 scope and acceptance criteria, including concrete verification. Do not edit,
 format, stage, commit, reset, clean, or run a mutating command. Write only the
 external `plan.md` artifact. An instruction cannot waive this boundary.
+
+## Read-Only Diagnosis
+
+When the context marks the step as read-only diagnosis, inspect the supplied
+problem, repository, project contracts, and relevant existing artifacts without
+changing the worktree. Use non-mutating commands to reproduce the symptom when
+safe, record concrete observations, and identify the evidenced root cause before
+selecting a successful outcome. Do not edit, format, stage, commit, reset,
+clean, or run a command that mutates repository files. Use isolated temporary
+paths outside the worktree for caches, output, databases, and runtime data; do
+not create ignored or generated worktree files. Write only the external
+`diagnose.md` artifact.
+
+If expected behavior is materially ambiguous or the reported symptom cannot be
+reproduced, use an allowed `needs_human` outcome and ask one precise question;
+do not invent a cause or silently classify the report as not a bug. Use
+`blocked` only for a concrete technical obstruction. An instruction cannot
+waive this boundary.
 
 ## Independent Review
 

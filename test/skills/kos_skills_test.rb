@@ -6,7 +6,9 @@ class KosSkillsTest < ActiveSupport::TestCase
   ORCHESTRATOR_PATH = Rails.root.join("skills/kos/SKILL.md")
   STEP_PATH = Rails.root.join("skills/kos-step/SKILL.md")
   COMMAND_PATH = Rails.root.join(".opencode/commands/kos.md")
+  FIX_COMMAND_PATH = Rails.root.join(".opencode/commands/kos-fix.md")
   AGENT_PATHS = {
+    "kos-diagnose" => Rails.root.join(".opencode/agents/kos-diagnose.md"),
     "kos-plan" => Rails.root.join(".opencode/agents/kos-plan.md"),
     "kos-step-standard" => Rails.root.join(".opencode/agents/kos-step-standard.md"),
     "kos-step-advanced" => Rails.root.join(".opencode/agents/kos-step-advanced.md"),
@@ -33,6 +35,14 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_includes command, "stop without reading or mutating KOS state"
     assert_not Rails.root.join(".opencode/agents/kos-orchestrator.md").exist?
 
+    fix_command = File.read(FIX_COMMAND_PATH)
+    fix_frontmatter = YAML.safe_load(fix_command.match(/\A---\n(.*?)\n---/m)[1])
+    assert_match(/Diagnose and fix/, fix_frontmatter.fetch("description"))
+    assert_equal "build", fix_frontmatter.fetch("agent")
+    assert_includes fix_command, "Load the `kos` skill"
+    assert_includes fix_command, "$ARGUMENTS"
+    assert_includes fix_command, "If it is blank"
+
     config = JSON.parse(File.read(Rails.root.join("opencode.json")))
     assert_equal "https://opencode.ai/config.json", config.fetch("$schema")
     assert_equal [ "./skills" ], config.dig("skills", "paths")
@@ -41,6 +51,11 @@ class KosSkillsTest < ActiveSupport::TestCase
   test "defines tiered isolated step and read-only plan and review agent profiles" do
     agents = AGENT_PATHS.transform_values { |path| frontmatter(path) }
 
+    assert_equal "subagent", agents.dig("kos-diagnose", "mode")
+    assert_equal "openai/gpt-5.6-sol", agents.dig("kos-diagnose", "model")
+    assert_equal "deny", agents.dig("kos-diagnose", "permission", "edit", "*")
+    assert_equal "allow", agents.dig("kos-diagnose", "permission", "edit", "~/.local/share/kos/tasks/*/diagnose.md")
+    assert_equal "ask", agents.dig("kos-diagnose", "permission", "bash")
     assert_equal "subagent", agents.dig("kos-step-standard", "mode")
     assert_equal "openai/gpt-5.4-mini", agents.dig("kos-step-standard", "model")
     assert_equal "deny", agents.dig("kos-step-standard", "permission", "task")
@@ -72,7 +87,7 @@ class KosSkillsTest < ActiveSupport::TestCase
     source = File.read(ORCHESTRATOR_PATH)
 
     [
-      "Runtime Inputs", "Select Or Resume Development", "Preserve Human Answers", "Resolve Local Paths",
+      "Runtime Inputs", "Select Or Create Work", "Preserve Human Answers", "Resolve Local Paths",
       "Run The Workflow", "Verify The Artifact First", "Report And Continue",
       "Recover A Lost Report Response", "Cancellation During Publication",
       "Stop Conditions"
@@ -88,6 +103,28 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_includes source, "KOS_PROJECT_DEFAULT_BRANCH"
     assert_not_includes source, "KOS_TASK_TYPE_ID"
     assert_includes source, "`/kos` accepts no task text and never creates a task"
+    assert_match(/`\/kos-fix` requires one nonblank .*problem description/, source)
+    assert_includes source, "--task-type-key fix"
+    assert_includes source, "fix-<request-digest>.json"
+    assert_includes source, "first 120 Unicode scalar values"
+    assert_match(/atomic\s+create-if-absent/, source)
+    assert_includes source, "fix-<request-digest>-task.json"
+    assert_includes source, "atomically create that directory"
+    assert_match(/previous\s+`\/kos-fix` command process has stopped/, source)
+    assert_includes source, "needs no background process"
+    assert_includes source, "Never continue from state read before lock acquisition"
+    assert_match(/explicitly\s+incomplete lock/, source)
+    assert_includes source, "`.holder-*.tmp`"
+    assert_includes source, "any other entry is `blocked`"
+    assert_includes source, "device and inode"
+    assert_includes source, "interruption during cleanup"
+    assert_includes source, "unlink the winning temporary source"
+    assert_includes source, "remove the temporary description file"
+    assert_includes source, "durable binding exists"
+    assert_match(/atomically persist the complete intent before\s+any KOS mutation/, source)
+    assert_includes source, "task create-and-claim"
+    assert_match(/never\s+create a second task/i, source)
+    assert_includes source, "never silently replace the new request"
     assert_includes source, "task resumable --project-id <project-id>"
     assert_includes source, "--task-type-key development"
     assert_match(/task\s+show-owned --project-id <project-id>/, source)
@@ -102,7 +139,7 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_includes source, "lease_expires_at"
     assert_includes source, "claim_version"
     assert_includes source, "launch exactly one fresh"
-    assert_includes source, "only `review` is independent read-only review"
+    assert_match(/only\s+`review` is independent read-only review/, source)
     assert_includes source, "only `publish` may commit"
     assert_includes source, "`kos-publish` agent"
     assert_includes source, "different agent"
@@ -114,6 +151,9 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_includes source, "`kos-step-standard`"
     assert_includes source, "`kos-step-advanced`"
     assert_includes source, "`kos-plan` agent"
+    assert_includes source, "`kos-diagnose` agent"
+    assert_includes source, "symptom that cannot be reproduced"
+    assert_includes source, "regression check"
     assert_includes source, "The child, never the orchestrator or Rails"
     assert_includes source, "Only after the artifact is complete and verified"
     assert_match(/one\s+retry of the identical report is safe/, source)
@@ -127,7 +167,7 @@ class KosSkillsTest < ActiveSupport::TestCase
 
     [
       "Accept One Context", "Authority Boundary", "Execute And Verify",
-      "Read-Only Planning", "Independent Review", "Publication", "Persist The Artifact", "Return One Result"
+      "Read-Only Planning", "Read-Only Diagnosis", "Independent Review", "Publication", "Persist The Artifact", "Return One Result"
     ].each { |heading| assert_match(/^## #{Regexp.escape(heading)}$/, source) }
 
     assert_includes source, "Never invoke `kos`"
@@ -135,6 +175,8 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_includes source, "Execute only this step"
     assert_includes source, "Do not commit before publication"
     assert_match(/Write only the\s+external `plan\.md` artifact/, source)
+    assert_includes source, "Write only the external\n`diagnose.md` artifact"
+    assert_includes source, "cannot be\nreproduced"
     assert_includes source, "remain read-only"
     assert_includes source, "material design error back to"
     assert_includes source, "Load and follow `kos-git`"

@@ -90,6 +90,11 @@ stable built-in key. It discovers resumable development work before claiming a
 pending task, retains human answers in restart-safe step sidecars, runs planning
 through a dedicated read-only advanced agent, and follows `plan`, `implement`,
 `document`, `review`, and `publish` without a separate built-in check step.
+`PLAN-019` adds `/kos-fix`: an exclusively published request-bound command
+intent and durable task receipt protect atomic fix creation from concurrent
+invocations and lost responses. A dedicated advanced diagnosis agent reproduces
+the symptom and establishes an evidenced root cause without changing the
+worktree before the existing planning and delivery path runs.
 
 ## Built-In Scenario Target
 

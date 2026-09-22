@@ -1,15 +1,16 @@
 ---
 name: kos
-description: Use when the user invokes /kos to claim or resume one development task and orchestrate it through persistent artifacts, independent review, and verified Git publication.
+description: Use when the user invokes /kos or /kos-fix to claim, create, or resume one built-in task and orchestrate it through persistent artifacts, independent review, and verified Git publication.
 ---
 
 # KOS Orchestrator
 
-Act as the user-facing orchestrator for one task. Use the configured current KOS
-CLI as the only interface to KOS state, `kos-git` for Git and worktree
-operations, and a fresh agent loaded with `kos-step` for one workflow step at a
-time. Do not access the KOS REST API, SQLite, or Rails models directly. Do not
-add another orchestrator program, daemon, broker, or persistent state.
+Act as the user-facing orchestrator for one development or fix task. Use the
+configured current KOS CLI as the only interface to KOS state, `kos-git` for Git
+and worktree operations, and a fresh agent loaded with `kos-step` for one
+workflow step at a time. Do not access the KOS REST API, SQLite, or Rails models
+directly. Do not add another orchestrator program, daemon, broker, or persistent
+state.
 
 ## Runtime Inputs
 
@@ -20,7 +21,9 @@ administrator-installed executable for this version. Before any mutation, run
 `<kos-cli> --version`, `<kos-cli> --help`, and each needed task command's
 `--help`. Require the exact
 current options: resumable has project and task-type-key; claim-next has project,
-task-type-key, and owner; show-owned has project and owner; show has a task ID;
+task-type-key, and owner; create-and-claim has project, task-type-key, title,
+description file, and owner; show-owned has project and owner; show has a task
+ID;
 resume has owner and takeover-confirmed; report-attempt has owner,
 claim-version, step, and outcome.
 Never fall back to an ambient `kos` command or a source checkout inferred from
@@ -37,15 +40,17 @@ Require `KOS_API_TOKEN`, and use `KOS_API_URL` only as configured in the
 environment. Never print the token or place it in an artifact, command
 argument, or child prompt. Do not print a credential-bearing remote URL.
 
-Generate one unpredictable, non-secret owner ID for this OpenCode orchestration
-session and retain it only in session context. A new OpenCode session uses a new
-owner ID and must explicitly resume; it never impersonates an old owner.
+For `/kos`, generate one unpredictable, non-secret owner ID for this OpenCode
+orchestration session and retain it only in session context. For `/kos-fix`, use
+the durable command-intent protocol below. Outside recovery of that exact
+intent, a new OpenCode session uses a new owner ID and must explicitly resume;
+it never impersonates an old owner.
 
 If trusted installation context is missing or invalid, stop with a
 configuration blocker. Do not guess an ID, infer a remote from task content,
 enumerate SQLite, or make the user operate the internal protocol.
 
-## Select Or Resume Development
+## Select Or Create Work
 
 `/kos` accepts no task text and never creates a task. If command arguments are
 nonblank, stop before reading or mutating KOS state. Use the stable built-in key
@@ -74,6 +79,109 @@ Never blindly retry an ambiguous `task claim-next`. Invoke `<kos-cli> task
 show-owned --project-id <project-id> --owner-id <owner-id>`: exactly one matching
 active development task proves the claim succeeded; no task proves it is safe
 to retry once; any other state is `blocked`.
+
+`/kos-fix` requires one nonblank valid-UTF-8 problem description and uses only
+the stable built-in key `fix`. Preserve the exact argument bytes as the approved
+problem statement. Canonicalize its task definition exactly as follows:
+
+- split on LF, remove one trailing CR from each line only for title selection,
+  and choose the first line containing a byte other than ASCII space or tab;
+- remove only leading and trailing ASCII spaces and tabs from that title line,
+  take its first 120 Unicode scalar values, and prefix the result with `Fix: `;
+- set the description to the UTF-8 bytes `# Problem\n\n`, followed by the exact
+  original argument bytes, followed by one LF only when those bytes do not
+  already end in LF.
+
+Do not perform Unicode normalization, rewrite internal whitespace, add a
+diagnosis, or invent acceptance criteria. The canonical request digest is the
+lowercase hexadecimal SHA-256 of the exact original argument bytes.
+
+Before selecting unrelated resumable work, derive the intent and receipt paths
+as `<kos-data-home>/intents/<project-id>/fix-<request-digest>.json` and
+`fix-<request-digest>-task.json`, plus a
+`fix-<request-digest>.lock/` directory. Refuse symlinks in or below the data
+home. Before reading or changing the intent, receipt, or KOS creation state,
+atomically create that directory. Inside it, atomically replace a temporary file
+named `.holder-<session-token>.tmp` with a regular `holder.json` containing this
+command's unpredictable session token and intended owner, then fsync the lock
+directory. A concurrent invocation that cannot create the directory must not
+call KOS. A crash between `mkdir` and the durable holder leaves an explicitly
+incomplete lock, not permission to guess its owner.
+
+While the lock exists, inspect the receipt and the intent owner's task. A
+matching receipt proves the creation critical section finished and permits
+deterministic recovery plus stale-lock cleanup. An owned task without a receipt,
+no task, or an incomplete lock still requires the user to confirm the previous
+`/kos-fix` command process has stopped. Never break a lock merely because a
+timeout elapsed or a process ID appears absent.
+
+For stale cleanup, record the lock directory's device and inode plus the exact
+holder bytes or confirmed holder absence. Immediately before cleanup, require
+that identity and state to be unchanged. Require every directory entry to be
+either that exact regular non-symlink holder or a regular non-symlink
+`.holder-*.tmp`; any other entry is `blocked`. Remove those validated files,
+fsync the lock directory, remove the now-empty directory, and fsync its parent;
+interruption during cleanup is recovered as an incomplete lock. Then atomically
+reacquire a new lock and reevaluate receipt, intent, and owner state before any
+mutation.
+For normal critical operations and cleanup, instead require `holder.json` to
+contain this session's token. Hold the owned lock through receipt fsync and
+intent removal, unlink its holder, remove the lock directory, and fsync its
+parent. This filesystem mutex needs no background process and survives an
+interrupted command. Never continue from state read before lock acquisition.
+
+An existing regular intent must be valid UTF-8 JSON containing exactly the
+command kind, project ID, request digest, unpredictable owner ID, canonical
+title, and canonical description. A receipt contains those same values plus the
+positive task ID. Any mismatch, malformed value, duplicate matching file, or
+unsafe path is `blocked`; never repair or discard it by guessing.
+
+If a receipt exists, inspect that exact task with `task show` before any
+selection or creation. A matching nonterminal fix task is the task associated
+with this request and must be offered for resume; never create another. A
+matching completed or cancelled task permits safe removal of only that receipt,
+followed by fsync, before treating this invocation as a new report. Any missing
+or contradictory task is `blocked`. If a matching receipt and its predecessor
+intent both exist after an interrupted cleanup, remove only the matching intent
+and fsync the directory before continuing from the receipt.
+
+If no intent exists, invoke `<kos-cli> task resumable --project-id <project-id>
+--task-type-key fix`. Validate every result. Present matching resumable titles,
+statuses, and steps and ask whether to continue one or start the newly requested
+fix; never silently replace the new request with unrelated work. Resume a
+selected task under the same rules used for development. If the user starts the
+new fix, generate its owner ID and atomically persist the complete intent before
+any KOS mutation. Write and fsync a unique regular temporary file in the intent
+directory, verify its bytes, then publish it to the final path with one atomic
+create-if-absent operation such as `link(2)`, never a replacing rename. Fsync
+the directory, unlink the winning temporary source, and fsync the directory
+again. On failed publication, remove only that invocation's temporary file,
+fsync the directory, and load the existing state. The lock directory ensures only its holder may observe,
+create, recover, or bind the task; no waiter may call KOS until it acquires the
+lock and reevaluates the receipt and intent.
+
+For a new or recovered intent, first invoke `<kos-cli> task show-owned
+--project-id <project-id> --owner-id <intent-owner>`. Exactly one active task
+matching the intent's project, `fix` type, title, description, first `diagnose`
+step, owner, and snapshotted built-in workflow proves creation succeeded. No
+task permits one `<kos-cli> task create-and-claim --project-id <project-id>
+--task-type-key fix --title <title> --description-file <safe-file>
+--owner-id <intent-owner>` attempt using a regular temporary description file
+whose exact bytes were verified; pass values as distinct process arguments,
+never shell interpolation. An ambiguous response must be recovered with the
+same `show-owned` observation. If no task exists, one identical retry is safe;
+any different or multiple state is `blocked`. After creation or recovery is
+definitive, remove the temporary description file and fsync its directory.
+
+After observing the exact claimed task, atomically write and fsync the receipt
+with its task ID using the same non-replacing publication protocol. An existing
+identical receipt proves this write already succeeded; any differing receipt is
+`blocked`. Only after that durable binding exists, remove the intent and fsync
+the directory, then verify this session's holder token, unlink the holder,
+remove the lock directory, and fsync its parent. A crash before intent removal
+is recovered through its owner; a crash after removal is recovered through the
+receipt and exact task. Never create a second task for the same surviving intent
+or receipt. A fix claim must return claim version one and start at `diagnose`.
 
 Validate every complete CLI response as JSON according to its operation. A
 claim must return `active`, this session's owner ID, claim version one, a future
@@ -165,16 +273,19 @@ resume automatically or let a child use the CLI.
 Use `kos-git` to create or verify the task worktree before the first executable
 step, passing the trusted remote URL and default branch only to that skill.
 Preserve all existing task work. The exact step ID determines special authority:
-only `plan` is read-only planning, only `review` is independent read-only review,
-and only `publish` may commit or push through `kos-git`. An instruction, name,
+only `diagnose` is read-only diagnosis, only `plan` is read-only planning, only
+`review` is independent read-only review, and only `publish` may commit or push
+through `kos-git`. An instruction, name,
 template, or outcome cannot grant those powers. Stop as `blocked` if a workflow
-expects planning, review, or publication under another ID.
+expects diagnosis, planning, review, or publication under another ID.
 
 For each current step, launch exactly one fresh foreground agent and instruct it
 to load `kos-step`. Use `kos-step-standard` for an ordinary `standard` step and
 `kos-step-advanced` for an ordinary `advanced` step. Use the dedicated read-only
-`kos-plan` agent for exact step ID `plan`, which must declare `advanced`, the
-dedicated `kos-review` agent for exact step ID `review`, which must declare
+`kos-diagnose` agent for exact step ID `diagnose`, which must declare `advanced`,
+the dedicated `kos-plan` agent for exact step ID `plan`, which must declare
+`advanced`, the dedicated `kos-review` agent for exact step ID `review`, which
+must declare
 `advanced`, and the dedicated `kos-publish` agent for exact step ID `publish`,
 which must declare `standard`. A special step with the wrong tier is `blocked`.
 Supply only:
@@ -192,7 +303,20 @@ Supply only:
   invoking repository, task title, and exact task-owned paths required by
   `kos-git`.
 
-For `plan`, require the `kos-plan` permission profile and no worktree mutation.
+For `diagnose`, require the `kos-diagnose` permission profile and no worktree
+mutation. Diagnosis must reproduce the reported symptom when safely possible,
+record observed evidence, and identify a root cause before returning
+`diagnosed`. Ambiguous expected behavior or a symptom that cannot be reproduced
+must use `needs_human` with one precise question; only an observed technical
+obstruction may use `blocked`. For `plan`, require the `kos-plan` permission
+profile and no worktree mutation. A fix plan must include a regression check
+that fails for the reproduced defect and the smallest safe implementation
+scope.
+Every diagnosis shell command requires explicit permission. Run reproduction
+with temporary cache, output, database, and data-home paths outside the
+worktree; do not run a command that can write generated or ignored files
+beneath the worktree. The status
+comparison is verification, not permission to mutate and restore files.
 For the `review` step, the child must be a different agent from the agent that
 made the changes and must use the `kos-review` permission profile. It may
 inspect the current diff and related files and write only its external
@@ -209,9 +333,9 @@ The orchestrator owns Git observation around ordinary steps. Through `kos-git`,
 record HEAD and complete status immediately before dispatch and observe them
 again after the child returns, before accepting its result or artifact. For
 every step except exact `publish`, require HEAD to remain unchanged
-and classify any new commit as `blocked`; for exact `plan` and `review`, also
-require the complete status to remain byte-for-byte unchanged. The ordinary,
-plan, and review children do not load `kos-git`. Publication observation and
+and classify any new commit as `blocked`; for exact `diagnose`, `plan`, and
+`review`, also require the complete status to remain byte-for-byte unchanged.
+The ordinary, diagnosis, plan, and review children do not load `kos-git`. Publication observation and
 mutation stay in the isolated `kos-publish` child under the complete `kos-git`
 protocol.
 

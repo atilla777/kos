@@ -84,7 +84,7 @@ Install the OpenCode integration globally from the same checkout:
 ```sh
 mkdir -p ~/.config/opencode/commands ~/.config/opencode/agents ~/.config/opencode/skills
 rm -f ~/.config/opencode/agents/kos-step.md
-cp .opencode/commands/kos.md ~/.config/opencode/commands/kos.md
+cp .opencode/commands/kos*.md ~/.config/opencode/commands/
 cp .opencode/agents/kos-*.md ~/.config/opencode/agents/
 cp -R skills/kos skills/kos-step skills/kos-git skills/okf ~/.config/opencode/skills/
 ```
@@ -100,9 +100,9 @@ An administrator may change the concrete `model:` values in the installed
 agent profiles while preserving their standard or advanced role. Run
 `opencode models` first and use complete `provider/model-id` values. When
 `KOS_DATA_HOME` or `XDG_DATA_HOME` changes the default data path, replace the
-plan and review profiles' `~/.local/share/kos/tasks/*/` edit permissions with
-the absolute configured `<kos-data-home>/tasks/*/` paths; keep every other edit
-denied.
+diagnosis, plan, and review profiles' `~/.local/share/kos/tasks/*/` edit
+permissions with the absolute configured `<kos-data-home>/tasks/*/` paths; keep
+every other edit denied.
 
 Configure the service, prepare its database, and start Rails:
 
@@ -210,7 +210,9 @@ The `/kos` OpenCode orchestrator also requires administrator-installed project
 context. `KOS_PROJECT_ID`, `KOS_PROJECT_REMOTE_URL`, and
 `KOS_PROJECT_DEFAULT_BRANCH` identify the registered project without asking an
 ordinary user to manage internal IDs. `/kos` accepts no task text, never creates
-tasks, and selects or resumes only the built-in `development` type. These values
+tasks, and selects or resumes only the built-in `development` type.
+`/kos-fix <problem>` creates and exactly claims the built-in `fix` type, or
+resumes fix work explicitly selected by the user. These values
 must match the records registered through the administrative CLI.
 `KOS_CLI_PATH` must be the absolute path to this version's installed CLI; the
 orchestrator validates its command inventory and never falls back to an
@@ -301,17 +303,17 @@ bin/test    # Run the test suite
 
 The canonical OpenCode integration consists of:
 
-- `.opencode/commands/kos.md`, the `/kos` entry point;
-- `.opencode/agents/`, the isolated standard-step, advanced-step,
-  worktree-read-only review, and publication agent profiles;
-- `skills/kos/SKILL.md`, the lease-owning workflow orchestrator;
+- `.opencode/commands/kos.md` and `kos-fix.md`, the development and fix entry points;
+- `.opencode/agents/`, the isolated standard-step, advanced-step, read-only
+  diagnosis, planning and review, and publication agent profiles;
+- `skills/kos/SKILL.md`, the lease-owning development and fix workflow orchestrator;
 - `skills/kos-step/SKILL.md`, the isolated one-step executor;
 - `skills/kos-git/SKILL.md`, the worktree and publication protocol;
 - `skills/okf/SKILL.md`, the confined OKF v0.2 product-specification procedure.
 
 This checkout's `opencode.json` makes the canonical skill directory
-discoverable. For a global installation, copy the command to
-`~/.config/opencode/commands/kos.md`, the isolated agent files to
+discoverable. For a global installation, copy the commands to
+`~/.config/opencode/commands/`, the isolated agent files to
 `~/.config/opencode/agents/`, and each skill directory to
 `~/.config/opencode/skills/`. Restart OpenCode after installing or changing
 commands, agents, skills, or configuration because a running session does not
@@ -326,6 +328,11 @@ KOS state. Planning and review are read-only for the worktree while still
 writing their external artifacts. Before selecting pending work, `/kos` lists
 resumable development tasks. A paused human answer is atomically retained in
 `<step-id>-answer.md` before resume and survives another interruption.
+`/kos-fix` exclusively publishes a request-bound command intent before
+create-and-claim and retains a durable request-to-task receipt, so a concurrent
+invocation or lost response cannot duplicate the task. Its dedicated diagnosis
+agent may run approved non-mutating reproduction commands but cannot change the
+task worktree.
 
 Every new workflow step declares `model_tier` as `standard` or `advanced`.
 Ordinary steps use the matching profile; `plan` and `review` are advanced and

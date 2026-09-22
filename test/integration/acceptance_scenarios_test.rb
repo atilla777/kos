@@ -284,6 +284,51 @@ class RestartRecoveryScenarioTest < ActiveSupport::TestCase
     end
   end
 
+  test "fix creation recovery observes its durable owner without a duplicate task" do
+    with_running_system do |system|
+      project = run_kos_json(system, "project", "create", "--name", "Fix recovery", "--remote-url",
+        "https://example.test/fix-recovery.git", "--default-branch", "main").fetch("project")
+      Tempfile.create([ "fix", ".md" ]) do |description_file|
+        description_file.write("# Problem\n\nThe command returns the wrong status.\n")
+        description_file.flush
+
+        unreachable_port = available_port
+        _output, error, status = run_kos(system, "task", "create-and-claim", "--project-id", project.fetch("id").to_s,
+          "--task-type-key", "fix", "--title", "Wrong command status", "--description-file",
+          description_file.path, "--owner-id", "durable-fix-owner", api_url: "http://127.0.0.1:#{unreachable_port}")
+        assert_equal 3, status.exitstatus
+        assert_equal "transport_error", JSON.parse(error).fetch("error")
+        assert_empty run_kos(system, "task", "show-owned", "--project-id", project.fetch("id").to_s,
+          "--owner-id", "durable-fix-owner").first
+
+        proxy = dropping_proxy(system.fetch(:port))
+        _output, error, status = run_kos(system, "task", "create-and-claim", "--project-id", project.fetch("id").to_s,
+          "--task-type-key", "fix", "--title", "Wrong command status", "--description-file",
+          description_file.path, "--owner-id", "durable-fix-owner", api_url: proxy.fetch(:url))
+        joined = proxy.fetch(:thread).join(5)
+        cleanup_proxy(proxy)
+        assert joined, "response-dropping proxy did not finish"
+        assert_empty proxy.fetch(:errors)
+        assert_equal 3, status.exitstatus
+        assert_equal "transport_error", JSON.parse(error).fetch("error")
+
+        observed = run_kos_json(system, "task", "show-owned", "--project-id", project.fetch("id").to_s,
+          "--owner-id", "durable-fix-owner")
+        assert_equal [ "fix", "active", "diagnose", 1 ],
+          [ observed.dig("task", "task_type_key"), observed.dig("task", "status"),
+            observed.dig("task", "current_step"), observed.dig("task", "claim_version") ]
+
+        recovered = run_kos_json(system, "task", "create-and-claim", "--project-id", project.fetch("id").to_s,
+          "--task-type-key", "fix", "--title", "Wrong command status", "--description-file",
+          description_file.path, "--owner-id", "durable-fix-owner")
+        assert_equal observed.dig("task", "id"), recovered.dig("task", "id")
+        resumable = run_kos_json(system, "task", "resumable", "--project-id", project.fetch("id").to_s,
+          "--task-type-key", "fix")
+        assert_equal [ observed.dig("task", "id") ], resumable.map { |entry| entry.dig("task", "id") }
+      end
+    end
+  end
+
   test "a paused question and atomic answer sidecar survive repeated interruption" do
     with_running_system do |system|
       resources = create_resources(system)
