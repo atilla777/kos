@@ -103,6 +103,16 @@ isolated publisher commits and pushes only the specification. After observed
 remote success it atomically materializes the retained graph, recovers an
 ambiguous response by observing all children, and completes the brief only
 after the graph is proven. Rails gains no specification or review state.
+`PLAN-021` adds an idempotent OpenCode integration installer and proves a clean
+installation against an isolated Rails database, installed CLI gem, OpenCode
+configuration, fixture repository, and bare remote. Real `/kos-brief`, `/kos`,
+and `/kos-fix` invocations publish three single task commits and finish with
+completed tasks, released ownership, and durable artifacts. OpenCode 1.18.26
+cannot apply path-scoped edit permissions to its `apply_patch` tool, so
+diagnosis, planning, and review profiles permit that tool to write their
+external artifacts; their worktree read-only boundary is enforced by the step
+contract and by the orchestrator's exact HEAD and status comparisons before and
+after each attempt.
 
 ## Built-In Scenario Target
 

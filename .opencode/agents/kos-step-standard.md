@@ -1,7 +1,7 @@
 ---
 description: Executes one standard-tier non-review KOS workflow step under the owning orchestrator.
 mode: subagent
-model: openai/gpt-5.4-mini
+model: openai/gpt-5.6-sol
 permission:
   task: deny
   skill:

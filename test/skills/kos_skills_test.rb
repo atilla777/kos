@@ -53,11 +53,10 @@ class KosSkillsTest < ActiveSupport::TestCase
 
     assert_equal "subagent", agents.dig("kos-diagnose", "mode")
     assert_equal "openai/gpt-5.6-sol", agents.dig("kos-diagnose", "model")
-    assert_equal "deny", agents.dig("kos-diagnose", "permission", "edit", "*")
-    assert_equal "allow", agents.dig("kos-diagnose", "permission", "edit", "~/.local/share/kos/tasks/*/diagnose.md")
+    assert_equal "allow", agents.dig("kos-diagnose", "permission", "edit")
     assert_equal "ask", agents.dig("kos-diagnose", "permission", "bash")
     assert_equal "subagent", agents.dig("kos-step-standard", "mode")
-    assert_equal "openai/gpt-5.4-mini", agents.dig("kos-step-standard", "model")
+    assert_equal "openai/gpt-5.6-sol", agents.dig("kos-step-standard", "model")
     assert_equal "deny", agents.dig("kos-step-standard", "permission", "task")
     assert_equal "deny", agents.dig("kos-step-standard", "permission", "bash", "kos *")
     assert_nil agents.dig("kos-step-standard", "permission", "skill", "kos-git")
@@ -67,19 +66,15 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_equal "openai/gpt-5.6-sol", agents.dig("kos-step-advanced", "model")
     assert_equal "subagent", agents.dig("kos-plan", "mode")
     assert_equal "openai/gpt-5.6-sol", agents.dig("kos-plan", "model")
-    assert_equal "deny", agents.dig("kos-plan", "permission", "edit", "*")
-    assert_equal "allow", agents.dig("kos-plan", "permission", "edit", "~/.local/share/kos/tasks/*/plan.md")
-    assert_equal "allow", agents.dig("kos-plan", "permission", "edit", "~/.local/share/kos/tasks/*/.plan-*.tmp")
+    assert_equal "allow", agents.dig("kos-plan", "permission", "edit")
     assert_equal "deny", agents.dig("kos-plan", "permission", "bash")
     assert_equal "subagent", agents.dig("kos-review", "mode")
     assert_equal "openai/gpt-5.6-sol", agents.dig("kos-review", "model")
-    assert_equal "deny", agents.dig("kos-review", "permission", "edit", "*")
-    assert_equal "allow", agents.dig("kos-review", "permission", "edit", "~/.local/share/kos/tasks/*/review.md")
-    assert_equal "allow", agents.dig("kos-review", "permission", "edit", "~/.local/share/kos/tasks/*/.review-*.tmp")
+    assert_equal "allow", agents.dig("kos-review", "permission", "edit")
     assert_equal "deny", agents.dig("kos-review", "permission", "bash")
     assert_equal "allow", agents.dig("kos-review", "permission", "external_directory")
     assert_equal "subagent", agents.dig("kos-publish", "mode")
-    assert_equal "openai/gpt-5.4-mini", agents.dig("kos-publish", "model")
+    assert_equal "openai/gpt-5.6-sol", agents.dig("kos-publish", "model")
     assert_equal "allow", agents.dig("kos-publish", "permission", "skill", "kos-git")
   end
 
@@ -184,6 +179,8 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_includes source, '"outcome":"<exact allowed key>"'
     assert_not_includes source, '"artifact_markdown"'
     assert_includes source, "atomically replace only the exact supplied"
+    assert_includes source, "use `apply_patch` for the complete operation"
+    assert_includes source, "`.<step-id>`, read it back, then update that same file with `Move to:` naming"
     assert_includes source, "different file identity"
     assert_includes source, "Write the observed publication facts"
   end

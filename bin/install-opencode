@@ -1,0 +1,94 @@
+#!/usr/bin/env ruby
+
+require "fileutils"
+require "optparse"
+require "pathname"
+
+root = Pathname(__dir__).join("..").expand_path
+default_config_home = Pathname(ENV.fetch("XDG_CONFIG_HOME", "~/.config")).expand_path.join("opencode")
+options = { config_home: default_config_home }
+
+OptionParser.new do |parser|
+  parser.banner = "Usage: bin/install-opencode [options]"
+  parser.on("--config-home PATH", "OpenCode configuration directory") do |path|
+    options[:config_home] = Pathname(path).expand_path
+  end
+end.parse!
+
+abort("--config-home must be an absolute path") unless options[:config_home].absolute?
+
+inventory = {
+  "commands" => %w[kos.md kos-brief.md kos-fix.md],
+  "agents" => %w[
+    kos-diagnose.md kos-plan.md kos-publish.md kos-review.md
+    kos-step-advanced.md kos-step-standard.md
+  ],
+  "skills" => %w[kos kos-brief kos-git kos-step okf]
+}
+obsolete = {
+  "agents" => %w[kos-orchestrator.md kos-step.md]
+}
+config_home = options.fetch(:config_home)
+
+abort("Refusing symbolic-link configuration directory: #{config_home}") if config_home.symlink?
+abort("Configuration path is not a directory: #{config_home}") if config_home.exist? && !config_home.directory?
+
+# Validate the complete source and destination shape before changing anything.
+inventory.each do |kind, names|
+  destination_directory = config_home.join(kind)
+  if destination_directory.symlink?
+    abort("Refusing symbolic-link destination: #{destination_directory}")
+  end
+  if destination_directory.exist? && !destination_directory.directory?
+    abort("Destination is not a directory: #{destination_directory}")
+  end
+
+  names.each do |name|
+    source = kind == "skills" ? root.join(kind, name) : root.join(".opencode", kind, name)
+    destination = destination_directory.join(name)
+    expected_type = kind == "skills" ? :directory? : :file?
+    abort("Missing integration source: #{source}") unless source.public_send(expected_type)
+    abort("Refusing symbolic-link destination: #{destination}") if destination.symlink?
+    if destination.exist? && !destination.public_send(expected_type)
+      abort("Destination has the wrong type: #{destination}")
+    end
+
+    next unless kind == "skills" && destination.exist?
+
+    linked_entry = destination.glob("**/*", File::FNM_DOTMATCH).find(&:symlink?)
+    abort("Refusing symbolic link in managed skill: #{linked_entry}") if linked_entry
+  end
+end
+
+obsolete.each do |kind, names|
+  names.each do |name|
+    destination = config_home.join(kind, name)
+    abort("Refusing symbolic-link destination: #{destination}") if destination.symlink?
+  end
+end
+
+inventory.fetch("commands").each do |name|
+  source = root.join(".opencode/commands", name)
+  destination = config_home.join("commands", name)
+  FileUtils.mkdir_p(destination.dirname)
+  FileUtils.cp(source, destination)
+end
+
+inventory.fetch("agents").each do |name|
+  source = root.join(".opencode/agents", name)
+  destination = config_home.join("agents", name)
+  FileUtils.mkdir_p(destination.dirname)
+  FileUtils.cp(source, destination)
+end
+obsolete.fetch("agents").each { |name| FileUtils.rm_f(config_home.join("agents", name)) }
+
+inventory.fetch("skills").each do |name|
+  source = root.join("skills", name)
+  destination = config_home.join("skills", name)
+  FileUtils.rm_r(destination) if destination.exist?
+  abort("Could not remove managed skill: #{destination}") if destination.exist?
+  FileUtils.mkdir_p(destination.dirname)
+  FileUtils.cp_r(source, destination)
+end
+
+puts "Installed KOS OpenCode integration in #{config_home}"

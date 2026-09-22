@@ -112,10 +112,12 @@ class KosBriefSkillTest < ActiveSupport::TestCase
     assert_includes source, "atomically writes that artifact from the observed commit"
   end
 
-  test "documented global installation includes the brief skill" do
+  test "documented global installation includes the brief integration" do
     readme = File.read(Rails.root.join("README.md"))
+    installer = File.read(Rails.root.join("bin/install-opencode"))
 
-    assert_includes readme, "skills/kos skills/kos-brief skills/kos-step"
+    assert_includes readme, "bin/install-opencode"
+    assert_includes installer, "kos-brief"
   end
 
   private

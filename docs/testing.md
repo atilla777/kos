@@ -27,6 +27,9 @@
 - OKF skill contract tests use temporary worktrees and prove concept discovery,
   metadata preservation, link and index maintenance, and confinement to
   `specs/`.
+- Clean-install tests build the CLI gem and install the exact command, agent,
+  and skill inventory into an isolated OpenCode configuration, removing known
+  obsolete managed files and comparing installed bytes with the checkout.
 
 ## Test Properties
 
@@ -91,6 +94,11 @@ numeric task type configuration, pre-publication commits, or manual lifecycle
 commands. It verifies read-only `plan`, `diagnose`, and `review`, documentation
 before review, all mandatory project checks, remote publication, final task
 state, ownership release, and durable Markdown artifacts.
+
+The deterministic installation, catalog, lifecycle, Git, and recovery layers
+run in `bin/check`. Live OpenCode model execution is retained as release
+acceptance evidence rather than placed in `bin/check`, so ordinary verification
+does not depend on provider credentials, network availability, or model output.
 
 ## Commands
 

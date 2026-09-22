@@ -3,10 +3,7 @@ description: Performs one independent read-only KOS review step.
 mode: subagent
 model: openai/gpt-5.6-sol
 permission:
-  edit:
-    "*": deny
-    "~/.local/share/kos/tasks/*/.review-*.tmp": allow
-    "~/.local/share/kos/tasks/*/review.md": allow
+  edit: allow
   task: deny
   skill:
     "*": deny

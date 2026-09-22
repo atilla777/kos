@@ -148,6 +148,14 @@ Rails or the `kos` CLI:
 4. Verify the final path is a regular non-symlink file with the exact bytes and
    a different file identity from any artifact observed before this attempt.
 
+When shell access is denied, use `apply_patch` for the complete operation: add
+the permitted unique hidden temporary path whose basename begins with
+`.<step-id>`, read it back, then update that same file with `Move to:` naming
+the exact final artifact path. This uses the filesystem rename performed by the
+edit tool; do not copy the bytes into a second file or write the final path
+directly. Read-only worktree authority does not make the external result
+artifact optional.
+
 Never interpolate paths or Markdown into shell syntax or generated source. On
 failure, remove only the known temporary file when safe, do not return a
 workflow outcome, and leave KOS state at the current step.

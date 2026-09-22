@@ -3,10 +3,7 @@ description: Performs one read-only advanced KOS planning step.
 mode: subagent
 model: openai/gpt-5.6-sol
 permission:
-  edit:
-    "*": deny
-    "~/.local/share/kos/tasks/*/.plan-*.tmp": allow
-    "~/.local/share/kos/tasks/*/plan.md": allow
+  edit: allow
   task: deny
   skill:
     "*": deny

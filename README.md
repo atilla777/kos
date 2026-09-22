@@ -10,13 +10,16 @@ Persisted tasks retain their project and workflow and are cancelled rather than
 physically deleted. Isolated integration scenarios verify restart and
 lost-response recovery, parallel worktrees, moved-base review repetition, and
 interrupted publication without duplicate commits.
-A single real OpenCode `/kos` invocation has been validated end to end.
+Real OpenCode invocations of all three built-in commands have been validated
+end to end.
 
 ## Prerequisites
 
 - Ruby 3.4.10
 - Bundler 4.0.20
 - SQLite 3 and its development headers
+- Git
+- OpenCode 1.18.26 or later
 
 Install Bundler if it is not already available:
 
@@ -49,16 +52,22 @@ positive integer to use another duration.
 
 ## Deploy With An Agent
 
+The complete ordered procedure is in the [installation guide](docs/installation.md).
+The summary below highlights the integration-specific steps.
+
 An installation agent should perform this complete procedure from one fixed Git
-tag. The Rails service, installed CLI gem, command, skills, and agent profiles
+tag or commit. The Rails service, installed CLI gem, command, skills, and agent profiles
 must all come from that same revision.
 
 Fetch the selected release and install the server dependencies:
 
 ```sh
 git fetch --tags
-git checkout <release-tag>
-bin/setup --skip-server
+git checkout <release-tag-or-commit>
+export KOS_DATA_HOME="$HOME/.local/share/kos"
+export KOS_API_TOKEN="$(openssl rand -hex 32)"
+bundle check || bundle install
+bin/rails db:prepare
 ```
 
 Build and install the CLI with standard RubyGems commands. Build outside the
@@ -82,34 +91,27 @@ export KOS_CLI_PATH="$(realpath "$(command -v kos)")"
 Install the OpenCode integration globally from the same checkout:
 
 ```sh
-mkdir -p ~/.config/opencode/commands ~/.config/opencode/agents ~/.config/opencode/skills
-rm -f ~/.config/opencode/agents/kos-step.md
-cp .opencode/commands/kos*.md ~/.config/opencode/commands/
-cp .opencode/agents/kos-*.md ~/.config/opencode/agents/
-cp -R skills/kos skills/kos-brief skills/kos-step skills/kos-git skills/okf ~/.config/opencode/skills/
+bin/install-opencode
 ```
 
 The shipped model mapping is:
 
 ```text
-standard = openai/gpt-5.4-mini
+standard = openai/gpt-5.6-sol
 advanced = openai/gpt-5.6-sol
 ```
 
 An administrator may change the concrete `model:` values in the installed
 agent profiles while preserving their standard or advanced role. Run
-`opencode models` first and use complete `provider/model-id` values. When
-`KOS_DATA_HOME` or `XDG_DATA_HOME` changes the default data path, replace the
-diagnosis, plan, and review profiles' `~/.local/share/kos/tasks/*/` edit
-permissions with the absolute configured `<kos-data-home>/tasks/*/` paths; keep
-every other edit denied.
+`opencode models` first and use complete `provider/model-id` values. Diagnosis,
+planning, and review remain behaviorally read-only for the worktree: the
+orchestrator compares HEAD and complete status before and after each step and
+rejects any mutation, while the agent writes its required external artifact.
 
 Configure the service, prepare its database, and start Rails:
 
 ```sh
-export KOS_API_TOKEN="$(openssl rand -hex 32)"
 export KOS_API_URL="http://127.0.0.1:3000"
-bin/rails db:prepare
 bin/rails server
 ```
 
@@ -126,8 +128,9 @@ export KOS_PROJECT_REMOTE_URL="<registered-project-remote-url>"
 export KOS_PROJECT_DEFAULT_BRANCH="<registered-default-branch>"
 ```
 
-Restart OpenCode after installation or model changes, verify `GET /up`, and run
-one real `/kos` task before treating the installation as ready.
+Restart OpenCode after installation or model changes, verify `GET /up`, and
+verify discovery of `/kos-brief`, `/kos`, and `/kos-fix` before treating the
+installation as ready.
 
 To update KOS, stop the service and active orchestrators, check out the new tag,
 repeat `gem build` and `gem install`, update the copied OpenCode files from that
@@ -288,7 +291,8 @@ never include the bearer token.
 
 ## Verify
 
-Run the complete non-mutating verification suite:
+Run the complete verification suite (it uses isolated temporary databases and
+repositories but does not change tracked source files):
 
 ```sh
 bin/check
@@ -376,6 +380,7 @@ preserved and reported as blocked rather than deleted or repaired.
 - [Product specification](docs/specification.md)
 - [Architecture rules](docs/architecture.md)
 - [Testing rules](docs/testing.md)
+- [Installation guide](docs/installation.md)
 - [Contribution rules](CONTRIBUTING.md)
 
 Production deployment is intentionally outside the current project scope.
