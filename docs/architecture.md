@@ -95,6 +95,14 @@ intent and durable task receipt protect atomic fix creation from concurrent
 invocations and lost responses. A dedicated advanced diagnosis agent reproduces
 the symptom and establishes an evidenced root cause without changing the
 worktree before the existing planning and delivery path runs.
+`PLAN-020` adds `/kos-brief`: durable request creation leads into main-agent
+product clarification through `okf`, while an isolated advanced agent reviews
+both the `specs/` diff and exact proposed graph bytes. The orchestrator validates
+that reviewed graph through the existing read-only server operation before an
+isolated publisher commits and pushes only the specification. After observed
+remote success it atomically materializes the retained graph, recovers an
+ambiguous response by observing all children, and completes the brief only
+after the graph is proven. Rails gains no specification or review state.
 
 ## Built-In Scenario Target
 

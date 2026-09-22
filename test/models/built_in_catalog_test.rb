@@ -43,6 +43,15 @@ class BuiltInCatalogTest < ActiveSupport::TestCase
     assert_equal ids, TaskType.where(key: TaskType::RESERVED_KEYS).order(:key).pluck(:id, :workflow_id)
   end
 
+  test "brief publication leaves child materialization to the orchestrator" do
+    publish = BuiltInCatalog.definitions.fetch("brief").fetch("steps").find { |step| step.fetch("id") == "publish" }
+
+    assert_includes publish.fetch("instruction"), "after remote verification the orchestrator materializes"
+    assert_equal({ "complete_task" => true }, publish.dig("outcomes", "published"))
+    assert_equal({ "next_step" => "brief" }, publish.dig("outcomes", "base_moved"))
+    assert_equal({ "next_step" => "brief" }, publish.dig("outcomes", "graph_invalid"))
+  end
+
   test "creates a new revision and preserves existing tasks and custom catalog entries" do
     BuiltInCatalog.install!
     development = TaskType.find_by!(key: "development")

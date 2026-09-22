@@ -1,0 +1,12 @@
+---
+description: Specify and publish one product request through the KOS brief workflow
+agent: build
+---
+
+Load the `kos` and `kos-brief` skills and follow the `kos-brief` skill exactly.
+Treat the complete text below as the product request. If it is blank, stop
+without reading or mutating KOS state and ask for a concrete request.
+
+<kos-brief-arguments>
+$ARGUMENTS
+</kos-brief-arguments>

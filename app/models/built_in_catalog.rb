@@ -14,7 +14,7 @@ class BuiltInCatalog
         [ "review", "Review", "advanced", "Independently review the product specification and proposed task graph without changing the worktree.",
           "# Review\n\n## Findings\n\n## Decision", { "approved" => { "next_step" => "publish" },
             "changes_requested" => { "next_step" => "brief" } } ],
-        [ "publish", "Publish", "standard", "Publish the reviewed specification, then materialize the validated child graph.",
+        [ "publish", "Publish", "standard", "Publish the reviewed specification; after remote verification the orchestrator materializes the validated child graph.",
           "# Publication\n\n## Git state\n\n## Child graph", { "published" => { "complete_task" => true },
             "base_moved" => { "next_step" => "brief" }, "graph_invalid" => { "next_step" => "brief" } } ]
       ]

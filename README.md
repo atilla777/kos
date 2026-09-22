@@ -86,7 +86,7 @@ mkdir -p ~/.config/opencode/commands ~/.config/opencode/agents ~/.config/opencod
 rm -f ~/.config/opencode/agents/kos-step.md
 cp .opencode/commands/kos*.md ~/.config/opencode/commands/
 cp .opencode/agents/kos-*.md ~/.config/opencode/agents/
-cp -R skills/kos skills/kos-step skills/kos-git skills/okf ~/.config/opencode/skills/
+cp -R skills/kos skills/kos-brief skills/kos-step skills/kos-git skills/okf ~/.config/opencode/skills/
 ```
 
 The shipped model mapping is:
@@ -212,7 +212,10 @@ context. `KOS_PROJECT_ID`, `KOS_PROJECT_REMOTE_URL`, and
 ordinary user to manage internal IDs. `/kos` accepts no task text, never creates
 tasks, and selects or resumes only the built-in `development` type.
 `/kos-fix <problem>` creates and exactly claims the built-in `fix` type, or
-resumes fix work explicitly selected by the user. These values
+resumes fix work explicitly selected by the user. `/kos-brief <request>` creates
+and exactly claims the built-in `brief` type, develops its product specification
+in the main conversational agent, publishes the reviewed `specs/` change, and
+then atomically creates its development graph. These values
 must match the records registered through the administrative CLI.
 `KOS_CLI_PATH` must be the absolute path to this version's installed CLI; the
 orchestrator validates its command inventory and never falls back to an
@@ -303,10 +306,13 @@ bin/test    # Run the test suite
 
 The canonical OpenCode integration consists of:
 
-- `.opencode/commands/kos.md` and `kos-fix.md`, the development and fix entry points;
+- `.opencode/commands/kos.md`, `kos-fix.md`, and `kos-brief.md`, the development,
+  fix, and product-brief entry points;
 - `.opencode/agents/`, the isolated standard-step, advanced-step, read-only
   diagnosis, planning and review, and publication agent profiles;
 - `skills/kos/SKILL.md`, the lease-owning development and fix workflow orchestrator;
+- `skills/kos-brief/SKILL.md`, the main-agent specification, reviewed-graph,
+  publication, and materialization orchestrator;
 - `skills/kos-step/SKILL.md`, the isolated one-step executor;
 - `skills/kos-git/SKILL.md`, the worktree and publication protocol;
 - `skills/okf/SKILL.md`, the confined OKF v0.2 product-specification procedure.
@@ -332,7 +338,11 @@ resumable development tasks. A paused human answer is atomically retained in
 create-and-claim and retains a durable request-to-task receipt, so a concurrent
 invocation or lost response cannot duplicate the task. Its dedicated diagnosis
 agent may run approved non-mutating reproduction commands but cannot change the
-task worktree.
+task worktree. `/kos-brief` uses the same durable creation boundary, keeps
+requirement clarification in the main conversational agent, binds exact graph
+bytes to independent review and server validation, publishes `specs/` before
+materializing children, and completes the parent only after the full graph is
+observed.
 
 Every new workflow step declares `model_tier` as `standard` or `advanced`.
 Ordinary steps use the matching profile; `plan` and `review` are advanced and
