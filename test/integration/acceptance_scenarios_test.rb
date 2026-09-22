@@ -20,8 +20,9 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
       File.open(worktree.join("README.md"), "a") { |file| file.write("unstaged task change\n") }
       File.write(worktree.join("task.txt"), "task change\n")
 
-      task = report(lifecycle, task, "develop", "ready")
-      task = run_checks(lifecycle, task, worktree, repository[:root], attempt: 1)
+      task = run_read_only_plan(lifecycle, task, worktree, repository[:root])
+      task = run_implementation(lifecycle, task, worktree, repository[:root], attempt: 1)
+      task = run_documentation(lifecycle, task, repository[:root], attempt: 1)
       task = run_read_only_review(lifecycle, task, worktree, repository[:root], attempt: 1)
       assert_equal "publish", task.current_step
 
@@ -37,7 +38,7 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
       git("checkout", "--merge", "--detach", moved_base, chdir: worktree)
       task = report(lifecycle, task, "publish", "base_moved")
 
-      assert_equal "check", task.current_step
+      assert_equal "implement", task.current_step
       assert_equal moved_base, git("rev-parse", "HEAD", chdir: worktree).strip
       assert_equal "staged task change\nunstaged task change\n", File.read(worktree.join("README.md"))
       assert_equal "task change\n", File.read(worktree.join("task.txt"))
@@ -45,9 +46,11 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
       assert_includes status, " M README.md"
       assert_includes status, "?? task.txt"
 
-      task = run_checks(lifecycle, task, worktree, repository[:root], attempt: 2)
+      task = run_implementation(lifecycle, task, worktree, repository[:root], attempt: 2)
+      task = run_documentation(lifecycle, task, repository[:root], attempt: 2)
       task = run_read_only_review(lifecycle, task, worktree, repository[:root], attempt: 2)
-      assert_includes File.read(repository[:root].join("data/tasks/#{task.id}/check.md")), "Attempt 2"
+      assert_includes File.read(repository[:root].join("data/tasks/#{task.id}/implement.md")), "Attempt 2"
+      assert_includes File.read(repository[:root].join("data/tasks/#{task.id}/document.md")), "Attempt 2"
       assert_includes File.read(repository[:root].join("data/tasks/#{task.id}/review.md")), "Attempt 2"
       git("add", "README.md", "task.txt", chdir: worktree)
       git("commit", "-m", "KOS task #{task.id}: #{task.title}", "-m", "KOS-Task: #{task.id}", chdir: worktree)
@@ -67,8 +70,8 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
       project = create_project(remote_url: repository[:remote].to_s)
       workflow = create_workflow(definition: acceptance_workflow_definition)
       task_type = create_task_type(name: "Acceptance", workflow:)
-      first = create_task(project:, workflow:, task_type:, title: "First")
-      second = create_task(project:, workflow:, task_type:, title: "Second")
+      first = create_task(project:, workflow:, task_type:, current_step: "plan", title: "First")
+      second = create_task(project:, workflow:, task_type:, current_step: "plan", title: "Second")
       lifecycle = TaskLifecycle.new
 
       first_claim = lifecycle.claim_next!(project:, owner_id: "owner-a")
@@ -82,14 +85,14 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
       File.write(first_worktree.join("first.txt"), "first task\n")
       File.write(second_worktree.join("second.txt"), "second task\n")
 
-      first_artifact = repository[:root].join("data/tasks/#{first.id}/develop.md")
-      second_artifact = repository[:root].join("data/tasks/#{second.id}/develop.md")
+      first_artifact = repository[:root].join("data/tasks/#{first.id}/plan.md")
+      second_artifact = repository[:root].join("data/tasks/#{second.id}/plan.md")
       write_artifact_durably(first_artifact, "# First\n")
       write_artifact_durably(second_artifact, "# Second\n")
-      report(lifecycle, first_claim, "develop", "ready")
+      report(lifecycle, first_claim, "plan", "planned")
 
-      assert_equal [ "check", "owner-a" ], first.reload.values_at(:current_step, :owner_id)
-      assert_equal [ "develop", "owner-b" ], second.reload.values_at(:current_step, :owner_id)
+      assert_equal [ "implement", "owner-a" ], first.reload.values_at(:current_step, :owner_id)
+      assert_equal [ "plan", "owner-b" ], second.reload.values_at(:current_step, :owner_id)
       assert_equal "# First\n", File.read(first_artifact)
       assert_equal "# Second\n", File.read(second_artifact)
       assert_includes git("status", "--porcelain", chdir: first_worktree), "first.txt"
@@ -99,6 +102,21 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
       assert_equal "1", git("rev-list", "--count", "HEAD", chdir: first_worktree).strip
       assert_equal "1", git("rev-list", "--count", "HEAD", chdir: second_worktree).strip
     end
+  end
+
+  test "review sends ordinary changes to implementation and material redesign to planning" do
+    task, lifecycle = claimed_acceptance_task
+    task = report(lifecycle, task, "plan", "planned")
+    task = report(lifecycle, task, "implement", "implemented")
+    task = report(lifecycle, task, "document", "documented")
+
+    task = report(lifecycle, task, "review", "changes_requested")
+    assert_equal "implement", task.current_step
+    task = report(lifecycle, task, "implement", "implemented")
+    task = report(lifecycle, task, "document", "documented")
+
+    task = report(lifecycle, task, "review", "redesign_required")
+    assert_equal "plan", task.current_step
   end
 
   test "publication recovery reuses the candidate before and after push" do
@@ -143,7 +161,7 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
     project = create_project
     workflow = create_workflow(definition: acceptance_workflow_definition)
     task_type = create_task_type(name: "Acceptance", workflow:)
-    create_task(project:, workflow:, task_type:, title: "Publish")
+    create_task(project:, workflow:, task_type:, current_step: "plan", title: "Publish")
     lifecycle = TaskLifecycle.new
     [ lifecycle.claim_next!(project:, owner_id: "owner"), lifecycle ]
   end
@@ -153,10 +171,26 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
       step:, outcome:)
   end
 
-  def run_checks(lifecycle, task, worktree, root, attempt:)
+  def run_read_only_plan(lifecycle, task, worktree, root)
+    head = git("rev-parse", "HEAD", chdir: worktree)
+    status = git("status", "--porcelain=v2", "--untracked-files=all", "-z", chdir: worktree)
+    write_artifact_durably(root.join("data/tasks/#{task.id}/plan.md"), "# Plan\n\nImplement and verify the task.\n")
+    assert_equal head, git("rev-parse", "HEAD", chdir: worktree)
+    assert_equal status, git("status", "--porcelain=v2", "--untracked-files=all", "-z", chdir: worktree)
+    report(lifecycle, task, "plan", "planned")
+  end
+
+  def run_implementation(lifecycle, task, worktree, root, attempt:)
     git("diff", "--check", chdir: worktree)
-    write_artifact_durably(root.join("data/tasks/#{task.id}/check.md"), "# Checks\n\nAttempt #{attempt}: passed.\n")
-    report(lifecycle, task, "check", "passed")
+    write_artifact_durably(root.join("data/tasks/#{task.id}/implement.md"),
+      "# Implementation\n\nAttempt #{attempt}.\n\n## Checks\n\n`git diff --check`: passed.\n")
+    report(lifecycle, task, "implement", "implemented")
+  end
+
+  def run_documentation(lifecycle, task, root, attempt:)
+    write_artifact_durably(root.join("data/tasks/#{task.id}/document.md"),
+      "# Documentation\n\nAttempt #{attempt}: no observable behavior change.\n")
+    report(lifecycle, task, "document", "documented")
   end
 
   def run_read_only_review(lifecycle, task, worktree, root, attempt:)
@@ -195,26 +229,26 @@ class RestartRecoveryScenarioTest < ActiveSupport::TestCase
     with_running_system do |system|
       resources = create_resources(system)
       claim = run_kos_json(system, "task", "claim-next", "--project-id", resources.fetch(:project_id).to_s,
-        "--owner-id", "session-before-restart")
+        "--task-type-key", "development", "--owner-id", "session-before-restart")
       task = claim.fetch("task")
-      artifact = system.fetch(:data_home).join("tasks/#{task.fetch("id")}/develop.md")
-      write_artifact_durably(artifact, "# Development\n\nReady.\n")
+      artifact = system.fetch(:data_home).join("tasks/#{task.fetch("id")}/plan.md")
+      write_artifact_durably(artifact, "# Plan\n\nReady.\n")
       advanced = run_kos_json(system, "task", "report-attempt", task.fetch("id").to_s,
-        "--owner-id", "session-before-restart", "--claim-version", "1", "--step", "develop", "--outcome", "ready")
-      assert_equal "check", advanced.dig("task", "current_step")
+        "--owner-id", "session-before-restart", "--claim-version", "1", "--step", "plan", "--outcome", "planned")
+      assert_equal "implement", advanced.dig("task", "current_step")
 
       restart_server(system)
       shown = run_kos_json(system, "task", "show", task.fetch("id").to_s)
       resumed = run_kos_json(system, "task", "resume", task.fetch("id").to_s,
         "--owner-id", "session-after-restart", "--takeover-confirmed")
 
-      assert_equal [ "active", "check", 2 ], shown.fetch("task").values_at("status", "current_step", "claim_version")
+      assert_equal [ "active", "implement", 2 ], shown.fetch("task").values_at("status", "current_step", "claim_version")
       assert_equal resources.fetch(:workflow_id), shown.dig("task", "workflow_id")
-      assert_equal "# Development\n\nReady.\n", File.binread(artifact)
+      assert_equal "# Plan\n\nReady.\n", File.binread(artifact)
       assert_predicate artifact, :file?
       refute_predicate artifact, :symlink?
       assert_empty Dir.glob(artifact.dirname.join(".artifact-*.tmp"))
-      assert_equal [ "session-after-restart", "check", 3 ],
+      assert_equal [ "session-after-restart", "implement", 3 ],
         resumed.fetch("task").values_at("owner_id", "current_step", "claim_version")
     end
   end
@@ -223,12 +257,12 @@ class RestartRecoveryScenarioTest < ActiveSupport::TestCase
     with_running_system do |system|
       resources = create_resources(system)
       claim = run_kos_json(system, "task", "claim-next", "--project-id", resources.fetch(:project_id).to_s,
-        "--owner-id", "session")
+        "--task-type-key", "development", "--owner-id", "session")
       task_id = claim.dig("task", "id")
       proxy = dropping_proxy(system.fetch(:port))
 
       _output, error, status = run_kos(system, "task", "report-attempt", task_id.to_s,
-        "--owner-id", "session", "--claim-version", "1", "--step", "develop", "--outcome", "ready",
+        "--owner-id", "session", "--claim-version", "1", "--step", "plan", "--outcome", "planned",
         api_url: proxy.fetch(:url))
       joined = proxy.fetch(:thread).join(5)
       cleanup_proxy(proxy)
@@ -238,15 +272,65 @@ class RestartRecoveryScenarioTest < ActiveSupport::TestCase
       assert_equal "transport_error", JSON.parse(error).fetch("error")
 
       shown = run_kos_json(system, "task", "show", task_id.to_s)
-      assert_equal [ "active", "check", "session", 2 ],
+      assert_equal [ "active", "implement", "session", 2 ],
         shown.fetch("task").values_at("status", "current_step", "owner_id", "claim_version")
 
       output, stale_error, stale_status = run_kos(system, "task", "report-attempt", task_id.to_s,
-        "--owner-id", "session", "--claim-version", "1", "--step", "develop", "--outcome", "ready")
+        "--owner-id", "session", "--claim-version", "1", "--step", "plan", "--outcome", "planned")
       assert_equal 1, stale_status.exitstatus
       assert_empty stale_error
       assert_equal "conflict", JSON.parse(output).fetch("error")
       assert_equal 2, run_kos_json(system, "task", "show", task_id.to_s).dig("task", "claim_version")
+    end
+  end
+
+  test "a paused question and atomic answer sidecar survive repeated interruption" do
+    with_running_system do |system|
+      resources = create_resources(system)
+      claim = run_kos_json(system, "task", "claim-next", "--project-id", resources.fetch(:project_id).to_s,
+        "--task-type-key", "development", "--owner-id", "session-before-question").fetch("task")
+      artifact_directory = system.fetch(:data_home).join("tasks/#{claim.fetch("id")}")
+      question = "Which supported behavior should the implementation preserve?"
+      question_artifact = artifact_directory.join("plan.md")
+      answer_sidecar = artifact_directory.join("plan-answer.md")
+      write_artifact_durably(question_artifact, "# Plan\n\n## Question\n\n#{question}\n")
+
+      paused = run_kos_json(system, "task", "report-attempt", claim.fetch("id").to_s,
+        "--owner-id", "session-before-question", "--claim-version", "1", "--step", "plan",
+        "--outcome", "needs_human").fetch("task")
+      assert_equal [ "needs_human", "plan", nil, 2 ],
+        paused.values_at("status", "current_step", "owner_id", "claim_version")
+
+      answer = "# Human answer\n\n## Question\n#{question}\n\n## Answer\nPreserve the documented CLI behavior.\n"
+      write_artifact_durably(answer_sidecar, answer)
+      restart_server(system)
+
+      resumable = run_kos_json(system, "task", "resumable", "--project-id", resources.fetch(:project_id).to_s,
+        "--task-type-key", "development")
+      assert_equal [ claim.fetch("id") ], resumable.map { |entry| entry.dig("task", "id") }
+      assert_includes File.binread(question_artifact), question
+      assert_equal answer, File.binread(answer_sidecar)
+      refute_predicate answer_sidecar, :symlink?
+      assert_empty Dir.glob(artifact_directory.join(".artifact-*.tmp"))
+
+      resumed = run_kos_json(system, "task", "resume", claim.fetch("id").to_s,
+        "--owner-id", "session-after-answer").fetch("task")
+      assert_equal [ "active", "plan", "session-after-answer", 3 ],
+        resumed.values_at("status", "current_step", "owner_id", "claim_version")
+      restart_server(system)
+      assert_equal answer, File.binread(answer_sidecar)
+      resumed = run_kos_json(system, "task", "resume", claim.fetch("id").to_s,
+        "--owner-id", "session-after-second-restart", "--takeover-confirmed").fetch("task")
+      assert_equal [ "active", "plan", "session-after-second-restart", 4 ],
+        resumed.values_at("status", "current_step", "owner_id", "claim_version")
+      assert_equal answer, File.binread(answer_sidecar)
+
+      advanced = run_kos_json(system, "task", "report-attempt", claim.fetch("id").to_s,
+        "--owner-id", "session-after-second-restart", "--claim-version", "4", "--step", "plan",
+        "--outcome", "planned").fetch("task")
+      assert_equal "implement", advanced.fetch("current_step")
+      File.delete(answer_sidecar)
+      refute_predicate answer_sidecar, :exist?
     end
   end
 
@@ -383,20 +467,13 @@ class RestartRecoveryScenarioTest < ActiveSupport::TestCase
   def create_resources(system)
     project = run_kos_json(system, "project", "create", "--name", "Acceptance", "--remote-url",
       "https://example.test/acceptance.git", "--default-branch", "main").fetch("project")
-    Tempfile.create([ "workflow", ".json" ]) do |workflow_file|
-      workflow_file.write(JSON.generate(acceptance_workflow_definition))
-      workflow_file.flush
-      workflow = run_kos_json(system, "workflow", "create", "--name", "Acceptance",
-        "--definition-file", workflow_file.path).fetch("workflow")
-      task_type = run_kos_json(system, "task-type", "create", "--key", "acceptance", "--name", "Acceptance", "--workflow-id",
-        workflow.fetch("id").to_s).fetch("task_type")
-      Tempfile.create([ "task", ".md" ]) do |description_file|
-        description_file.write("Integration task\n")
-        description_file.flush
-        run_kos_json(system, "task", "create", "--project-id", project.fetch("id").to_s, "--task-type-id",
-          task_type.fetch("id").to_s, "--title", "Integration", "--description-file", description_file.path)
-      end
-      return { project_id: project.fetch("id"), workflow_id: workflow.fetch("id") }
+    Tempfile.create([ "task", ".md" ]) do |description_file|
+      description_file.write("Integration task\n")
+      description_file.flush
+      task = run_kos_json(system, "task", "create", "--project-id", project.fetch("id").to_s,
+        "--task-type-key", "development", "--title", "Integration", "--description-file", description_file.path)
+        .fetch("task")
+      return { project_id: project.fetch("id"), workflow_id: task.fetch("workflow_id") }
     end
   end
 

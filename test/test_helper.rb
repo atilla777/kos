@@ -42,43 +42,7 @@ module ActiveSupport
     end
 
     def acceptance_workflow_definition
-      {
-        "steps" => [
-          {
-            "id" => "develop", "name" => "Develop", "model_tier" => "advanced",
-            "instruction" => "Implement the task.",
-            "artifact_template" => "# Development",
-            "outcomes" => { "ready" => { "next_step" => "check" } }
-          },
-          {
-            "id" => "check", "name" => "Check", "model_tier" => "standard", "instruction" => "Run the checks.",
-            "artifact_template" => "# Checks",
-            "outcomes" => {
-              "passed" => { "next_step" => "review" },
-              "failed" => { "next_step" => "develop" }
-            }
-          },
-          {
-            "id" => "review", "name" => "Review", "model_tier" => "advanced",
-            "instruction" => "Review the changes.",
-            "artifact_template" => "# Review",
-            "outcomes" => {
-              "approved" => { "next_step" => "publish" },
-              "changes_requested" => { "next_step" => "develop" }
-            }
-          },
-          {
-            "id" => "publish", "name" => "Publish", "model_tier" => "standard",
-            "instruction" => "Publish the changes.",
-            "artifact_template" => "# Publication",
-            "outcomes" => {
-              "base_moved" => { "next_step" => "check" },
-              "published" => { "complete_task" => true },
-              "blocked" => { "pause" => "blocked" }
-            }
-          }
-        ]
-      }
+      BuiltInCatalog.definitions.fetch("development").deep_dup
     end
 
     def create_project(name: "Project")

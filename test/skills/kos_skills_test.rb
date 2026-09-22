@@ -7,6 +7,7 @@ class KosSkillsTest < ActiveSupport::TestCase
   STEP_PATH = Rails.root.join("skills/kos-step/SKILL.md")
   COMMAND_PATH = Rails.root.join(".opencode/commands/kos.md")
   AGENT_PATHS = {
+    "kos-plan" => Rails.root.join(".opencode/agents/kos-plan.md"),
     "kos-step-standard" => Rails.root.join(".opencode/agents/kos-step-standard.md"),
     "kos-step-advanced" => Rails.root.join(".opencode/agents/kos-step-advanced.md"),
     "kos-review" => Rails.root.join(".opencode/agents/kos-review.md"),
@@ -24,10 +25,12 @@ class KosSkillsTest < ActiveSupport::TestCase
 
     assert match
     frontmatter = YAML.safe_load(match[1])
-    assert_match(/run a KOS task/, frontmatter.fetch("description"))
+    assert_match(/development task/, frontmatter.fetch("description"))
     assert_equal "build", frontmatter.fetch("agent")
     assert_includes command, "Load the `kos` skill"
     assert_includes command, "$ARGUMENTS"
+    assert_includes command, "accepts no arguments"
+    assert_includes command, "stop without reading or mutating KOS state"
     assert_not Rails.root.join(".opencode/agents/kos-orchestrator.md").exist?
 
     config = JSON.parse(File.read(Rails.root.join("opencode.json")))
@@ -35,7 +38,7 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_equal [ "./skills" ], config.dig("skills", "paths")
   end
 
-  test "defines tiered isolated step and worktree-read-only review agent profiles" do
+  test "defines tiered isolated step and read-only plan and review agent profiles" do
     agents = AGENT_PATHS.transform_values { |path| frontmatter(path) }
 
     assert_equal "subagent", agents.dig("kos-step-standard", "mode")
@@ -47,6 +50,12 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_equal "deny", agents.dig("kos-step-standard", "permission", "bash", "git *commit *")
     assert_equal "allow", agents.dig("kos-step-standard", "permission", "external_directory")
     assert_equal "openai/gpt-5.6-sol", agents.dig("kos-step-advanced", "model")
+    assert_equal "subagent", agents.dig("kos-plan", "mode")
+    assert_equal "openai/gpt-5.6-sol", agents.dig("kos-plan", "model")
+    assert_equal "deny", agents.dig("kos-plan", "permission", "edit", "*")
+    assert_equal "allow", agents.dig("kos-plan", "permission", "edit", "~/.local/share/kos/tasks/*/plan.md")
+    assert_equal "allow", agents.dig("kos-plan", "permission", "edit", "~/.local/share/kos/tasks/*/.plan-*.tmp")
+    assert_equal "deny", agents.dig("kos-plan", "permission", "bash")
     assert_equal "subagent", agents.dig("kos-review", "mode")
     assert_equal "openai/gpt-5.6-sol", agents.dig("kos-review", "model")
     assert_equal "deny", agents.dig("kos-review", "permission", "edit", "*")
@@ -63,7 +72,7 @@ class KosSkillsTest < ActiveSupport::TestCase
     source = File.read(ORCHESTRATOR_PATH)
 
     [
-      "Runtime Inputs", "Select Or Create", "Resolve Local Paths",
+      "Runtime Inputs", "Select Or Resume Development", "Preserve Human Answers", "Resolve Local Paths",
       "Run The Workflow", "Verify The Artifact First", "Report And Continue",
       "Recover A Lost Report Response", "Cancellation During Publication",
       "Stop Conditions"
@@ -77,8 +86,18 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_includes source, "Never fall back to an ambient `kos` command"
     assert_includes source, "KOS_PROJECT_REMOTE_URL"
     assert_includes source, "KOS_PROJECT_DEFAULT_BRANCH"
-    assert_includes source, "KOS_TASK_TYPE_ID"
-    assert_includes source, "Never blindly retry an ambiguous `task create`"
+    assert_not_includes source, "KOS_TASK_TYPE_ID"
+    assert_includes source, "`/kos` accepts no task text and never creates a task"
+    assert_includes source, "task resumable --project-id <project-id>"
+    assert_includes source, "--task-type-key development"
+    assert_match(/task\s+show-owned --project-id <project-id>/, source)
+    assert_includes source, "never require the user to enter an internal ID"
+    assert_includes source, "<step-id>-answer.md"
+    assert_match(/Before `task resume`,\s+atomically write/, source)
+    assert_match(/reuse\s+it without asking again/, source)
+    assert_includes source, "takeover of an `active` task interrupted"
+    assert_includes source, "when retrying a step with a current answer sidecar"
+    assert_includes source, "After an accepted report or recovered report observably advances"
     assert_includes source, "Before every step, including the first"
     assert_includes source, "lease_expires_at"
     assert_includes source, "claim_version"
@@ -94,6 +113,7 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_includes source, "<kos-data-home>/tasks/<task-id>/<step-id>.md"
     assert_includes source, "`kos-step-standard`"
     assert_includes source, "`kos-step-advanced`"
+    assert_includes source, "`kos-plan` agent"
     assert_includes source, "The child, never the orchestrator or Rails"
     assert_includes source, "Only after the artifact is complete and verified"
     assert_match(/one\s+retry of the identical report is safe/, source)
@@ -107,14 +127,16 @@ class KosSkillsTest < ActiveSupport::TestCase
 
     [
       "Accept One Context", "Authority Boundary", "Execute And Verify",
-      "Independent Review", "Publication", "Persist The Artifact", "Return One Result"
+      "Read-Only Planning", "Independent Review", "Publication", "Persist The Artifact", "Return One Result"
     ].each { |heading| assert_match(/^## #{Regexp.escape(heading)}$/, source) }
 
     assert_includes source, "Never invoke `kos`"
     assert_includes source, "Work only inside the exact supplied worktree"
     assert_includes source, "Execute only this step"
     assert_includes source, "Do not commit before publication"
+    assert_match(/Write only the\s+external `plan\.md` artifact/, source)
     assert_includes source, "remain read-only"
+    assert_includes source, "material design error back to"
     assert_includes source, "Load and follow `kos-git`"
     assert_includes source, "exactly one outcome key"
     assert_includes source, '"outcome":"<exact allowed key>"'

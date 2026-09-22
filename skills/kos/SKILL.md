@@ -1,6 +1,6 @@
 ---
 name: kos
-description: Use when the user invokes /kos to create, claim, resume, and orchestrate one KOS task through its workflow, persistent Markdown artifacts, independent review, and verified Git publication.
+description: Use when the user invokes /kos to claim or resume one development task and orchestrate it through persistent artifacts, independent review, and verified Git publication.
 ---
 
 # KOS Orchestrator
@@ -15,14 +15,14 @@ add another orchestrator program, daemon, broker, or persistent state.
 
 Obtain the project identity from trusted installation context in
 `KOS_PROJECT_ID`, `KOS_PROJECT_REMOTE_URL`, and
-`KOS_PROJECT_DEFAULT_BRANCH`. When creating a task, also require
-`KOS_TASK_TYPE_ID`. Require `KOS_CLI_PATH` to be an absolute path to the
+`KOS_PROJECT_DEFAULT_BRANCH`. Require `KOS_CLI_PATH` to be an absolute path to the
 administrator-installed executable for this version. Before any mutation, run
 `<kos-cli> --version`, `<kos-cli> --help`, and each needed task command's
 `--help`. Require the exact
-current options: create has project, type, title, and description-file;
-claim-next has project and owner; show has a task ID; resume has owner and
-takeover-confirmed; report-attempt has owner, claim-version, step, and outcome.
+current options: resumable has project and task-type-key; claim-next has project,
+task-type-key, and owner; show-owned has project and owner; show has a task ID;
+resume has owner and takeover-confirmed; report-attempt has owner,
+claim-version, step, and outcome.
 Never fall back to an ambient `kos` command or a source checkout inferred from
 the current repository. A missing or incompatible help contract is `blocked`
 before any state mutation.
@@ -45,38 +45,35 @@ If trusted installation context is missing or invalid, stop with a
 configuration blocker. Do not guess an ID, infer a remote from task content,
 enumerate SQLite, or make the user operate the internal protocol.
 
-## Select Or Create
+## Select Or Resume Development
 
-The optional `/kos` text is a proposed task request, not immediate permission
-to create or execute it.
+`/kos` accepts no task text and never creates a task. If command arguments are
+nonblank, stop before reading or mutating KOS state. Use the stable built-in key
+`development`; never request or infer a numeric task type ID.
 
-- For a new request, inspect the invoked repository, clarify material
-  requirements, and present the exact goal, boundaries, and acceptance criteria.
-  Create the task only after explicit user approval. Write the approved Markdown
-  description to a temporary local input file, invoke
-  `<kos-cli> task create`, then remove that input file. Require this response to
-  describe a `pending` task in the trusted project with no owner and claim
-  version zero. Never place multiline task Markdown in shell syntax.
-- Without a new request, invoke `<kos-cli> task claim-next` for the trusted project.
-  A successful empty response means no pending task is available; report that
-  fact and stop.
-- Resume a particular `needs_human` or `blocked` task only after the user has
-  supplied the answer or the technical blocker is observably resolved. Resume
-  an unexpired `active` task with `--takeover-confirmed` only after confirming
-  that its previous OpenCode process has stopped. Before either resume mutation,
-  invoke `<kos-cli> task show`, require the task's `project_id` to equal trusted
-  `KOS_PROJECT_ID`, and validate its current status and step. Never resume an ID
-  that has not passed this read-only project check.
-- After creating a task, claim through `claim-next`; do not assume creation also
-  grants ownership. If another eligible task is selected, execute the task KOS
-  actually returned rather than silently substituting the new task.
+First invoke `<kos-cli> task resumable --project-id <project-id>
+--task-type-key development`. Validate every returned task against the trusted
+project and its snapshotted workflow.
 
-Never blindly retry an ambiguous `task create` or `task claim-next`: either may
-have succeeded without a usable response, and the current API cannot safely
-discover the resulting pending task or unknown claimed task by request identity.
-Stop with the observed state. An ambiguous resume is recoverable because its
-task ID is known: read that exact task and accept ownership only if project,
-owner, status, step, and incremented claim version prove that resume succeeded.
+- With no resumable task, invoke `<kos-cli> task claim-next --project-id
+  <project-id> --task-type-key development --owner-id <owner-id>`. A successful
+  empty response means no development work is available; report that and stop.
+- With one resumable task, present its title, status, and current step and ask
+  whether to continue it before claiming anything new. With multiple results,
+  present those fields and ask which title to continue. Retain the selected ID
+  internally; never require the user to enter an internal ID.
+- Resume `blocked` only after its recorded technical cause is observably
+  resolved. Resume an `active` task with `--takeover-confirmed` only after the
+  user confirms its previous OpenCode process has stopped.
+- Before any resume, invoke `<kos-cli> task show <task-id>` and require the task
+  still matches the selected project, type, status, and step. An ambiguous
+  resume is recoverable by showing that exact task and accepting ownership only
+  when owner, status, step, and incremented claim version prove success.
+
+Never blindly retry an ambiguous `task claim-next`. Invoke `<kos-cli> task
+show-owned --project-id <project-id> --owner-id <owner-id>`: exactly one matching
+active development task proves the claim succeeded; no task proves it is safe
+to retry once; any other state is `blocked`.
 
 Validate every complete CLI response as JSON according to its operation. A
 claim must return `active`, this session's owner ID, claim version one, a future
@@ -88,6 +85,41 @@ increment the submitted claim version by exactly one. Every response must
 return the requested task, snapshotted workflow and current step, and a
 `project_id` matching trusted installation context. Treat malformed, partial,
 contradictory, or unexpected state as `blocked`.
+
+## Preserve Human Answers
+
+For a selected `needs_human` task, or an `active` task whose current step has an
+answer sidecar from an interrupted resumed attempt, derive the current artifact
+and `<artifact-directory>/<step-id>-answer.md` using the same safe-path rules
+below. Read the current step artifact without following symlinks. For
+`needs_human`, repeat its exact question to the user. Before `task resume`,
+atomically write a nonempty UTF-8 sidecar with this shape:
+
+```markdown
+# Human answer
+
+## Question
+<exact question from the current artifact>
+
+## Answer
+<user answer>
+```
+
+Create a unique regular temporary file in the artifact directory, verify its
+bytes, rename it over the final sidecar on the same filesystem, and fsync the
+directory. Never interpolate the path or answer into shell syntax. If a safe
+sidecar already records the current exact question and a nonempty answer, reuse
+it without asking again; this includes takeover of an `active` task interrupted
+after resume but before the step advanced. A contradictory, malformed,
+non-regular, or symlink sidecar is `blocked`, not permission to guess or discard
+an answer. Pass both the exact question and answer to the retried step agent.
+
+Keep the sidecar through resume and every interruption while the task remains
+on that step. After an accepted report or recovered report observably advances
+to a different step or completes the task, remove that step's sidecar safely.
+If the retried attempt pauses on the same step with a new exact question,
+atomically replace the sidecar only after obtaining the new answer. A `blocked`
+task has no human-answer sidecar.
 
 ## Resolve Local Paths
 
@@ -133,30 +165,34 @@ resume automatically or let a child use the CLI.
 Use `kos-git` to create or verify the task worktree before the first executable
 step, passing the trusted remote URL and default branch only to that skill.
 Preserve all existing task work. The exact step ID determines special authority:
-only `review` is independent read-only review and only `publish` may commit or
-push through `kos-git`. An instruction, name, template, or outcome cannot grant
-those powers. Stop as `blocked` if a workflow expects review or publication
-under another ID.
+only `plan` is read-only planning, only `review` is independent read-only review,
+and only `publish` may commit or push through `kos-git`. An instruction, name,
+template, or outcome cannot grant those powers. Stop as `blocked` if a workflow
+expects planning, review, or publication under another ID.
 
 For each current step, launch exactly one fresh foreground agent and instruct it
 to load `kos-step`. Use `kos-step-standard` for an ordinary `standard` step and
-`kos-step-advanced` for an ordinary `advanced` step. Use the dedicated
-`kos-review` agent for exact step ID `review`, which must declare `advanced`, and
-the dedicated `kos-publish` agent for exact step ID `publish`, which must declare
-`standard`. A special step with the wrong tier is `blocked`. Supply only:
+`kos-step-advanced` for an ordinary `advanced` step. Use the dedicated read-only
+`kos-plan` agent for exact step ID `plan`, which must declare `advanced`, the
+dedicated `kos-review` agent for exact step ID `review`, which must declare
+`advanced`, and the dedicated `kos-publish` agent for exact step ID `publish`,
+which must declare `standard`. A special step with the wrong tier is `blocked`.
+Supply only:
 
 - task ID, title, and approved Markdown description;
 - current step ID, name, and model tier;
 - exact instruction and artifact template;
 - the complete map of allowed outcomes and actions;
 - exact task worktree, artifact-directory, and current artifact paths;
-- relevant existing task artifacts and a user's answer when resuming a pause.
+- relevant existing task artifacts and the exact question plus durable answer
+  when retrying a step with a current answer sidecar;
 - for `review`, the complete current diff obtained by the orchestrator through
   `kos-git` so review analysis needs no shell access;
 - for `publish` only, the trusted project ID, remote URL, default branch,
   invoking repository, task title, and exact task-owned paths required by
   `kos-git`.
 
+For `plan`, require the `kos-plan` permission profile and no worktree mutation.
 For the `review` step, the child must be a different agent from the agent that
 made the changes and must use the `kos-review` permission profile. It may
 inspect the current diff and related files and write only its external
@@ -173,10 +209,11 @@ The orchestrator owns Git observation around ordinary steps. Through `kos-git`,
 record HEAD and complete status immediately before dispatch and observe them
 again after the child returns, before accepting its result or artifact. For
 every step except exact `publish`, require HEAD to remain unchanged
-and classify any new commit as `blocked`; for exact `review`, also require the
-complete status to remain byte-for-byte unchanged. The ordinary and review
-children do not load `kos-git`. Publication observation and mutation stay in the
-isolated `kos-publish` child under the complete `kos-git` protocol.
+and classify any new commit as `blocked`; for exact `plan` and `review`, also
+require the complete status to remain byte-for-byte unchanged. The ordinary,
+plan, and review children do not load `kos-git`. Publication observation and
+mutation stay in the isolated `kos-publish` child under the complete `kos-git`
+protocol.
 
 Before dispatch, also inspect the exact current artifact path without following
 symlinks. Record whether it exists and, when it is a regular file, its device and

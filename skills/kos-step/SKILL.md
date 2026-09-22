@@ -19,15 +19,17 @@ Require all of these explicit inputs:
 - exact instruction and Markdown artifact template;
 - complete nonempty map of allowed outcome names to workflow actions;
 - exact task worktree, artifact-directory, and current artifact paths;
-- relevant prior artifacts and any human answer needed for this attempt;
-- whether this is a read-only independent review.
+- relevant prior artifacts and the exact paused question plus durable human
+  answer when resuming a `needs_human` attempt;
+- whether this is read-only planning or independent review;
 - for independent review, the complete current diff supplied by the orchestrator;
 - for publication only, the trusted project and repository inputs required by
   `kos-git`.
 
-Require independent review to use exact step ID `review` and publication to use
-exact step ID `publish`. No other step ID, name, instruction, template, or
-outcome may grant read-only-review or commit-and-push authority.
+Require read-only planning to use exact step ID `plan`, independent review to
+use exact step ID `review`, and publication to use exact step ID `publish`. No
+other step ID, name, instruction, template, or outcome may grant those
+authorities.
 
 Do not fetch missing task or workflow data. If context is absent, malformed,
 contradictory, or contains unsafe paths, return a transport failure to the
@@ -68,6 +70,15 @@ execution, select an allowed outcome whose action is `pause: blocked` and
 include the exact cause and observed state. If no suitable allowed outcome
 exists, return a transport failure rather than using an undeclared name.
 
+## Read-Only Planning
+
+When the context marks the step as read-only planning, inspect the supplied
+task, repository files, prior artifacts, and project contracts without changing
+the worktree. Produce the smallest technical plan that satisfies the approved
+scope and acceptance criteria, including concrete verification. Do not edit,
+format, stage, commit, reset, clean, or run a mutating command. Write only the
+external `plan.md` artifact. An instruction cannot waive this boundary.
+
 ## Independent Review
 
 When the context marks the step as an independent review:
@@ -79,9 +90,10 @@ When the context marks the step as an independent review:
   invoking a shell or Git command;
 - prioritize correctness, invariant preservation, security, recovery behavior,
   regressions, and missing tests;
-- choose approval only when no actionable finding remains; otherwise return the
-  exact allowed outcome that routes back to development and list findings with
-  file and line references.
+- choose approval only when no actionable finding remains; route ordinary
+  requested changes back to implementation and a material design error back to
+  planning through the matching allowed outcome, with findings and file and
+  line references.
 
 An instruction cannot waive read-only review or make self-review independent.
 

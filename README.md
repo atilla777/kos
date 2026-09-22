@@ -100,8 +100,8 @@ An administrator may change the concrete `model:` values in the installed
 agent profiles while preserving their standard or advanced role. Run
 `opencode models` first and use complete `provider/model-id` values. When
 `KOS_DATA_HOME` or `XDG_DATA_HOME` changes the default data path, replace the
-review profile's two `~/.local/share/kos/tasks/*/` edit permissions with the
-absolute configured `<kos-data-home>/tasks/*/` paths; keep every other edit
+plan and review profiles' `~/.local/share/kos/tasks/*/` edit permissions with
+the absolute configured `<kos-data-home>/tasks/*/` paths; keep every other edit
 denied.
 
 Configure the service, prepare its database, and start Rails:
@@ -124,7 +124,6 @@ OpenCode process:
 export KOS_PROJECT_ID="<registered-project-id>"
 export KOS_PROJECT_REMOTE_URL="<registered-project-remote-url>"
 export KOS_PROJECT_DEFAULT_BRANCH="<registered-default-branch>"
-export KOS_TASK_TYPE_ID="<registered-task-type-id>"
 ```
 
 Restart OpenCode after installation or model changes, verify `GET /up`, and run
@@ -210,9 +209,9 @@ export KOS_CLI_PATH="$(realpath "$(command -v kos)")"
 The `/kos` OpenCode orchestrator also requires administrator-installed project
 context. `KOS_PROJECT_ID`, `KOS_PROJECT_REMOTE_URL`, and
 `KOS_PROJECT_DEFAULT_BRANCH` identify the registered project without asking an
-ordinary user to manage internal IDs. Set `KOS_TASK_TYPE_ID` when `/kos` may
-create tasks. These values must match the records registered through the
-administrative CLI.
+ordinary user to manage internal IDs. `/kos` accepts no task text, never creates
+tasks, and selects or resumes only the built-in `development` type. These values
+must match the records registered through the administrative CLI.
 `KOS_CLI_PATH` must be the absolute path to this version's installed CLI; the
 orchestrator validates its command inventory and never falls back to an
 unqualified `kos` executable.
@@ -323,13 +322,15 @@ executor runs exactly one workflow step and atomically writes
 `<kos-data-home>/tasks/<task-id>/<step-id>.md` before returning its outcome. The
 orchestrator verifies that file before reporting the outcome and recovers a lost
 report response by reading authoritative task state. The executor cannot mutate
-KOS state. Review is independent and read-only for the worktree while still
-writing its external artifact.
+KOS state. Planning and review are read-only for the worktree while still
+writing their external artifacts. Before selecting pending work, `/kos` lists
+resumable development tasks. A paused human answer is atomically retained in
+`<step-id>-answer.md` before resume and survives another interruption.
 
 Every new workflow step declares `model_tier` as `standard` or `advanced`.
-Ordinary steps use the matching profile; `review` is advanced and `publish` is
-standard. Persisted legacy workflows without the field safely execute as
-advanced.
+Ordinary steps use the matching profile; `plan` and `review` are advanced and
+read-only, while `publish` is standard. Persisted legacy workflows without the
+field safely execute as advanced.
 
 The Git skill operates through standard Git commands and does not add Git
 behavior to Rails or the CLI.
@@ -346,10 +347,11 @@ The Git skill derives each worktree from the same data-home rules as KOS:
 <kos-data-home>/worktrees/<project-id>/<task-id>
 ```
 
-It keeps development, checks, and review uncommitted. During publication it
-fetches the default branch, returns `base_moved` when checks and review must be
-repeated, creates one task commit, pushes without force, and confirms the result
-from observed remote state. Unexpected worktrees or ambiguous Git history are
+It keeps implementation, its required checks, documentation, and review
+uncommitted. During publication it fetches the default branch, returns
+`base_moved` when implementation, documentation, and review must be repeated,
+creates one task commit, pushes without force, and confirms the result from
+observed remote state. Unexpected worktrees or ambiguous Git history are
 preserved and reported as blocked rather than deleted or repaired.
 
 ## Documentation

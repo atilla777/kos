@@ -85,7 +85,11 @@ reviewed graph until those tasks are claimed. `PLAN-017` adds the confined
 `okf` OpenCode skill and this repository's minimal `specs/` bundle. The skill
 preserves unknown metadata and unrelated content while maintaining links and
 indexes; Rails does not parse or store OKF. OpenCode command changes remain
-later-plan work.
+later-plan work. `PLAN-018` makes `/kos` a development-only command using the
+stable built-in key. It discovers resumable development work before claiming a
+pending task, retains human answers in restart-safe step sidecars, runs planning
+through a dedicated read-only advanced agent, and follows `plan`, `implement`,
+`document`, `review`, and `publish` without a separate built-in check step.
 
 ## Built-In Scenario Target
 
