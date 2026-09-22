@@ -26,6 +26,7 @@ planned end-to-end verification.
 
 Read these documents before changing behavior or architecture:
 
+- `specs/index.md`
 - `docs/specification.md`
 - `docs/architecture.md`
 - `docs/testing.md`

@@ -4,7 +4,8 @@ KOS is a small task state and coordination service for AI agents. This
 repository contains the Rails state service, its authenticated JSON API, the
 five core domain tables and models, an idempotent built-in task catalog,
 workflow validation, task graph invariants, atomic task lifecycle operations, a thin HTTP command-line client, and
-distributable OpenCode orchestration, workflow-step, and Git skills.
+distributable OpenCode orchestration, workflow-step, Git, and OKF
+product-specification skills.
 Persisted tasks retain their project and workflow and are cancelled rather than
 physically deleted. Isolated integration scenarios verify restart and
 lost-response recovery, parallel worktrees, moved-base review repetition, and
@@ -85,7 +86,7 @@ mkdir -p ~/.config/opencode/commands ~/.config/opencode/agents ~/.config/opencod
 rm -f ~/.config/opencode/agents/kos-step.md
 cp .opencode/commands/kos.md ~/.config/opencode/commands/kos.md
 cp .opencode/agents/kos-*.md ~/.config/opencode/agents/
-cp -R skills/kos skills/kos-step skills/kos-git ~/.config/opencode/skills/
+cp -R skills/kos skills/kos-step skills/kos-git skills/okf ~/.config/opencode/skills/
 ```
 
 The shipped model mapping is:
@@ -306,7 +307,8 @@ The canonical OpenCode integration consists of:
   worktree-read-only review, and publication agent profiles;
 - `skills/kos/SKILL.md`, the lease-owning workflow orchestrator;
 - `skills/kos-step/SKILL.md`, the isolated one-step executor;
-- `skills/kos-git/SKILL.md`, the worktree and publication protocol.
+- `skills/kos-git/SKILL.md`, the worktree and publication protocol;
+- `skills/okf/SKILL.md`, the confined OKF v0.2 product-specification procedure.
 
 This checkout's `opencode.json` makes the canonical skill directory
 discoverable. For a global installation, copy the command to
@@ -332,7 +334,13 @@ advanced.
 The Git skill operates through standard Git commands and does not add Git
 behavior to Rails or the CLI.
 
-The skill derives each worktree from the same data-home rules as KOS:
+The OKF skill reads and changes only the supplied project worktree's `specs/`
+bundle. It preserves unknown metadata and unrelated content, maintains links
+and progressive-disclosure indexes, and keeps product behavior separate from
+technical contracts and task artifacts. This repository's own bundle starts at
+[`specs/index.md`](specs/index.md).
+
+The Git skill derives each worktree from the same data-home rules as KOS:
 
 ```text
 <kos-data-home>/worktrees/<project-id>/<task-id>

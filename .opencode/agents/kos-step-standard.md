@@ -7,6 +7,7 @@ permission:
   skill:
     "*": deny
     kos-step: allow
+    okf: allow
   external_directory: allow
   bash:
     "*": allow

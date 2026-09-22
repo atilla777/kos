@@ -81,7 +81,10 @@ so observation can reproduce the validated digest without adding persisted
 graph state. Every child snapshots the current development workflow and is
 blocked by its brief parent plus declared siblings. Public lifecycle operations
 cannot add or redefine brief children outside materialization, preserving the
-reviewed graph until those tasks are claimed. OpenCode command changes remain
+reviewed graph until those tasks are claimed. `PLAN-017` adds the confined
+`okf` OpenCode skill and this repository's minimal `specs/` bundle. The skill
+preserves unknown metadata and unrelated content while maintaining links and
+indexes; Rails does not parse or store OKF. OpenCode command changes remain
 later-plan work.
 
 ## Built-In Scenario Target

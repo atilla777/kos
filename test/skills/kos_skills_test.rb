@@ -43,6 +43,7 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_equal "deny", agents.dig("kos-step-standard", "permission", "task")
     assert_equal "deny", agents.dig("kos-step-standard", "permission", "bash", "kos *")
     assert_nil agents.dig("kos-step-standard", "permission", "skill", "kos-git")
+    assert_equal "allow", agents.dig("kos-step-standard", "permission", "skill", "okf")
     assert_equal "deny", agents.dig("kos-step-standard", "permission", "bash", "git *commit *")
     assert_equal "allow", agents.dig("kos-step-standard", "permission", "external_directory")
     assert_equal "openai/gpt-5.6-sol", agents.dig("kos-step-advanced", "model")
