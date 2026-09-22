@@ -1,6 +1,6 @@
 ---
 name: kos-step
-description: Use as a fresh KOS workflow-step agent to execute exactly one supplied step, atomically write its Markdown artifact, and return one allowed outcome.
+description: Use as a fresh KOS workflow-step agent to execute exactly one supplied step, write its Markdown artifact, and return one allowed outcome.
 ---
 
 # KOS Workflow Step
@@ -132,36 +132,25 @@ returning the outcome. The `kos-git` skill itself remains artifact-neutral.
 
 ## Persist The Artifact
 
-Before returning, fill the supplied template with truthful Markdown for this
-attempt and atomically replace only the exact supplied `<step-id>.md` path. Create
-the task artifact directory without following symlinks, and refuse a symlink or
-non-regular existing target.
+Before returning, fill the supplied template with truthful UTF-8 Markdown for
+this attempt and write it directly to only the exact supplied `<step-id>.md`
+path. The orchestrator guarantees that the final path is absent before
+dispatch. Refuse to continue if it is already present, the artifact directory
+is unsafe, or any path component is a symbolic link.
 
-Use OpenCode filesystem tools rather than adding an artifact writer to
-Rails or the `kos` CLI:
+Use an available OpenCode filesystem-writing tool to create the final regular
+file. A normal edit or write operation is sufficient, including `apply_patch`
+when shell access is denied. Do not create a unique temporary artifact, rename
+another file into place, fsync the artifact, inspect or force a new inode, or
+add an attempt ID, marker, or sidecar. Read-only worktree authority does not make
+the external result artifact optional and does not require shell access for it.
 
-1. Create a unique regular temporary file inside the artifact directory.
-2. Write the exact UTF-8 Markdown bytes to that file with a filesystem-writing
-   tool and verify its exact bytes.
-3. Atomically rename it over the final artifact on the same filesystem with a
-   filesystem tool.
-4. Verify the final path is a regular non-symlink file with the exact bytes and
-   a different file identity from any artifact observed before this attempt.
-
-When shell access is denied, use `apply_patch` for the complete operation: add
-the permitted unique hidden temporary path whose basename begins with
-`.<step-id>`, read it back, then update that same file with `Move to:` naming
-the exact final artifact path. This uses the filesystem rename performed by the
-edit tool; do not copy the bytes into a second file or write the final path
-directly. Read-only worktree authority does not make the external result
-artifact optional.
-
-Never interpolate paths or Markdown into shell syntax or generated source. On
-failure, remove only the known temporary file when safe, do not return a
-workflow outcome, and leave KOS state at the current step.
-A repeated attempt may replace only its own current artifact. A `needs_human`
-artifact contains the exact question; a `blocked` artifact contains the precise
-technical cause and observed state.
+Read the final path back without following symbolic links. Require a regular
+non-symlink file whose exact bytes equal the complete intended Markdown and are
+nonempty valid UTF-8. On any failure, do not return a workflow outcome and leave
+KOS state at the current step. A `needs_human` artifact contains the exact
+question; a `blocked` artifact contains the precise technical cause and observed
+state.
 
 ## Return One Result
 

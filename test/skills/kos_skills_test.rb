@@ -58,6 +58,7 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_equal "high", agents.dig("kos-diagnose", "reasoningEffort")
     assert_equal "allow", agents.dig("kos-diagnose", "permission", "edit")
     assert_equal "ask", agents.dig("kos-diagnose", "permission", "bash")
+    assert_includes File.read(AGENT_PATHS.fetch("kos-diagnose")), "never to rename or publish the\nartifact"
     assert_equal "subagent", agents.dig("kos-step-standard", "mode")
     assert_equal "openai/gpt-5.6-terra", agents.dig("kos-step-standard", "model")
     assert_equal "medium", agents.dig("kos-step-standard", "reasoningEffort")
@@ -157,12 +158,65 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_includes source, "`kos-diagnose` agent"
     assert_includes source, "symptom that cannot be reproduced"
     assert_includes source, "regression check"
-    assert_includes source, "The child, never the orchestrator or Rails"
+    assert_includes source, "The child, never Rails"
     assert_includes source, "Only after the artifact is complete and verified"
     assert_match(/one\s+retry of the identical report is safe/, source)
     assert_includes source, "HTTP 5xx"
     assert_includes source, "already published"
     assert_includes source, "Never claim success before publication is"
+  end
+
+  test "orchestrator replaces step artifacts without a file identity protocol" do
+    source = File.read(ORCHESTRATOR_PATH)
+    run_contract = section(source, "Run The Workflow")
+    verification = section(source, "Verify The Artifact First")
+
+    assert_includes run_contract, "If it is absent, continue"
+    assert_includes run_contract, "safely\nremove that exact file before launching the child"
+    assert_includes run_contract, "symbolic link,\ndirectory, socket, FIFO, device, or any other unexpected object"
+    assert_includes run_contract, "without removing it or launching an agent"
+    assert_includes run_contract, "Only after the path is absent launch exactly one child"
+    assert_includes run_contract, "ordinary filesystem tool"
+    assert_includes run_contract, "does not need shell access, a temporary file, rename, fsync"
+    assert_includes run_contract, "removes any regular partial or unconfirmed\nfile left by the previous attempt"
+    assert_includes run_contract, "Do not record or compare device, inode, file identity"
+
+    assert_includes verification, "new regular non-symlink file"
+    assert_includes verification, "without following symlinks"
+    assert_includes verification, "nonempty valid UTF-8"
+    assert_includes verification, "missing, empty, truncated, or partial file"
+    assert_includes verification, "completely and truthfully follows the\nsupplied template"
+    assert_includes verification, "content to agree with the returned outcome"
+    assert_includes verification, "including when the filesystem reuses an inode"
+    assert_includes verification, "do not report the attempt"
+  end
+
+  test "orchestrator never guesses an outcome and preserves exact-byte report recovery" do
+    source = File.read(ORCHESTRATOR_PATH)
+    run_contract = section(source, "Run The Workflow")
+    recovery = section(source, "Recover A Lost Report Response")
+
+    assert_includes run_contract, '{"outcome":"<allowed outcome>"}'
+    assert_includes run_contract, "no other key to be present"
+    assert_includes run_contract, "infer success from prose, tool output, or artifact content"
+    assert_includes run_contract, "invalid, missing, or lost child response"
+    assert_includes run_contract, "do not call `report-attempt`"
+    assert_match(/expected action\s+occurred exactly once, accept it/, recovery)
+    assert_includes recovery, "artifact still contains the exact previously verified bytes"
+    assert_includes recovery, "one retry of the identical report is safe"
+    assert_includes recovery, "unavailable server, or an unprovable transition"
+  end
+
+  test "durable recovery files keep their atomic protocols" do
+    orchestrator = File.read(ORCHESTRATOR_PATH)
+    brief = File.read(Rails.root.join("skills/kos-brief/SKILL.md"))
+
+    assert_match(/Before `task resume`,\s+atomically write/, orchestrator)
+    assert_includes orchestrator, "rename it over the final sidecar on the same filesystem, and fsync"
+    assert_includes orchestrator, "atomically persist the complete intent"
+    assert_includes orchestrator, "atomically write and fsync the receipt"
+    assert_includes brief, "Create and replace graph files atomically through unique regular temporary"
+    assert_includes brief, "same-filesystem\nrename, and directory fsync"
   end
 
   test "step skill is isolated and returns one allowed result" do
@@ -186,10 +240,14 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_includes source, "exactly one outcome key"
     assert_includes source, '"outcome":"<exact allowed key>"'
     assert_not_includes source, '"artifact_markdown"'
-    assert_includes source, "atomically replace only the exact supplied"
-    assert_includes source, "use `apply_patch` for the complete operation"
-    assert_includes source, "`.<step-id>`, read it back, then update that same file with `Move to:` naming"
-    assert_includes source, "different file identity"
+    assert_includes source, "write it directly to only the exact supplied"
+    assert_includes source, "normal edit or write operation is sufficient"
+    assert_includes source, "including `apply_patch`\nwhen shell access is denied"
+    assert_includes source, "Do not create a unique temporary artifact, rename"
+    assert_includes source, "does not require shell access for it"
+    assert_includes source, "nonempty valid UTF-8"
+    assert_not_includes source, "different file identity"
+    assert_not_includes source, "Move to:"
     assert_includes source, "Write the observed publication facts"
   end
 
@@ -211,5 +269,9 @@ class KosSkillsTest < ActiveSupport::TestCase
 
     assert match
     YAML.safe_load(match[1])
+  end
+
+  def section(source, heading)
+    source[/^## #{Regexp.escape(heading)}$.*?(?=^## |\z)/m] || flunk("Missing #{heading} section")
   end
 end

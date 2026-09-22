@@ -53,9 +53,11 @@ and lost-response recovery, parallel task isolation, moved-base repetition of
 checks and read-only review, and observation-driven publication recovery without
 duplicate commits. The `/kos` OpenCode command loads a CLI-only orchestrator
 skill, which verifies ownership before each step and delegates exactly one step
-to a fresh standard- or advanced-tier executor. The executor atomically writes
-the current Markdown artifact before returning its outcome; the orchestrator
-verifies that artifact before reporting it. Independent review remains
+to a fresh standard- or advanced-tier executor. Before dispatch the orchestrator
+removes a safe regular current Markdown artifact, then the executor writes a new
+file directly at that path before returning its outcome. The orchestrator
+verifies the exact response and artifact bytes before reporting; file identity
+is irrelevant. Independent review remains
 read-only for the worktree while writing `review.md`. Concrete models live in
 OpenCode agent profiles, not Rails. Uncertain reports recover by observing
 server state. No artifact state or orchestration runtime is added to Rails.

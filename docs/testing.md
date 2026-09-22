@@ -30,6 +30,11 @@
 - Clean-install tests build the CLI gem and install the exact command, agent,
   and skill inventory into an isolated OpenCode configuration, removing known
   obsolete managed files and comparing installed bytes with the checkout.
+- Step-artifact contract tests cover first creation, pre-dispatch removal on
+  retry, direct writes independent of inode identity, unsafe object refusal,
+  UTF-8 and template validation, exact outcome handling, unconfirmed-file
+  cleanup, and exact-byte report recovery. They also preserve the separate
+  atomic protocols for durable answer, intent, receipt, and graph files.
 
 ## Test Properties
 
@@ -73,6 +78,14 @@ Recovery tests interrupt brief materialization before response, compare the
 complete observed child graph, and prove no duplicate or partial graph is
 created. Existing recovery coverage remains required for creation, claim,
 pause, report, moved base, commit, and push.
+
+Artifact recovery tests require the orchestrator to remove a prior regular
+`<step-id>.md` before each attempt and refuse symbolic links, directories, and
+other unexpected objects without deleting them. They reject absent, empty,
+partial, invalid-UTF-8, template-inconsistent, and outcome-inconsistent results.
+An invalid or missing agent response cannot be reconstructed from the file, and
+an ambiguous report may be repeated only after authoritative task observation
+and byte-for-byte comparison with the previously verified artifact.
 
 Creation recovery drops the `create-and-claim` response before and after commit
 and proves a durable command intent plus unique owner returns the same task on

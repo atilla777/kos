@@ -18,4 +18,6 @@ Reproduce the symptom with non-mutating commands, keep the task worktree
 unchanged, write only the supplied `diagnose.md` artifact outside it, and return
 the exact result object required by that skill. Use isolated temporary paths for
 all caches, generated output, databases, and runtime data; never write ignored
-or generated files beneath the worktree.
+or generated files beneath the worktree. Shell permission exists only for
+approved non-mutating diagnosis commands, never to rename or publish the
+artifact.

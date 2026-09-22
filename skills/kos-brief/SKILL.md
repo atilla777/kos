@@ -126,12 +126,12 @@ a material product decision:
 
 Ask one precise question only when different answers materially change product
 behavior, safety, compatibility, migration, or the development graph. In that
-case atomically replace `brief.md` with the question and return `needs_human`;
+case write the new `brief.md` with the question and return `needs_human`;
 do not produce a speculative specification or graph. Clear requirements do not
 require an approval pause.
 
 For `specified`, update the conformant `specs/` bundle, atomically write the
-complete `brief-graph.json`, then atomically replace `brief.md` from the supplied
+complete `brief-graph.json`, then write the new `brief.md` from the supplied
 artifact template. The artifact summarizes the specification and graph and
 names the exact graph path. Verify both files and the allowed worktree diff
 before reporting. Retain the exact graph bytes in session context.
@@ -233,7 +233,7 @@ the publisher must regenerate the canonical full-tree manifest and require
 byte-for-byte equality. It must stage only that `specs/` change and require the
 candidate commit's complete `specs/` tree to reproduce the manifest exactly
 before push. A mismatch is a technical stop without commit or push. The
-publisher may commit and push the bound change and atomically write `publish.md`;
+publisher may commit and push the bound change and write the new `publish.md`;
 it must never call a KOS graph command. Handle `base_moved` through the workflow
 outcome so `brief`, review, and validation all repeat on the new base.
 
@@ -283,12 +283,12 @@ silently accepted as evidence of a push.
 For every published-state recovery, require the observed remote task commit's
 complete `specs/` tree to reproduce `brief-spec-reviewed.json` exactly. If the
 publisher crashed after push but before writing `publish.md`, this main
-orchestrator atomically writes that artifact from the observed commit, remote,
+orchestrator writes that new artifact from the observed commit, remote,
 validation receipt, and child graph facts before reporting. It never invents
 success from a local candidate alone.
 
-If post-publication materialization or observation is blocked, atomically
-replace `publish.md` with the precise published Git state and technical graph
+If post-publication materialization or observation is blocked, write the new
+`publish.md` with the precise published Git state and technical graph
 cause before reporting the allowed `blocked` outcome. This main orchestrator is
 the authority for that post-publisher observation artifact; it may not alter
 the worktree or published commit.

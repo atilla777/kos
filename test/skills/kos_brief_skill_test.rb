@@ -83,7 +83,7 @@ class KosBriefSkillTest < ActiveSupport::TestCase
     assert_match(/do not invoke\s+`materialize-children` and do not publish/, source)
     assert_includes source, "Never materialize children before publication is observed remotely"
     assert_includes source, "publisher may commit and push the bound change"
-    assert_includes source, "publisher may commit and push the bound change and atomically write `publish.md`;\nit must never call a KOS graph command"
+    assert_includes source, "publisher may commit and push the bound change and write the new `publish.md`;\nit must never call a KOS graph command"
     assert_includes source, "byte mismatch after push is a technical"
     assert_includes source, "do not use `graph_invalid` for an already published specification"
     assert_includes source, "SHA-256 of the exact reviewed specification manifest bytes"
@@ -110,7 +110,7 @@ class KosBriefSkillTest < ActiveSupport::TestCase
     assert_includes source, "continue directly to one materialization attempt"
     assert_includes source, "Do not\nrepublish or require the now-clean worktree"
     assert_includes source, "publisher crashed after push but before writing `publish.md`"
-    assert_includes source, "atomically writes that artifact from the observed commit"
+    assert_includes source, "writes that new artifact from the observed commit"
   end
 
   test "documented global installation includes the brief integration" do

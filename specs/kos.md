@@ -50,6 +50,11 @@ the appropriate agents and repository tools.
   workflow routing, human-answer preservation, and artifact verification. It
   does not restate how an individual workflow step performs development,
   checks, review, or publication.
+- Before each step attempt, the orchestrator removes only a safe regular current
+  step artifact. The step produces a new artifact at that path, and the
+  orchestrator validates its bytes and the agent's exact outcome response before
+  advancing task state. Artifact acceptance never depends on filesystem
+  identity.
 - A generic step procedure owns only the one-step execution boundary, supplied
   context validation, artifact persistence, and exact outcome response.
   Instructions specific to planning, diagnosis, implementation and checks,
@@ -81,6 +86,10 @@ the appropriate agents and repository tools.
 - Project discovery stops before task or local recovery-state mutation when
   `origin` is absent, its fetch and push destinations identify different
   repositories, its canonical name is invalid, or lookup is ambiguous.
+- A symbolic link, directory, or other unexpected object at the current step
+  artifact path is a technical blocker and is not removed. A failed agent,
+  invalid response, or missing or invalid new artifact leaves the task on the
+  current step and does not report an attempt.
 
 # Edge Cases
 
@@ -96,6 +105,9 @@ the appropriate agents and repository tools.
   documentation, and independent review repeat on the new base.
 - Brief-created child tasks stay unavailable until their published parent brief
   is complete, and the complete child graph is materialized atomically.
+- Retrying a step removes an unconfirmed regular artifact from the previous
+  attempt before running one new step agent. A lost or invalid agent response
+  never permits the orchestrator to infer an outcome from artifact content.
 
 # Acceptance Criteria
 
@@ -115,6 +127,10 @@ the appropriate agents and repository tools.
   observable for completed work.
 - Restart and lost-response recovery do not duplicate tasks, transitions,
   child graphs, commits, or pushes.
+- A valid step artifact may be written directly by the agent with ordinary file
+  tools. Acceptance requires a new nonempty UTF-8 regular file that matches the
+  current template and returned outcome, not a changed inode, temporary file,
+  rename, fsync, marker, or attempt identifier.
 
 # Non-goals
 

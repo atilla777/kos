@@ -339,13 +339,20 @@ The ordinary, diagnosis, plan, and review children do not load `kos-git`. Public
 mutation stay in the isolated `kos-publish` child under the complete `kos-git`
 protocol.
 
-Before dispatch, also inspect the exact current artifact path without following
-symlinks. Record whether it exists and, when it is a regular file, its device and
-inode identity. After the child returns, require the artifact to have a
-different identity, proving this attempt atomically replaced it even when its
-Markdown bytes happen to match the previous attempt. A missing pre-dispatch
-artifact must become a new regular file. Any unchanged, unsafe, or ambiguous
-identity is a technical stop and must not be reported.
+Before every dispatch, inspect the exact current artifact path without following
+symlinks. If it is absent, continue. If it is a regular non-symlink file, safely
+remove that exact file before launching the child. If it is a symbolic link,
+directory, socket, FIFO, device, or any other unexpected object, stop with a
+technical blocker without removing it or launching an agent. Refuse any path or
+type ambiguity. Do not record or compare device, inode, file identity, an
+attempt marker, or a sidecar identifier for a replaceable step artifact.
+
+Only after the path is absent launch exactly one child for the attempt. The
+child may write the final path directly with an ordinary filesystem tool. It
+does not need shell access, a temporary file, rename, fsync, or any other
+low-level publication mechanism merely to persist the step artifact. A later
+attempt repeats this inspection and removes any regular partial or unconfirmed
+file left by the previous attempt before launching one new child.
 
 Accept only one child result containing exactly these fields and no surrounding
 prose:
@@ -356,29 +363,37 @@ prose:
 
 Require the outcome to be an exact key in the current step's outcome map and
 no other key to be present. Do not repair an invalid response, select an outcome
-for the child, or infer success from prose or tool output. An invalid child
-response is a technical stop and is not reported as a workflow outcome.
+for the child, or infer success from prose, tool output, or artifact content. A
+failed child or an invalid, missing, or lost child response is a technical stop:
+leave the task on its current step and do not call `report-attempt`, even when a
+plausible artifact exists.
 
 ## Verify The Artifact First
 
-The child, never the orchestrator or Rails, must atomically write its complete artifact to:
+The child, never Rails, must write its complete artifact to the exact supplied
+path:
 
 ```text
 <kos-data-home>/tasks/<task-id>/<step-id>.md
 ```
 
-Before any `report-attempt`, require that exact derived path to exist as a
-regular non-symlink file beneath the trusted task directory. Read its bytes
-without following symlinks and require nonempty valid UTF-8 that truthfully
-follows the supplied template. A `needs_human` artifact must contain the exact
-question, and a `blocked` artifact must contain the precise technical cause and
-observed state. Retain the verified bytes in session context for lost-response
-recovery.
+After receiving the one valid child result and before any `report-attempt`,
+require that exact derived path to exist as a new regular non-symlink file
+beneath the trusted task directory. Read its bytes without following symlinks
+and require nonempty valid UTF-8 that completely and truthfully follows the
+supplied template. Reject a missing, empty, truncated, or partial file. Require
+the content to agree with the returned outcome: a `needs_human` artifact must
+contain the exact question, a `blocked` artifact must contain the precise
+technical cause and observed state, and every other outcome must have the
+corresponding template result. Retain the verified exact bytes in session
+context for lost-response recovery. File identity and the write mechanism have
+no bearing on acceptance, including when the filesystem reuses an inode.
 
-If the artifact is absent, malformed, unsafe, or inconsistent with the returned
-outcome, leave database state at the current step, do not report the attempt,
-and stop as `blocked`. Repeating a step may replace only that step's current
-artifact.
+If the artifact is absent, empty, partial, invalid UTF-8, malformed, unsafe,
+template-inconsistent, or inconsistent with the returned outcome, leave
+database state at the current step, do not report the attempt, and stop as a
+technical blocker. Repeating a step may replace only that step's current
+artifact, which the orchestrator removes before the retry.
 
 ## Report And Continue
 
@@ -417,8 +432,8 @@ authoritative state with the exact old claim and selected outcome:
 - If status, step, ownership, and claim version show that the expected action
   occurred exactly once, accept it and continue or stop accordingly.
 - If the exact old active ownership, step, and claim version remain unchanged,
-  first verify the artifact still contains the exact previously verified bytes, then one
-  retry of the identical report is safe.
+  first verify the artifact still contains the exact previously verified bytes,
+  then one retry of the identical report is safe.
 - Any other state, an unavailable server, or an unprovable transition is
   `blocked`; preserve files and Git state for recovery.
 

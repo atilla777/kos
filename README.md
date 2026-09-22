@@ -335,11 +335,14 @@ commands, agents, skills, or configuration because a running session does not
 reload them.
 
 The orchestrator uses only the public `kos` CLI for server state. A step
-executor runs exactly one workflow step and atomically writes
+executor runs exactly one workflow step and writes a new
 `<kos-data-home>/tasks/<task-id>/<step-id>.md` before returning its outcome. The
-orchestrator verifies that file before reporting the outcome and recovers a lost
-report response by reading authoritative task state. The executor cannot mutate
-KOS state. Planning and review are read-only for the worktree while still
+orchestrator safely removes a prior regular artifact before dispatch, rejects
+unsafe path objects, and verifies the exact result plus new file bytes before
+reporting the outcome. Acceptance does not depend on inode changes or atomic
+rename. A lost report response is recovered from authoritative task state and
+the previously verified exact bytes. The executor cannot mutate KOS state.
+Planning and review are read-only for the worktree while still
 writing their external artifacts. Before selecting pending work, `/kos` lists
 resumable development tasks. A paused human answer is atomically retained in
 `<step-id>-answer.md` before resume and survives another interruption.

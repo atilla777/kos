@@ -96,8 +96,8 @@ There is no separate orchestrator program.
 
 The generic step executor receives the task description, current step,
 instruction, artifact template, model tier, worktree path, artifact directory,
-and exact artifact path. It runs only that step, atomically writes the current
-Markdown artifact, and returns one allowed outcome.
+and exact artifact path. It runs only that step, writes a new current Markdown
+artifact at the supplied path, and returns one allowed outcome.
 
 The brief scenario is the exception to ordinary one-shot step execution. Its
 `brief` step runs in the main conversational agent so material questions and
@@ -330,11 +330,33 @@ receives both question and answer. It replaces the step artifact only after the
 attempt is complete; the answer sidecar remains sufficient to retry after
 another process interruption and may be removed only after the task advances.
 
-The step executor atomically replaces an artifact through a temporary file and
-rename before returning its outcome. The orchestrator verifies the exact
-artifact and proves its file identity changed during the attempt before
-reporting the outcome to KOS. It must never advance database state before the
-artifact is complete.
+Before every attempt, the orchestrator inspects the exact derived step-artifact
+path without following symbolic links. An absent path is ready. A regular file
+is removed before dispatch so stale or unconfirmed bytes cannot satisfy the new
+attempt. A symbolic link, directory, or other unexpected object is a technical
+blocker and is not removed.
+
+The executor writes the new `<step-id>.md` directly with an available filesystem
+tool; it need not create a temporary file, rename, fsync, change file identity,
+or carry an attempt identifier. After the executor returns a valid exact
+outcome response, the orchestrator reads the exact path without following
+symbolic links and requires a new regular non-symlink file whose bytes are
+nonempty valid UTF-8, match the current template, and agree with that outcome.
+Only then may it report the attempt to KOS. A failed executor, invalid or lost
+response, absent or partial file, or failed content check leaves the task on the
+same step without a report. A later retry removes any remaining regular
+unconfirmed file before dispatch.
+
+The orchestrator never infers an outcome from artifact content. After an
+ambiguous report response, it retains the verified exact bytes and observes
+task state. It may retry the identical report once only when the transition did
+not occur and the artifact still has those exact bytes; an observed transition
+is accepted, while unavailable or contradictory state stops without another
+side effect.
+
+This replaceable step-artifact protocol does not alter the atomic durability
+requirements for human-answer sidecars, command intents and receipts, brief
+graph authority files, or other long-lived recovery state.
 
 Worktree paths are derived, not stored. The Git skill creates a worktree from
 the repository where `/kos` was invoked and verifies that its remote matches
