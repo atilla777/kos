@@ -47,6 +47,14 @@ The default destination is `$XDG_CONFIG_HOME/opencode`, or
 nonstandard OpenCode installation. Restart OpenCode after installation because
 a running process does not reload commands, agents, or skills.
 
+The installed defaults use `openai/gpt-5.6-terra` with medium reasoning for
+standard execution and publication, and `openai/gpt-5.6-sol` with high
+reasoning for advanced planning, diagnosis, and review. `/kos` and `/kos-fix`
+use Terra for orchestration; `/kos-brief` uses Sol because product clarification
+and graph design run in the main conversational agent. Verify availability with
+`opencode models openai`. Administrators may substitute complete
+`provider/model-id` values while preserving the standard and advanced roles.
+
 ## Configure And Start
 
 Start Rails in a dedicated terminal or service process. Configure that process

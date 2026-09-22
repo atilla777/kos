@@ -13,6 +13,7 @@ class KosBriefSkillTest < ActiveSupport::TestCase
 
     assert_match(/Specify and publish/, command_frontmatter.fetch("description"))
     assert_equal "build", command_frontmatter.fetch("agent")
+    assert_equal "openai/gpt-5.6-sol", command_frontmatter.fetch("model")
     assert_includes command, "Load the `kos` and `kos-brief` skills"
     assert_includes command, "$ARGUMENTS"
     assert_includes command, "stop\nwithout reading or mutating KOS state"

@@ -1,6 +1,7 @@
 ---
 description: Diagnose and fix one reported problem through the KOS fix workflow
 agent: build
+model: openai/gpt-5.6-terra
 ---
 
 Load the `kos` skill and follow its `/kos-fix` path exactly. Treat the complete

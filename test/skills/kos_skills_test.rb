@@ -29,6 +29,7 @@ class KosSkillsTest < ActiveSupport::TestCase
     frontmatter = YAML.safe_load(match[1])
     assert_match(/development task/, frontmatter.fetch("description"))
     assert_equal "build", frontmatter.fetch("agent")
+    assert_equal "openai/gpt-5.6-terra", frontmatter.fetch("model")
     assert_includes command, "Load the `kos` skill"
     assert_includes command, "$ARGUMENTS"
     assert_includes command, "accepts no arguments"
@@ -39,6 +40,7 @@ class KosSkillsTest < ActiveSupport::TestCase
     fix_frontmatter = YAML.safe_load(fix_command.match(/\A---\n(.*?)\n---/m)[1])
     assert_match(/Diagnose and fix/, fix_frontmatter.fetch("description"))
     assert_equal "build", fix_frontmatter.fetch("agent")
+    assert_equal "openai/gpt-5.6-terra", fix_frontmatter.fetch("model")
     assert_includes fix_command, "Load the `kos` skill"
     assert_includes fix_command, "$ARGUMENTS"
     assert_includes fix_command, "If it is blank"
@@ -53,10 +55,12 @@ class KosSkillsTest < ActiveSupport::TestCase
 
     assert_equal "subagent", agents.dig("kos-diagnose", "mode")
     assert_equal "openai/gpt-5.6-sol", agents.dig("kos-diagnose", "model")
+    assert_equal "high", agents.dig("kos-diagnose", "reasoningEffort")
     assert_equal "allow", agents.dig("kos-diagnose", "permission", "edit")
     assert_equal "ask", agents.dig("kos-diagnose", "permission", "bash")
     assert_equal "subagent", agents.dig("kos-step-standard", "mode")
-    assert_equal "openai/gpt-5.6-sol", agents.dig("kos-step-standard", "model")
+    assert_equal "openai/gpt-5.6-terra", agents.dig("kos-step-standard", "model")
+    assert_equal "medium", agents.dig("kos-step-standard", "reasoningEffort")
     assert_equal "deny", agents.dig("kos-step-standard", "permission", "task")
     assert_equal "deny", agents.dig("kos-step-standard", "permission", "bash", "kos *")
     assert_nil agents.dig("kos-step-standard", "permission", "skill", "kos-git")
@@ -64,17 +68,21 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_equal "deny", agents.dig("kos-step-standard", "permission", "bash", "git *commit *")
     assert_equal "allow", agents.dig("kos-step-standard", "permission", "external_directory")
     assert_equal "openai/gpt-5.6-sol", agents.dig("kos-step-advanced", "model")
+    assert_equal "high", agents.dig("kos-step-advanced", "reasoningEffort")
     assert_equal "subagent", agents.dig("kos-plan", "mode")
     assert_equal "openai/gpt-5.6-sol", agents.dig("kos-plan", "model")
+    assert_equal "high", agents.dig("kos-plan", "reasoningEffort")
     assert_equal "allow", agents.dig("kos-plan", "permission", "edit")
     assert_equal "deny", agents.dig("kos-plan", "permission", "bash")
     assert_equal "subagent", agents.dig("kos-review", "mode")
     assert_equal "openai/gpt-5.6-sol", agents.dig("kos-review", "model")
+    assert_equal "high", agents.dig("kos-review", "reasoningEffort")
     assert_equal "allow", agents.dig("kos-review", "permission", "edit")
     assert_equal "deny", agents.dig("kos-review", "permission", "bash")
     assert_equal "allow", agents.dig("kos-review", "permission", "external_directory")
     assert_equal "subagent", agents.dig("kos-publish", "mode")
-    assert_equal "openai/gpt-5.6-sol", agents.dig("kos-publish", "model")
+    assert_equal "openai/gpt-5.6-terra", agents.dig("kos-publish", "model")
+    assert_equal "medium", agents.dig("kos-publish", "reasoningEffort")
     assert_equal "allow", agents.dig("kos-publish", "permission", "skill", "kos-git")
   end
 

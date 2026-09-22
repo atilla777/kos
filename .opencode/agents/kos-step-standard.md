@@ -1,7 +1,8 @@
 ---
 description: Executes one standard-tier non-review KOS workflow step under the owning orchestrator.
 mode: subagent
-model: openai/gpt-5.6-sol
+model: openai/gpt-5.6-terra
+reasoningEffort: medium
 permission:
   task: deny
   skill:

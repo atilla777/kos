@@ -97,16 +97,21 @@ bin/install-opencode
 The shipped model mapping is:
 
 ```text
-standard = openai/gpt-5.6-sol
-advanced = openai/gpt-5.6-sol
+standard agents = openai/gpt-5.6-terra, medium reasoning
+advanced agents = openai/gpt-5.6-sol, high reasoning
+/kos and /kos-fix = openai/gpt-5.6-terra
+/kos-brief = openai/gpt-5.6-sol
 ```
 
-An administrator may change the concrete `model:` values in the installed
-agent profiles while preserving their standard or advanced role. Run
-`opencode models` first and use complete `provider/model-id` values. Diagnosis,
-planning, and review remain behaviorally read-only for the worktree: the
-orchestrator compares HEAD and complete status before and after each step and
-rejects any mutation, while the agent writes its required external artifact.
+Terra executes defined implementation, documentation, publication, and
+orchestration work. Sol handles ambiguous planning, diagnosis, review, and
+product briefing. An administrator may change the concrete `model:` and
+`reasoningEffort:` values in the installed profiles while preserving those
+roles. Run `opencode models` first and use complete `provider/model-id` values.
+Diagnosis, planning, and review remain behaviorally read-only for the worktree:
+the orchestrator compares HEAD and complete status before and after each step
+and rejects any mutation, while the agent writes its required external
+artifact.
 
 Configure the service, prepare its database, and start Rails:
 

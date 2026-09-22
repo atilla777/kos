@@ -1,6 +1,7 @@
 ---
 description: Specify and publish one product request through the KOS brief workflow
 agent: build
+model: openai/gpt-5.6-sol
 ---
 
 Load the `kos` and `kos-brief` skills and follow the `kos-brief` skill exactly.

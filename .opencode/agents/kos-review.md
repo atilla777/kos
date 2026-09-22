@@ -2,6 +2,7 @@
 description: Performs one independent read-only KOS review step.
 mode: subagent
 model: openai/gpt-5.6-sol
+reasoningEffort: high
 permission:
   edit: allow
   task: deny

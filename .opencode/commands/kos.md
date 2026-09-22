@@ -1,6 +1,7 @@
 ---
 description: Resume or run the next KOS development task through its workflow
 agent: build
+model: openai/gpt-5.6-terra
 ---
 
 Load the `kos` skill and follow it exactly. This command accepts no arguments.

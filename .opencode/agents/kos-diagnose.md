@@ -2,6 +2,7 @@
 description: Performs one evidence-based read-only advanced KOS diagnosis step.
 mode: subagent
 model: openai/gpt-5.6-sol
+reasoningEffort: high
 permission:
   edit: allow
   task: deny
