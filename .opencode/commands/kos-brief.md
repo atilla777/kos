@@ -4,7 +4,7 @@ agent: build
 model: openai/gpt-5.6-sol
 ---
 
-Load the `kos` and `kos-brief` skills and follow the `kos-brief` skill exactly.
+Load the `kos-brief` scheduler skill and follow it exactly.
 Treat the complete text below as the product request. If it is blank, stop
 without reading or mutating KOS state and ask for a concrete request.
 

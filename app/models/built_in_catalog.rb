@@ -14,9 +14,15 @@ class BuiltInCatalog
         [ "review", "Review", "advanced", "Independently review the product specification and proposed task graph without changing the worktree.",
           "# Review\n\n## Findings\n\n## Decision", { "approved" => { "next_step" => "publish" },
             "changes_requested" => { "next_step" => "brief" } } ],
-        [ "publish", "Publish", "standard", "Publish the reviewed specification; after remote verification the orchestrator materializes the validated child graph.",
-          "# Publication\n\n## Git state\n\n## Child graph", { "published" => { "complete_task" => true },
-            "base_moved" => { "next_step" => "brief" }, "graph_invalid" => { "next_step" => "brief" } } ]
+        [ "publish", "Publish", "standard", "Publish the reviewed specification and, after remote verification, materialize the validated child graph.",
+          "# Publication\n\n## Git state\n\n## Child graph", { "published" => { "next_step" => "verify" },
+            "review_invalid" => { "next_step" => "review" }, "base_moved" => { "next_step" => "brief" },
+            "graph_invalid" => { "next_step" => "brief" } } ],
+        [ "verify", "Verify", "advanced", "Independently verify the published specification and materialized child graph against the task and accepted artifacts.",
+          "# Verification\n\n## Publication\n\n## Child graph\n\n## Decision", {
+            "verified" => { "complete_task" => true }, "publication_missing" => { "next_step" => "publish" },
+            "materialization_missing" => { "next_step" => "publish" }, "brief_invalid" => { "next_step" => "brief" }
+          } ]
       ]
     },
     "development" => {
@@ -26,15 +32,20 @@ class BuiltInCatalog
         [ "plan", "Plan", "advanced", "Plan the smallest implementation that satisfies the task and its acceptance criteria.",
           "# Plan\n\n## Scope\n\n## Implementation\n\n## Verification", { "planned" => { "next_step" => "implement" } } ],
         [ "implement", "Implement", "standard", "Implement the plan and run every project-required check, fixing ordinary failures before returning.",
-          "# Implementation\n\n## Changes\n\n## Checks", { "implemented" => { "next_step" => "document" } } ],
+          "# Implementation\n\n## Changes\n\n## Checks", { "implemented" => { "next_step" => "document" },
+            "plan_invalid" => { "next_step" => "plan" } } ],
         [ "document", "Document", "standard", "Update affected product specifications through OKF, or record why observable behavior did not change.",
-          "# Documentation\n\n## Product behavior", { "documented" => { "next_step" => "review" } } ],
+          "# Documentation\n\n## Product behavior", { "documented" => { "next_step" => "review" },
+            "implementation_invalid" => { "next_step" => "implement" } } ],
         [ "review", "Review", "advanced", "Independently review the complete uncommitted change without modifying the worktree.",
           "# Review\n\n## Findings\n\n## Decision", { "approved" => { "next_step" => "publish" },
             "changes_requested" => { "next_step" => "implement" }, "redesign_required" => { "next_step" => "plan" } } ],
         [ "publish", "Publish", "standard", "Verify the reviewed change, safely update its base, create one task commit, push, and verify the remote result.",
-          "# Publication\n\n## Git state\n\n## Remote verification", { "published" => { "complete_task" => true },
-            "base_moved" => { "next_step" => "implement" } } ]
+          "# Publication\n\n## Git state\n\n## Remote verification", { "published" => { "next_step" => "verify" },
+            "review_invalid" => { "next_step" => "review" }, "base_moved" => { "next_step" => "implement" } } ],
+        [ "verify", "Verify", "advanced", "Independently verify the published task result and remote commit against the task and accepted artifacts.",
+          "# Verification\n\n## Publication\n\n## Result\n\n## Decision", { "verified" => { "complete_task" => true },
+            "publication_missing" => { "next_step" => "publish" }, "changes_invalid" => { "next_step" => "implement" } } ]
       ]
     },
     "fix" => {
@@ -44,17 +55,23 @@ class BuiltInCatalog
         [ "diagnose", "Diagnose", "advanced", "Reproduce the reported problem, record evidence, and identify its root cause before planning.",
           "# Diagnosis\n\n## Reproduction\n\n## Evidence\n\n## Root cause", { "diagnosed" => { "next_step" => "plan" } } ],
         [ "plan", "Plan", "advanced", "Plan the smallest fix and a regression check that fails for the reproduced defect.",
-          "# Plan\n\n## Fix\n\n## Regression check", { "planned" => { "next_step" => "implement" } } ],
+          "# Plan\n\n## Fix\n\n## Regression check", { "planned" => { "next_step" => "implement" },
+            "diagnosis_invalid" => { "next_step" => "diagnose" } } ],
         [ "implement", "Implement", "standard", "Implement the fix and regression check, then run every project-required check and correct ordinary failures.",
-          "# Implementation\n\n## Changes\n\n## Checks", { "implemented" => { "next_step" => "document" } } ],
+          "# Implementation\n\n## Changes\n\n## Checks", { "implemented" => { "next_step" => "document" },
+            "plan_invalid" => { "next_step" => "plan" } } ],
         [ "document", "Document", "standard", "Update affected product specifications through OKF, or record why observable behavior did not change.",
-          "# Documentation\n\n## Product behavior", { "documented" => { "next_step" => "review" } } ],
+          "# Documentation\n\n## Product behavior", { "documented" => { "next_step" => "review" },
+            "implementation_invalid" => { "next_step" => "implement" } } ],
         [ "review", "Review", "advanced", "Independently review the diagnosis and complete uncommitted fix without modifying the worktree.",
           "# Review\n\n## Findings\n\n## Decision", { "approved" => { "next_step" => "publish" },
             "changes_requested" => { "next_step" => "implement" }, "redesign_required" => { "next_step" => "plan" } } ],
         [ "publish", "Publish", "standard", "Verify the reviewed fix, safely update its base, create one task commit, push, and verify the remote result.",
-          "# Publication\n\n## Git state\n\n## Remote verification", { "published" => { "complete_task" => true },
-            "base_moved" => { "next_step" => "implement" } } ]
+          "# Publication\n\n## Git state\n\n## Remote verification", { "published" => { "next_step" => "verify" },
+            "review_invalid" => { "next_step" => "review" }, "base_moved" => { "next_step" => "implement" } } ],
+        [ "verify", "Verify", "advanced", "Independently verify the published fix and remote commit against the problem and accepted artifacts.",
+          "# Verification\n\n## Publication\n\n## Result\n\n## Decision", { "verified" => { "complete_task" => true },
+            "publication_missing" => { "next_step" => "publish" }, "changes_invalid" => { "next_step" => "implement" } } ]
       ]
     }
   }.freeze

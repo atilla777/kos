@@ -4,7 +4,9 @@ class ApplicationController < ActionController::API
   rescue_from ActiveRecord::RecordNotFound, with: :render_not_found
   rescue_from ActiveRecord::RecordInvalid, with: :render_validation_failed
   rescue_from ActiveRecord::RecordNotUnique, with: :render_record_not_unique
+  rescue_from RepositoryIdentity::Invalid, with: :render_bad_request
   rescue_from TaskLifecycle::InvalidTransition, with: :render_invalid_transition
+  rescue_from TaskLifecycle::InvalidInput, with: :render_bad_request
   rescue_from TaskLifecycle::Conflict, with: :render_conflict
   rescue_from BriefTaskGraph::InvalidDefinition, with: :render_invalid_graph
 
@@ -22,6 +24,23 @@ class ApplicationController < ActionController::API
   def required_integer(name)
     value = params.require(name)
     raise ActionController::BadRequest, "#{name} must be an integer" unless value.is_a?(Integer)
+
+    value
+  end
+
+  def required_text(name)
+    value = params.require(name)
+    raise ActionController::BadRequest, "#{name} must be a non-empty valid UTF-8 string" unless
+      value.is_a?(String) && !value.empty? && value.encoding == Encoding::UTF_8 && value.valid_encoding?
+
+    value
+  end
+
+  def optional_string(name)
+    return unless params.key?(name)
+
+    value = params[name]
+    raise ActionController::BadRequest, "#{name} must be a string" unless value.is_a?(String)
 
     value
   end

@@ -45,8 +45,10 @@ module ActiveSupport
       BuiltInCatalog.definitions.fetch("development").deep_dup
     end
 
-    def create_project(name: "Project")
-      Project.create!(name:, remote_url: "https://example.test/#{name.parameterize}.git", default_branch: "main")
+    def create_project(name: "Project", remote_url: nil)
+      remote_url ||= "https://example.test/test/#{name.parameterize}-#{SecureRandom.hex(6)}.git"
+      Project.create!(name:, remote_url:, repository_identity: RepositoryIdentity.normalize(remote_url),
+        default_branch: "main")
     end
 
     def create_workflow(name: "Workflow", definition: valid_workflow_definition)

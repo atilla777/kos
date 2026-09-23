@@ -95,6 +95,14 @@ class TaskTest < ActiveSupport::TestCase
     assert_not task.update(task_type: create_task_type(name: "Other", workflow: task.workflow))
   end
 
+  test "keeps a creation key immutable" do
+    task = create_task
+    task.update_columns(creation_key: "request:fix:sha256:abc")
+
+    assert_not task.reload.update(creation_key: "request:fix:sha256:def")
+    assert_includes task.errors[:creation_key], "cannot change after task creation"
+  end
+
   test "allows parent edits only while pending and unclaimed" do
     project = create_project
     first_parent = create_task(project:)
@@ -114,7 +122,9 @@ class TaskTest < ActiveSupport::TestCase
     task = create_task
 
     assert_not task.update(status: "completed", current_step: "check", owner_id: "owner", claim_version: 1,
-      lease_expires_at: 1.hour.from_now)
+      lease_expires_at: 1.hour.from_now, accepted_artifacts: { "develop" => {} }, pause_message: "Question",
+      pause_step: "develop", pause_claim_version: 1, human_answer: "Answer", human_answer_step: "develop",
+      human_answer_claim_version: 1)
     assert_includes task.errors[:base], "lifecycle state can change only through TaskLifecycle"
   end
 end

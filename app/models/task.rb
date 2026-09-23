@@ -17,6 +17,7 @@ class Task < ApplicationRecord
   validate :workflow_is_immutable, on: :update
   validate :title_is_immutable, on: :update
   validate :task_type_is_immutable, on: :update
+  validate :creation_key_is_immutable, on: :update
   validate :description_is_immutable_after_claim, on: :update
   validate :parent_is_immutable_after_claim, on: :update
   validate :lifecycle_state_changes_through_lifecycle, on: :update
@@ -84,12 +85,19 @@ class Task < ApplicationRecord
     errors.add(:task_type, "cannot change after task creation") if will_save_change_to_task_type_id?
   end
 
+  def creation_key_is_immutable
+    errors.add(:creation_key, "cannot change after task creation") if will_save_change_to_creation_key?
+  end
+
   def title_is_immutable
     errors.add(:title, "cannot change after task creation") if will_save_change_to_title?
   end
 
   def lifecycle_state_changes_through_lifecycle
-    lifecycle_fields = %w[status current_step owner_id claim_version lease_expires_at]
+    lifecycle_fields = %w[
+      status current_step owner_id claim_version lease_expires_at accepted_artifacts pause_message pause_step
+      pause_claim_version human_answer human_answer_step human_answer_claim_version
+    ]
     return unless lifecycle_fields.any? { |field| will_save_change_to_attribute?(field) }
 
     errors.add(:base, "lifecycle state can change only through TaskLifecycle")

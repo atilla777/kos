@@ -20,10 +20,10 @@ abort("--config-home must be an absolute path") unless options[:config_home].abs
 inventory = {
   "commands" => %w[kos.md kos-brief.md kos-fix.md],
   "agents" => %w[
-    kos-diagnose.md kos-plan.md kos-publish.md kos-review.md
+    kos-brief.md kos-diagnose.md kos-document.md kos-implement.md kos-plan.md kos-publish.md kos-review.md kos-verify.md
     kos-step-advanced.md kos-step-standard.md
   ],
-  "skills" => %w[kos kos-brief kos-git kos-step okf]
+  "skills" => %w[kos kos-brief kos-cli kos-create kos-git kos-step okf]
 }
 obsolete = {
   "agents" => %w[kos-orchestrator.md kos-step.md]

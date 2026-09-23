@@ -2,15 +2,15 @@ require "test_helper"
 
 class BuiltInCatalogTest < ActiveSupport::TestCase
   EXPECTED_STEPS = {
-    "brief" => %w[brief review publish],
-    "development" => %w[plan implement document review publish],
-    "fix" => %w[diagnose plan implement document review publish]
+    "brief" => %w[brief review publish verify],
+    "development" => %w[plan implement document review publish verify],
+    "fix" => %w[diagnose plan implement document review publish verify]
   }.freeze
 
   EXPECTED_TIERS = {
-    "brief" => %w[advanced advanced standard],
-    "development" => %w[advanced standard standard advanced standard],
-    "fix" => %w[advanced advanced standard standard advanced standard]
+    "brief" => %w[advanced advanced standard advanced],
+    "development" => %w[advanced standard standard advanced standard advanced],
+    "fix" => %w[advanced advanced standard standard advanced standard advanced]
   }.freeze
 
   test "installs the complete canonical catalog" do
@@ -28,6 +28,10 @@ class BuiltInCatalogTest < ActiveSupport::TestCase
       assert steps.all? { |step| step.dig("outcomes", "needs_human") == { "pause" => "needs_human" } }
       assert steps.all? { |step| step.dig("outcomes", "blocked") == { "pause" => "blocked" } }
       refute_includes steps.pluck("id"), "check"
+      completing = steps.flat_map do |step|
+        step.fetch("outcomes").filter_map { |outcome, action| [ step.fetch("id"), outcome ] if action["complete_task"] }
+      end
+      assert_equal [ [ "verify", "verified" ] ], completing
       assert task_type.workflow.valid?
     end
   end
@@ -43,13 +47,40 @@ class BuiltInCatalogTest < ActiveSupport::TestCase
     assert_equal ids, TaskType.where(key: TaskType::RESERVED_KEYS).order(:key).pluck(:id, :workflow_id)
   end
 
-  test "brief publication leaves child materialization to the orchestrator" do
-    publish = BuiltInCatalog.definitions.fetch("brief").fetch("steps").find { |step| step.fetch("id") == "publish" }
+  test "brief publication and verification preserve graph correction semantics" do
+    steps = BuiltInCatalog.definitions.fetch("brief").fetch("steps").index_by { |step| step.fetch("id") }
+    publish = steps.fetch("publish")
+    verify = steps.fetch("verify")
 
-    assert_includes publish.fetch("instruction"), "after remote verification the orchestrator materializes"
-    assert_equal({ "complete_task" => true }, publish.dig("outcomes", "published"))
+    assert_includes publish.fetch("instruction"), "after remote verification, materialize"
+    assert_equal({ "next_step" => "verify" }, publish.dig("outcomes", "published"))
+    assert_equal({ "next_step" => "review" }, publish.dig("outcomes", "review_invalid"))
     assert_equal({ "next_step" => "brief" }, publish.dig("outcomes", "base_moved"))
     assert_equal({ "next_step" => "brief" }, publish.dig("outcomes", "graph_invalid"))
+    assert_equal({ "complete_task" => true }, verify.dig("outcomes", "verified"))
+    assert_equal({ "next_step" => "publish" }, verify.dig("outcomes", "publication_missing"))
+    assert_equal({ "next_step" => "publish" }, verify.dig("outcomes", "materialization_missing"))
+    assert_equal({ "next_step" => "brief" }, verify.dig("outcomes", "brief_invalid"))
+  end
+
+  test "development and fix expose explicit predecessor correction routes" do
+    %w[development fix].each do |key|
+      steps = BuiltInCatalog.definitions.fetch(key).fetch("steps").index_by { |step| step.fetch("id") }
+
+      assert_equal({ "next_step" => "plan" }, steps.dig("implement", "outcomes", "plan_invalid"))
+      assert_equal({ "next_step" => "implement" }, steps.dig("document", "outcomes", "implementation_invalid"))
+      assert_equal({ "next_step" => "implement" }, steps.dig("review", "outcomes", "changes_requested"))
+      assert_equal({ "next_step" => "plan" }, steps.dig("review", "outcomes", "redesign_required"))
+      assert_equal({ "next_step" => "review" }, steps.dig("publish", "outcomes", "review_invalid"))
+      assert_equal({ "next_step" => "implement" }, steps.dig("publish", "outcomes", "base_moved"))
+      assert_equal({ "next_step" => "verify" }, steps.dig("publish", "outcomes", "published"))
+      assert_equal({ "complete_task" => true }, steps.dig("verify", "outcomes", "verified"))
+      assert_equal({ "next_step" => "publish" }, steps.dig("verify", "outcomes", "publication_missing"))
+      assert_equal({ "next_step" => "implement" }, steps.dig("verify", "outcomes", "changes_invalid"))
+    end
+
+    fix = BuiltInCatalog.definitions.fetch("fix").fetch("steps").index_by { |step| step.fetch("id") }
+    assert_equal({ "next_step" => "diagnose" }, fix.dig("plan", "outcomes", "diagnosis_invalid"))
   end
 
   test "creates a new revision and preserves existing tasks and custom catalog entries" do

@@ -19,6 +19,7 @@ class TasksController < ApplicationController
       title: required_string(:title),
       description_markdown: required_string(:description_markdown),
       owner_id: required_string(:owner_id),
+      creation_key: optional_string(:creation_key),
       parent: find_optional_task(:parent_id),
       blockers: find_tasks(optional_integer_array(:blocker_ids, default: []))
     )
@@ -28,6 +29,28 @@ class TasksController < ApplicationController
 
   def show
     render json: serialize(lifecycle.show!(params[:id]))
+  end
+
+  def context
+    task = Task.includes(:project, :workflow).find(params[:id])
+    step = task.workflow.step_for(task.current_step)
+    render json: {
+      task: task.as_json(only: %i[id project_id title description_markdown status current_step owner_id claim_version
+        lease_expires_at]),
+      project: task.project.as_json(only: %i[id name repository_identity remote_url default_branch]),
+      step: step.slice("id", "name", "instruction", "artifact_template", "model_tier").merge(
+        "allowed_outcomes" => step.fetch("outcomes").keys),
+      artifacts: artifact_index(task),
+      pause: current_pause(task)
+    }
+  end
+
+  def artifact
+    task = Task.find(params[:id])
+    accepted = task.accepted_artifacts[required_query_string(:step)]
+    raise ActiveRecord::RecordNotFound unless accepted
+
+    render json: accepted.slice("outcome", "markdown", "accepted_claim_version", "reconstructed")
   end
 
   def update
@@ -81,7 +104,9 @@ class TasksController < ApplicationController
       raise ActionController::BadRequest, "takeover_confirmed must be a boolean"
     end
 
-    task = lifecycle.resume!(task_id: params[:id], owner_id: required_string(:owner_id), takeover_confirmed:)
+    task = lifecycle.resume!(task_id: params[:id], owner_id: required_string(:owner_id),
+      claim_version: required_integer(:claim_version), step: required_string(:step),
+      answer: optional_string(:answer), takeover_confirmed:)
     render json: serialize(task)
   end
 
@@ -91,7 +116,9 @@ class TasksController < ApplicationController
       owner_id: required_string(:owner_id),
       claim_version: required_integer(:claim_version),
       step: required_string(:step),
-      outcome: required_string(:outcome)
+      outcome: required_string(:outcome),
+      artifact: required_text(:artifact),
+      message: optional_string(:message)
     )
     render json: serialize(task)
   end
@@ -130,6 +157,29 @@ class TasksController < ApplicationController
   end
 
   private
+
+  def required_query_string(name)
+    value = params.require(name)
+    raise ActionController::BadRequest, "#{name} must be a non-empty string" unless value.is_a?(String) && value.present?
+
+    value
+  end
+
+  def artifact_index(task)
+    task.accepted_artifacts.map do |step, artifact|
+      artifact.slice("outcome", "accepted_claim_version", "reconstructed").merge("step" => step)
+    end
+  end
+
+  def current_pause(task)
+    return unless task.pause_step == task.current_step && task.pause_message.present?
+
+    pause = { step: task.pause_step, claim_version: task.pause_claim_version, message: task.pause_message }
+    if task.human_answer_step == task.pause_step && task.human_answer_claim_version == task.pause_claim_version
+      pause[:answer] = task.human_answer
+    end
+    pause
+  end
 
   def lifecycle
     @lifecycle ||= TaskLifecycle.new

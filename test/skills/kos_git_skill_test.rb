@@ -13,39 +13,39 @@ class KosGitSkillTest < ActiveSupport::TestCase
     assert match
     frontmatter = YAML.safe_load(match[1])
     assert_equal "kos-git", frontmatter.fetch("name")
-    assert_match(/KOS task worktree setup/, frontmatter.fetch("description"))
+    assert_match(/KOS task worktree derivation/, frontmatter.fetch("description"))
     assert_equal [ "SKILL.md" ], Dir.children(SKILL_PATH.dirname).sort
   end
 
-  test "documents the closed safety publication and recovery protocol" do
+  test "derives Git state by task ID and centralizes step authority" do
     source = File.read(SKILL_PATH)
 
     [
-      "Paths", "Verify The Repository", "Create Or Reuse A Worktree",
-      "Development, Checks, And Review", "Publication Preflight", "A Moved Base",
-      "Create The Publication Commit", "Push And Verify",
-      "Recover An Interrupted Publication", "Result"
+      "Repository Discovery", "Authoritative Context", "Step Policy", "Publication", "Independent Verification"
     ].each { |heading| assert_match(/^## #{Regexp.escape(heading)}$/, source) }
 
+    assert_includes source, "Accept only a positive task ID"
+    assert_includes source, "derive the project ID,\nregistered identity, remote, default branch"
+    assert_includes source, "Never accept paths, commands, a diff, changed\nfiles, project identity, or Git facts from the dispatcher"
     assert_includes source, "<kos-data-home>/worktrees/<project-id>/<task-id>"
-    assert_includes source, "git worktree list --porcelain"
-    assert_includes source, "git worktree add --detach"
-    assert_includes source, "git checkout --merge --detach"
     assert_includes source, "KOS-Task: <task-id>"
-    assert_includes source, "git merge-base --is-ancestor"
-    assert_includes source, "Divergent or rewritten history is `blocked` without mutation"
-    assert_includes source, "A trailer alone never proves ownership or review"
-    assert_includes source, "changed paths exactly match"
-    assert_includes source, "File.expand_path"
-    assert_includes source, "whitespace-only"
-    assert_includes source, "replacing every run of title whitespace"
-    assert_includes source, "Never use force push"
-    assert_includes source, "Always observe local and remote state before mutation"
-    assert_includes source, "must not move HEAD"
-    assert_includes source, "do not retry"
-    assert_includes source, "Never run `git worktree prune`"
-    assert_includes source, "Never delete an unexpected path"
-    assert_includes source, "this skill does neither"
+    assert_includes source, "`publish` alone may update a moved base, stage, commit, and push"
+    assert_includes source, "`implement` and `document` may mutate"
+    assert_includes source, "`diagnose`, `plan`, `review`, and `verify` are read-only"
+    assert_includes source, "At `verify`, perform no mutation"
+    assert_includes source, "Independently fetch the remote branch"
+    assert_includes source, "`KOS-Task: <task-id>` trailer"
+    assert_includes source, "changed paths and patch"
+    assert_includes source, "`materialization_missing`"
+    assert_includes source, "never reports a KOS\nattempt"
+    assert_includes source, "exactly one configured fetch URL"
+    assert_includes source, "exactly one configured push URL"
+    assert_includes source, "absolute scp path"
+    assert_includes source, "duplicate or ambiguous leading slashes"
+    assert_includes source, "Fetch and push spellings may\ndiffer only when both normalize to the same identity"
+    assert_includes source, "Before a task ID exists, a scheduler or `kos-create` returns that canonical\nidentity to `kos-cli` for exact project lookup"
+    assert_includes source, "compare the discovered identity directly with the registered identity in `task\ncontext`; do not call `project show`"
+    assert_match(/stops before task or local recovery\s+mutation/, source)
   end
 
   test "separate task worktrees preserve independent uncommitted changes without commits" do
