@@ -81,7 +81,8 @@ reading the task instead of reconstructing progress from local execution files.
   administrative registration action; KOS never substitutes another project.
 - Discovery stops before task, worktree, or creation-recovery mutation when
   `origin` is absent or ambiguous, fetch and push identify different repositories,
-  the canonical identity is invalid, or exact registration lookup fails.
+  the canonical identity is invalid, including an HTTPS or SSH URL with an
+  explicit port, or exact registration lookup fails.
 - A step agent that cannot confirm its report leaves recovery to authoritative
   task observation; its textual response is never treated as a transition.
 

@@ -22,7 +22,8 @@ module Kos
       end
 
       uri = URI.parse(raw)
-      unless %w[https ssh].include?(uri.scheme) && uri.host && uri.port == uri.default_port &&
+      unless %w[https ssh].include?(uri.scheme) && uri.host &&
+          !raw.match?(%r{\A(?:https|ssh)://[^/]*:\d*(?:/|\z)}i) &&
           uri.query.nil? && uri.fragment.nil? && uri.path&.match?(%r{\A/[^/]}) && !uri.path.include?("//")
         raise Invalid, "repository URL must be an unambiguous HTTPS or SSH URL"
       end

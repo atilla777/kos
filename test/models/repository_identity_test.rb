@@ -40,6 +40,18 @@ class RepositoryIdentityTest < ActiveSupport::TestCase
     end
   end
 
+  test "rejects explicit HTTPS and SSH ports" do
+    [
+      "https://github.com:443/atilla777/kos.git",
+      "https://github.com:8443/atilla777/kos.git",
+      "https://github.com:/atilla777/kos.git",
+      "ssh://git@github.com:22/atilla777/kos.git",
+      "ssh://git@github.com:/atilla777/kos.git"
+    ].each do |url|
+      assert_raises(RepositoryIdentity::Invalid, url) { RepositoryIdentity.normalize(url) }
+    end
+  end
+
   test "project identity must exactly match its remote" do
     project = Project.new(name: "KOS", remote_url: "https://github.com/atilla777/kos.git",
       repository_identity: "github.com/other/kos", default_branch: "main")
