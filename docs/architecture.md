@@ -115,6 +115,11 @@ diagnosis, planning, and review profiles permit that tool to write their
 external artifacts; their worktree read-only boundary is enforced by the step
 contract and by the orchestrator's exact HEAD and status comparisons before and
 after each attempt.
+`PLAN-022` adds canonical repository identity without replacing numeric project
+or task IDs. Rails stores and uniquely indexes `host/namespace/repository`, while
+`kos-git` validates one `origin` fetch/push identity and `kos-cli` performs the
+exact project lookup. Administrative rename or transfer updates the existing
+project row, preserving task associations and derived worktree paths.
 
 ## Built-In Scenario Target
 

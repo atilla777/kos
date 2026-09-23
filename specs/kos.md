@@ -39,7 +39,8 @@ the appropriate agents and repository tools.
   `github.com/atilla777/kos`. Users do not configure `KOS_PROJECT_*`
   environment variables.
 - Project registration binds that canonical repository name to the project's
-  display name, Git remote, default branch, and internal database identity.
+  display name, Git remote, Git-valid nonblank default branch, and internal
+  database identity.
   Database preparation installs the built-in catalog but does not silently
   register a repository.
 - One shared CLI procedure owns CLI discovery, compatibility checks, safe
@@ -85,7 +86,8 @@ the appropriate agents and repository tools.
   guesses an internal ID.
 - Project discovery stops before task or local recovery-state mutation when
   `origin` is absent, its fetch and push destinations identify different
-  repositories, its canonical name is invalid, or lookup is ambiguous.
+  repositories, either side has multiple URLs, its canonical name is invalid,
+  or exact lookup is absent or ambiguous.
 - A symbolic link, directory, or other unexpected object at the current step
   artifact path is a technical blocker and is not removed. A failed agent,
   invalid response, or missing or invalid new artifact leaves the task on the

@@ -1,23 +1,38 @@
 ---
-description: Performs one evidence-based read-only advanced KOS diagnosis step.
+description: Executes one authoritative read-only KOS diagnose step from a task ID.
 mode: subagent
 model: openai/gpt-5.6-sol
 reasoningEffort: high
 permission:
-  edit: allow
+  edit: deny
   task: deny
   skill:
     "*": deny
     kos-step: allow
+    kos-cli: allow
+    kos-git: allow
   external_directory: allow
-  bash: ask
+  bash:
+    "*": allow
+    "git *add *": deny
+    "git *commit *": deny
+    "git *push *": deny
+    "git *reset *": deny
+    "git *checkout *": deny
+    "git *clean *": deny
+    "git *stash *": deny
+    "kos *": deny
+    "*bin/kos *": deny
+    "* task context *": allow
+    "* task artifact *": allow
+    "* task report-attempt *": allow
+    "curl *": deny
+    "sqlite3 *": deny
+    "bin/rails *": deny
 ---
 
-Load the `kos-step` skill and perform only the supplied read-only diagnosis.
-Reproduce the symptom with non-mutating commands, keep the task worktree
-unchanged, write only the supplied `diagnose.md` artifact outside it, and return
-the exact result object required by that skill. Use isolated temporary paths for
-all caches, generated output, databases, and runtime data; never write ignored
-or generated files beneath the worktree. Shell permission exists only for
-approved non-mutating diagnosis commands, never to rename or publish the
-artifact.
+Load `kos-step`; the prompt is only the task ID. Require exact current step
+`diagnose`. Use `kos-cli` and `kos-git` by ID, keep HEAD and worktree status
+unchanged, reproduce safely with isolated temporary runtime state, and establish
+an evidenced root cause. Use `needs_human` for ambiguous expected behavior or a
+non-reproducible report. Report the complete attempt yourself.

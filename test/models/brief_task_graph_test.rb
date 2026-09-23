@@ -65,8 +65,10 @@ class BriefTaskGraphTest < ActiveSupport::TestCase
     cli_entry = observed[:children].find { |entry| entry[:task] == cli }
     assert_equal [ api.id ], cli_entry[:sibling_blocker_ids]
 
+    verification = lifecycle.report_attempt!(task_id: @brief.id, owner_id: "brief-owner",
+      claim_version: claim.claim_version, step: "publish", outcome: "published", artifact: "# Publish")
     completed = lifecycle.report_attempt!(task_id: @brief.id, owner_id: "brief-owner",
-      claim_version: claim.claim_version, step: "publish", outcome: "published")
+      claim_version: verification.claim_version, step: "verify", outcome: "verified", artifact: "# Verify")
     assert_equal "completed", completed.status
     assert_equal api, lifecycle.claim_next!(project: @project, task_type: @development_type, owner_id: "worker")
   end
@@ -134,9 +136,9 @@ class BriefTaskGraphTest < ActiveSupport::TestCase
     end
 
     claim = lifecycle.report_attempt!(task_id: claim.id, owner_id: "brief-owner", claim_version: claim.claim_version,
-      step: "brief", outcome: "specified")
+      step: "brief", outcome: "specified", artifact: "# Brief")
     claim = lifecycle.report_attempt!(task_id: claim.id, owner_id: "brief-owner", claim_version: claim.claim_version,
-      step: "review", outcome: "approved")
+      step: "review", outcome: "approved", artifact: "# Review")
     Task.where(id: claim.id).update_all(lease_expires_at: 1.minute.ago)
     assert_raises(TaskLifecycle::Conflict) do
       @graph.materialize!(parent_id: @brief.id, owner_id: "brief-owner", claim_version: claim.claim_version,
@@ -150,9 +152,9 @@ class BriefTaskGraphTest < ActiveSupport::TestCase
     lifecycle = TaskLifecycle.new
     task = lifecycle.claim!(task_id: @brief.id, owner_id: "brief-owner")
     task = lifecycle.report_attempt!(task_id: task.id, owner_id: "brief-owner", claim_version: task.claim_version,
-      step: "brief", outcome: "specified")
+      step: "brief", outcome: "specified", artifact: "# Brief")
     lifecycle.report_attempt!(task_id: task.id, owner_id: "brief-owner", claim_version: task.claim_version,
-      step: "review", outcome: "approved")
+      step: "review", outcome: "approved", artifact: "# Review")
   end
 end
 
@@ -183,9 +185,9 @@ class BriefTaskGraphConcurrencyTest < ActiveSupport::TestCase
       description_markdown: "Request")
     claim = lifecycle.claim!(task_id: brief.id, owner_id: "brief-owner")
     claim = lifecycle.report_attempt!(task_id: brief.id, owner_id: "brief-owner", claim_version: claim.claim_version,
-      step: "brief", outcome: "specified")
+      step: "brief", outcome: "specified", artifact: "# Brief")
     claim = lifecycle.report_attempt!(task_id: brief.id, owner_id: "brief-owner", claim_version: claim.claim_version,
-      step: "review", outcome: "approved")
+      step: "review", outcome: "approved", artifact: "# Review")
     children = [ { "key" => "child", "title" => "Child", "description_markdown" => "Work",
       "blocker_keys" => [] } ]
     digest = BriefTaskGraph.new.validate!(parent: brief, children:)[:digest]

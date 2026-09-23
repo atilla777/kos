@@ -5,273 +5,152 @@ require "yaml"
 class KosSkillsTest < ActiveSupport::TestCase
   ORCHESTRATOR_PATH = Rails.root.join("skills/kos/SKILL.md")
   STEP_PATH = Rails.root.join("skills/kos-step/SKILL.md")
-  COMMAND_PATH = Rails.root.join(".opencode/commands/kos.md")
-  FIX_COMMAND_PATH = Rails.root.join(".opencode/commands/kos-fix.md")
-  AGENT_PATHS = {
-    "kos-diagnose" => Rails.root.join(".opencode/agents/kos-diagnose.md"),
-    "kos-plan" => Rails.root.join(".opencode/agents/kos-plan.md"),
-    "kos-step-standard" => Rails.root.join(".opencode/agents/kos-step-standard.md"),
-    "kos-step-advanced" => Rails.root.join(".opencode/agents/kos-step-advanced.md"),
-    "kos-review" => Rails.root.join(".opencode/agents/kos-review.md"),
-    "kos-publish" => Rails.root.join(".opencode/agents/kos-publish.md")
-  }.freeze
+  CLI_PATH = Rails.root.join("skills/kos-cli/SKILL.md")
+  BUILT_IN_PROFILES = %w[diagnose plan implement document brief review publish verify].freeze
+  AGENT_PATHS = (BUILT_IN_PROFILES + %w[step-standard step-advanced]).to_h do |name|
+    [ "kos-#{name}", Rails.root.join(".opencode/agents/kos-#{name}.md") ]
+  end.freeze
 
-  test "defines discoverable orchestrator and step skills" do
-    assert_skill ORCHESTRATOR_PATH, "kos", /user invokes \/kos/
-    assert_skill STEP_PATH, "kos-step", /exactly one supplied step/
-  end
-
-  test "exposes the kos slash command and project skill path" do
-    command = File.read(COMMAND_PATH)
-    match = command.match(/\A---\n(.*?)\n---/m)
-
-    assert match
-    frontmatter = YAML.safe_load(match[1])
-    assert_match(/development task/, frontmatter.fetch("description"))
-    assert_equal "build", frontmatter.fetch("agent")
-    assert_equal "openai/gpt-5.6-terra", frontmatter.fetch("model")
-    assert_includes command, "Load the `kos` skill"
-    assert_includes command, "$ARGUMENTS"
-    assert_includes command, "accepts no arguments"
-    assert_includes command, "stop without reading or mutating KOS state"
-    assert_not Rails.root.join(".opencode/agents/kos-orchestrator.md").exist?
-
-    fix_command = File.read(FIX_COMMAND_PATH)
-    fix_frontmatter = YAML.safe_load(fix_command.match(/\A---\n(.*?)\n---/m)[1])
-    assert_match(/Diagnose and fix/, fix_frontmatter.fetch("description"))
-    assert_equal "build", fix_frontmatter.fetch("agent")
-    assert_equal "openai/gpt-5.6-terra", fix_frontmatter.fetch("model")
-    assert_includes fix_command, "Load the `kos` skill"
-    assert_includes fix_command, "$ARGUMENTS"
-    assert_includes fix_command, "If it is blank"
+  test "defines discoverable scheduler step and CLI skills" do
+    assert_skill ORCHESTRATOR_PATH, "kos", /scheduler/
+    assert_skill STEP_PATH, "kos-step", /positive task ID/
+    assert_skill CLI_PATH, "kos-cli", /CLI discovery/
 
     config = JSON.parse(File.read(Rails.root.join("opencode.json")))
-    assert_equal "https://opencode.ai/config.json", config.fetch("$schema")
     assert_equal [ "./skills" ], config.dig("skills", "paths")
   end
 
-  test "defines tiered isolated step and read-only plan and review agent profiles" do
-    agents = AGENT_PATHS.transform_values { |path| frontmatter(path) }
+  test "slash commands retain input safety and delegate only to schedulers" do
+    command = File.read(Rails.root.join(".opencode/commands/kos.md"))
+    fix = File.read(Rails.root.join(".opencode/commands/kos-fix.md"))
+    brief = File.read(Rails.root.join(".opencode/commands/kos-brief.md"))
 
-    assert_equal "subagent", agents.dig("kos-diagnose", "mode")
-    assert_equal "openai/gpt-5.6-sol", agents.dig("kos-diagnose", "model")
-    assert_equal "high", agents.dig("kos-diagnose", "reasoningEffort")
-    assert_equal "allow", agents.dig("kos-diagnose", "permission", "edit")
-    assert_equal "ask", agents.dig("kos-diagnose", "permission", "bash")
-    assert_includes File.read(AGENT_PATHS.fetch("kos-diagnose")), "never to rename or publish the\nartifact"
-    assert_equal "subagent", agents.dig("kos-step-standard", "mode")
-    assert_equal "openai/gpt-5.6-terra", agents.dig("kos-step-standard", "model")
-    assert_equal "medium", agents.dig("kos-step-standard", "reasoningEffort")
-    assert_equal "deny", agents.dig("kos-step-standard", "permission", "task")
-    assert_equal "deny", agents.dig("kos-step-standard", "permission", "bash", "kos *")
-    assert_nil agents.dig("kos-step-standard", "permission", "skill", "kos-git")
-    assert_equal "allow", agents.dig("kos-step-standard", "permission", "skill", "okf")
-    assert_equal "deny", agents.dig("kos-step-standard", "permission", "bash", "git *commit *")
-    assert_equal "allow", agents.dig("kos-step-standard", "permission", "external_directory")
-    assert_equal "openai/gpt-5.6-sol", agents.dig("kos-step-advanced", "model")
-    assert_equal "high", agents.dig("kos-step-advanced", "reasoningEffort")
-    assert_equal "subagent", agents.dig("kos-plan", "mode")
-    assert_equal "openai/gpt-5.6-sol", agents.dig("kos-plan", "model")
-    assert_equal "high", agents.dig("kos-plan", "reasoningEffort")
-    assert_equal "allow", agents.dig("kos-plan", "permission", "edit")
-    assert_equal "deny", agents.dig("kos-plan", "permission", "bash")
-    assert_equal "subagent", agents.dig("kos-review", "mode")
-    assert_equal "openai/gpt-5.6-sol", agents.dig("kos-review", "model")
-    assert_equal "high", agents.dig("kos-review", "reasoningEffort")
-    assert_equal "allow", agents.dig("kos-review", "permission", "edit")
-    assert_equal "deny", agents.dig("kos-review", "permission", "bash")
-    assert_equal "allow", agents.dig("kos-review", "permission", "external_directory")
-    assert_equal "subagent", agents.dig("kos-publish", "mode")
-    assert_equal "openai/gpt-5.6-terra", agents.dig("kos-publish", "model")
-    assert_equal "medium", agents.dig("kos-publish", "reasoningEffort")
-    assert_equal "allow", agents.dig("kos-publish", "permission", "skill", "kos-git")
+    assert_includes command, "`kos` scheduler skill"
+    assert_includes command, "accepts no arguments"
+    assert_includes command, "stop without reading or mutating KOS state"
+    assert_includes fix, "`kos` scheduler skill"
+    assert_includes fix, "If it is blank"
+    assert_includes brief, "`kos-brief` scheduler skill"
+    assert_includes brief, "If it is blank"
   end
 
-  test "orchestrator defines the closed lifecycle and ownership protocol" do
+  test "scheduler dispatches built-ins by exact step with an ID-only prompt" do
+    source = File.read(ORCHESTRATOR_PATH)
+    compact = source.gsub(/\s+/, " ")
+
+    BUILT_IN_PROFILES.each do |step|
+      assert_match(/^\| `#{step}` \| `kos-#{step}` \|$/, source)
+    end
+    assert_includes source, "complete prompt is the task\n   ID's decimal digits and nothing else"
+    assert_includes source, "discard all dispatch context except that ID"
+    assert_includes source, "ignore all textual output and claimed outcome"
+    assert_includes source, "reread authoritative state"
+    assert_includes source, "persisted server question"
+    assert_includes source, "persisted server reason"
+
+    %w[description workflow outcome model tier path project ID diff Git fact artifact].each do |forbidden|
+      assert_match(/must not contain .*#{forbidden}/, compact)
+    end
+  end
+
+  test "scheduler has no step artifact Git or result-parsing policy" do
     source = File.read(ORCHESTRATOR_PATH)
 
-    [
-      "Runtime Inputs", "Select Or Create Work", "Preserve Human Answers", "Resolve Local Paths",
-      "Run The Workflow", "Verify The Artifact First", "Report And Continue",
-      "Recover A Lost Report Response", "Cancellation During Publication",
-      "Stop Conditions"
-    ].each { |heading| assert_match(/^## #{Regexp.escape(heading)}$/, source) }
-
-    assert_includes source, "CLI as the only interface to KOS state"
-    assert_includes source, "KOS_CLI_PATH"
-    assert_includes source, "<kos-cli> --version"
-    assert_includes source, "each needed task command's"
-    assert_includes source, "`--help`"
-    assert_includes source, "Never fall back to an ambient `kos` command"
-    assert_includes source, "KOS_PROJECT_REMOTE_URL"
-    assert_includes source, "KOS_PROJECT_DEFAULT_BRANCH"
-    assert_not_includes source, "KOS_TASK_TYPE_ID"
-    assert_includes source, "`/kos` accepts no task text and never creates a task"
-    assert_match(/`\/kos-fix` requires one nonblank .*problem description/, source)
-    assert_includes source, "--task-type-key fix"
-    assert_includes source, "fix-<request-digest>.json"
-    assert_includes source, "first 120 Unicode scalar values"
-    assert_match(/atomic\s+create-if-absent/, source)
-    assert_includes source, "fix-<request-digest>-task.json"
-    assert_includes source, "atomically create that directory"
-    assert_match(/previous\s+`\/kos-fix` command process has stopped/, source)
-    assert_includes source, "needs no background process"
-    assert_includes source, "Never continue from state read before lock acquisition"
-    assert_match(/explicitly\s+incomplete lock/, source)
-    assert_includes source, "`.holder-*.tmp`"
-    assert_includes source, "any other entry is `blocked`"
-    assert_includes source, "device and inode"
-    assert_includes source, "interruption during cleanup"
-    assert_includes source, "unlink the winning temporary source"
-    assert_includes source, "remove the temporary description file"
-    assert_includes source, "durable binding exists"
-    assert_match(/atomically persist the complete intent before\s+any KOS mutation/, source)
-    assert_includes source, "task create-and-claim"
-    assert_match(/never\s+create a second task/i, source)
-    assert_includes source, "never silently replace the new request"
-    assert_includes source, "task resumable --project-id <project-id>"
-    assert_includes source, "--task-type-key development"
-    assert_match(/task\s+show-owned --project-id <project-id>/, source)
-    assert_includes source, "never require the user to enter an internal ID"
-    assert_includes source, "<step-id>-answer.md"
-    assert_match(/Before `task resume`,\s+atomically write/, source)
-    assert_match(/reuse\s+it without asking again/, source)
-    assert_includes source, "takeover of an `active` task interrupted"
-    assert_includes source, "when retrying a step with a current answer sidecar"
-    assert_includes source, "After an accepted report or recovered report observably advances"
-    assert_includes source, "Before every step, including the first"
-    assert_includes source, "lease_expires_at"
-    assert_includes source, "claim_version"
-    assert_includes source, "launch exactly one fresh"
-    assert_match(/only\s+`review` is independent read-only review/, source)
-    assert_includes source, "only `publish` may commit"
-    assert_includes source, "`kos-publish` agent"
-    assert_includes source, "different agent"
-    assert_includes source, "`kos-review` permission profile"
-    assert_includes source, "the complete current diff"
-    assert_includes source, "record HEAD and complete status immediately before dispatch"
-    assert_includes source, "require HEAD to remain unchanged"
-    assert_includes source, "<kos-data-home>/tasks/<task-id>/<step-id>.md"
-    assert_includes source, "`kos-step-standard`"
-    assert_includes source, "`kos-step-advanced`"
-    assert_includes source, "`kos-plan` agent"
-    assert_includes source, "`kos-diagnose` agent"
-    assert_includes source, "symptom that cannot be reproduced"
-    assert_includes source, "regression check"
-    assert_includes source, "The child, never Rails"
-    assert_includes source, "Only after the artifact is complete and verified"
-    assert_match(/one\s+retry of the identical report is safe/, source)
-    assert_includes source, "HTTP 5xx"
-    assert_includes source, "already published"
-    assert_includes source, "Never claim success before publication is"
+    assert_includes source, "Do not read or validate Markdown"
+    assert_includes source, "inspect Git"
+    assert_includes source, "parse child\nresults"
+    assert_includes source, "call `report-attempt`"
+    assert_includes source, "pending submissions"
+    assert_not_includes source, "<step-id>.md"
+    assert_not_includes source, '"outcome"'
+    assert_not_includes source, "git status"
   end
 
-  test "orchestrator replaces step artifacts without a file identity protocol" do
-    source = File.read(ORCHESTRATOR_PATH)
-    run_contract = section(source, "Run The Workflow")
-    verification = section(source, "Verify The Artifact First")
-
-    assert_includes run_contract, "If it is absent, continue"
-    assert_includes run_contract, "safely\nremove that exact file before launching the child"
-    assert_includes run_contract, "symbolic link,\ndirectory, socket, FIFO, device, or any other unexpected object"
-    assert_includes run_contract, "without removing it or launching an agent"
-    assert_includes run_contract, "Only after the path is absent launch exactly one child"
-    assert_includes run_contract, "ordinary filesystem tool"
-    assert_includes run_contract, "does not need shell access, a temporary file, rename, fsync"
-    assert_includes run_contract, "removes any regular partial or unconfirmed\nfile left by the previous attempt"
-    assert_includes run_contract, "Do not record or compare device, inode, file identity"
-
-    assert_includes verification, "new regular non-symlink file"
-    assert_includes verification, "without following symlinks"
-    assert_includes verification, "nonempty valid UTF-8"
-    assert_includes verification, "missing, empty, truncated, or partial file"
-    assert_includes verification, "completely and truthfully follows the\nsupplied template"
-    assert_includes verification, "content to agree with the returned outcome"
-    assert_includes verification, "including when the filesystem reuses an inode"
-    assert_includes verification, "do not report the attempt"
-  end
-
-  test "orchestrator never guesses an outcome and preserves exact-byte report recovery" do
-    source = File.read(ORCHESTRATOR_PATH)
-    run_contract = section(source, "Run The Workflow")
-    recovery = section(source, "Recover A Lost Report Response")
-
-    assert_includes run_contract, '{"outcome":"<allowed outcome>"}'
-    assert_includes run_contract, "no other key to be present"
-    assert_includes run_contract, "infer success from prose, tool output, or artifact content"
-    assert_includes run_contract, "invalid, missing, or lost child response"
-    assert_includes run_contract, "do not call `report-attempt`"
-    assert_match(/expected action\s+occurred exactly once, accept it/, recovery)
-    assert_includes recovery, "artifact still contains the exact previously verified bytes"
-    assert_includes recovery, "one retry of the identical report is safe"
-    assert_includes recovery, "unavailable server, or an unprovable transition"
-  end
-
-  test "durable recovery files keep their atomic protocols" do
-    orchestrator = File.read(ORCHESTRATOR_PATH)
-    brief = File.read(Rails.root.join("skills/kos-brief/SKILL.md"))
-
-    assert_match(/Before `task resume`,\s+atomically write/, orchestrator)
-    assert_includes orchestrator, "rename it over the final sidecar on the same filesystem, and fsync"
-    assert_includes orchestrator, "atomically persist the complete intent"
-    assert_includes orchestrator, "atomically write and fsync the receipt"
-    assert_includes brief, "Create and replace graph files atomically through unique regular temporary"
-    assert_includes brief, "same-filesystem\nrename, and directory fsync"
-  end
-
-  test "step skill is isolated and returns one allowed result" do
+  test "step executor derives context and atomically reports Markdown itself" do
     source = File.read(STEP_PATH)
 
-    [
-      "Accept One Context", "Authority Boundary", "Execute And Verify",
-      "Read-Only Planning", "Read-Only Diagnosis", "Independent Review", "Publication", "Persist The Artifact", "Return One Result"
-    ].each { |heading| assert_match(/^## #{Regexp.escape(heading)}$/, source) }
+    assert_includes source, "Accept exactly one positive ASCII-decimal task ID and no other"
+    assert_includes source, "`task context ID`"
+    assert_includes source, "Fetch each needed accepted predecessor artifact separately"
+    assert_includes source, "`task artifact` operation"
+    assert_includes source, "Load `kos-git` with only the task ID"
+    assert_includes source, "Re-read `task context ID` immediately before reporting"
+    assert_includes source, "invoke `task report-attempt` itself"
+    assert_includes source, "`--artifact-file -` standard-input form"
+    assert_includes source, "server atomically accepts the artifact and\ntransition"
+    assert_includes source, "minimal non-authoritative statement"
+    assert_includes source, "never read a local task artifact"
+    assert_includes source, "never read a local task artifact,\nsidecar, manifest, receipt, or pending submission"
+    assert_includes source, "Do not return an outcome for the scheduler to parse"
+  end
 
-    assert_includes source, "Never invoke `kos`"
-    assert_includes source, "Work only inside the exact supplied worktree"
-    assert_includes source, "Execute only this step"
-    assert_includes source, "Do not commit before publication"
-    assert_match(/Write only the\s+external `plan\.md` artifact/, source)
-    assert_includes source, "Write only the external\n`diagnose.md` artifact"
-    assert_includes source, "cannot be\nreproduced"
-    assert_includes source, "remain read-only"
-    assert_includes source, "material design error back to"
-    assert_includes source, "Load and follow `kos-git`"
-    assert_includes source, "exactly one outcome key"
-    assert_includes source, '"outcome":"<exact allowed key>"'
-    assert_not_includes source, '"artifact_markdown"'
-    assert_includes source, "write it directly to only the exact supplied"
-    assert_includes source, "normal edit or write operation is sufficient"
-    assert_includes source, "including `apply_patch`\nwhen shell access is denied"
-    assert_includes source, "Do not create a unique temporary artifact, rename"
-    assert_includes source, "does not require shell access for it"
-    assert_includes source, "nonempty valid UTF-8"
-    assert_not_includes source, "different file identity"
-    assert_not_includes source, "Move to:"
-    assert_includes source, "Write the observed publication facts"
+  test "focused CLI skill validates context artifact and report operations" do
+    source = File.read(CLI_PATH)
+    compact = source.gsub(/\s+/, " ")
+
+    assert_includes source, "absolute administrator-configured `KOS_CLI_PATH`"
+    assert_includes source, "`task context ID`"
+    assert_includes source, "`task artifact ID --step STEP`"
+    assert_includes source, "`task report-attempt ID --owner-id OWNER --claim-version VERSION --step STEP"
+    assert_includes compact, "atomically stored Markdown"
+    assert_includes source, "Never blindly retry a mutation"
+    assert_includes source, "Server authorization and fencing remain"
+    assert_includes compact, "Do not emulate them with old `task show`, local artifact paths"
+    assert_match(/^## Project Discovery$/, source)
+    assert_includes source, "single `origin`\nfetch URL and single `origin` push URL"
+    assert_includes source, "`project show\n--repository-identity IDENTITY`"
+    assert_includes source, "equal `IDENTITY` byte-for-byte"
+    assert_includes source, "stops before every task mutation"
+  end
+
+  test "profiles enforce exact authority and publish alone can commit or push" do
+    agents = AGENT_PATHS.transform_values { |path| frontmatter(path) }
+
+    AGENT_PATHS.each do |name, path|
+      profile = agents.fetch(name)
+      source = File.read(path)
+      assert_equal "subagent", profile.fetch("mode")
+      assert_equal "deny", profile.dig("permission", "task")
+      assert_equal "allow", profile.dig("permission", "skill", "kos-step")
+      assert_equal "allow", profile.dig("permission", "skill", "kos-cli")
+      assert_includes source, "prompt is only the task ID"
+      next if name == "kos-publish"
+
+      assert_equal "deny", profile.dig("permission", "bash", "git *commit *"), name
+      assert_equal "deny", profile.dig("permission", "bash", "git *push *"), name
+    end
+
+    assert_nil agents.dig("kos-publish", "permission", "bash", "git *commit *")
+    assert_nil agents.dig("kos-publish", "permission", "bash", "git *push *")
+    assert_includes File.read(AGENT_PATHS.fetch("kos-publish")), "this profile alone may"
+    assert_includes File.read(AGENT_PATHS.fetch("kos-implement")), "every required\ntest, lint, formatting, build, and type check"
+    assert_equal "allow", agents.dig("kos-document", "permission", "skill", "okf")
+    assert_equal "allow", agents.dig("kos-brief", "permission", "skill", "okf")
+  end
+
+  test "review verify plan and diagnose profiles are read-only" do
+    %w[kos-diagnose kos-plan kos-review kos-verify].each do |name|
+      profile = frontmatter(AGENT_PATHS.fetch(name))
+      source = File.read(AGENT_PATHS.fetch(name))
+
+      assert_equal "deny", profile.dig("permission", "edit"), name
+      assert_equal "deny", profile.dig("permission", "bash", "git *checkout *"), name
+      assert_match(/unchanged|read-only/, source, name)
+    end
+    assert_includes File.read(AGENT_PATHS.fetch("kos-verify")), "Only `verified` may complete"
   end
 
   private
 
   def assert_skill(path, name, description_pattern)
     source = File.read(path)
-    match = source.match(/\A---\n(.*?)\n---/m)
-
-    assert match
-    frontmatter = YAML.safe_load(match[1])
-    assert_equal name, frontmatter.fetch("name")
-    assert_match description_pattern, frontmatter.fetch("description")
+    metadata = YAML.safe_load(source.match(/\A---\n(.*?)\n---/m)[1])
+    assert_equal name, metadata.fetch("name")
+    assert_match description_pattern, metadata.fetch("description")
     assert_equal [ "SKILL.md" ], Dir.children(path.dirname).sort
   end
 
   def frontmatter(path)
-    match = File.read(path).match(/\A---\n(.*?)\n---/m)
-
-    assert match
-    YAML.safe_load(match[1])
-  end
-
-  def section(source, heading)
-    source[/^## #{Regexp.escape(heading)}$.*?(?=^## |\z)/m] || flunk("Missing #{heading} section")
+    YAML.safe_load(File.read(path).match(/\A---\n(.*?)\n---/m)[1])
   end
 end

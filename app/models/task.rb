@@ -89,7 +89,10 @@ class Task < ApplicationRecord
   end
 
   def lifecycle_state_changes_through_lifecycle
-    lifecycle_fields = %w[status current_step owner_id claim_version lease_expires_at]
+    lifecycle_fields = %w[
+      status current_step owner_id claim_version lease_expires_at accepted_artifacts pause_message pause_step
+      pause_claim_version human_answer human_answer_step human_answer_claim_version
+    ]
     return unless lifecycle_fields.any? { |field| will_save_change_to_attribute?(field) }
 
     errors.add(:base, "lifecycle state can change only through TaskLifecycle")

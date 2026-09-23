@@ -1,5 +1,5 @@
 ---
-description: Executes one standard-tier non-review KOS workflow step under the owning orchestrator.
+description: Executes one unknown custom standard-tier KOS step from a task ID.
 mode: subagent
 model: openai/gpt-5.6-terra
 reasoningEffort: medium
@@ -8,24 +8,27 @@ permission:
   skill:
     "*": deny
     kos-step: allow
-    okf: allow
+    kos-cli: allow
+    kos-git: allow
   external_directory: allow
   bash:
     "*": allow
-    "kos *": deny
-    "*bin/kos *": deny
-    "* task report-attempt *": deny
-    "curl *": deny
-    "sqlite3 *": deny
-    "bin/rails *": deny
-    "git *add *": deny
     "git *commit *": deny
     "git *push *": deny
     "git *reset *": deny
     "git *checkout *": deny
     "git *clean *": deny
+    "git *stash *": deny
+    "kos *": deny
+    "*bin/kos *": deny
+    "* task context *": allow
+    "* task artifact *": allow
+    "* task report-attempt *": allow
+    "curl *": deny
+    "sqlite3 *": deny
+    "bin/rails *": deny
 ---
 
-Load the `kos-step` skill and execute only the supplied standard-tier workflow
-step. Never claim ownership or mutate KOS state; the parent orchestrator alone
-owns those operations.
+Load `kos-step`; the prompt is only the task ID. Refuse every built-in step,
+which requires its focused profile. Execute one unknown custom standard-tier
+step without commit or push and report its complete attempt yourself.

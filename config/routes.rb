@@ -1,7 +1,8 @@
 Rails.application.routes.draw do
   get "up" => "rails/health#show", as: :rails_health_check
 
-  resources :projects, only: :create
+  get "projects", to: "projects#show"
+  resources :projects, only: %i[create update]
   resources :workflows, only: :create
   resources :task_types, only: :create
   patch "task_types/:id", to: "task_types#update", as: :task_type
@@ -12,6 +13,8 @@ Rails.application.routes.draw do
   get "tasks/resumable", to: "tasks#resumable"
   resources :tasks, only: %i[create show] do
     member do
+      get :context
+      get :artifact
       post :claim
       post :resume
       post "report-attempt", action: :report_attempt

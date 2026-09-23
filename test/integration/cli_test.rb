@@ -17,6 +17,7 @@ class CliTest < ActiveSupport::TestCase
 
     assert_predicate status, :success?
     assert_includes output, "--claim-version VERSION"
+    assert_includes output, "--artifact-file FILE"
     assert_empty error
   end
 
@@ -53,9 +54,17 @@ class CliTest < ActiveSupport::TestCase
           children_file.flush
 
           cases = [
-          [ [ "project", "create", "--name", "KOS", "--remote-url", "git@example.test:kos.git",
-            "--default-branch", "main" ], "POST", "/projects",
-            { "name" => "KOS", "remote_url" => "git@example.test:kos.git", "default_branch" => "main" } ],
+          [ [ "project", "create", "--name", "KOS", "--remote-url", "git@example.test:test/kos.git",
+            "--default-branch", "main", "--repository-identity", "example.test/test/kos" ], "POST", "/projects",
+            { "name" => "KOS", "remote_url" => "git@example.test:test/kos.git", "default_branch" => "main",
+              "repository_identity" => "example.test/test/kos" } ],
+          [ [ "project", "show", "--repository-identity", "example.test/test/kos" ],
+            "GET", "/projects?repository_identity=example.test%2Ftest%2Fkos", nil ],
+          [ [ "project", "update", "7", "--name", "Renamed", "--remote-url",
+            "https://example.test/new/kos.git", "--repository-identity", "example.test/new/kos",
+            "--default-branch", "trunk" ], "PATCH", "/projects/7",
+            { "name" => "Renamed", "remote_url" => "https://example.test/new/kos.git",
+              "repository_identity" => "example.test/new/kos", "default_branch" => "trunk" } ],
           [ [ "workflow", "create", "--name", "Default", "--definition-file", workflow_file.path ],
             "POST", "/workflows", { "name" => "Default", "definition_json" => { "steps" => [ { "id" => "develop" } ] } } ],
           [ [ "task-type", "create", "--key", "feature", "--name", "Feature", "--workflow-id", "4" ],
@@ -79,6 +88,9 @@ class CliTest < ActiveSupport::TestCase
             "PATCH", "/tasks/9", { "description_markdown" => "Updated through STDIN\n", "parent_id" => nil, "blocker_ids" => [] },
             "Updated through STDIN\n" ],
           [ [ "task", "show", "9" ], "GET", "/tasks/9", nil ],
+          [ [ "task", "context", "9" ], "GET", "/tasks/9/context", nil ],
+          [ [ "task", "artifact", "9", "--step", "develop" ],
+            "GET", "/tasks/9/artifact?step=develop", nil ],
           [ [ "task", "show-owned", "--project-id", "1", "--owner-id", "session-1" ],
             "GET", "/tasks/show-owned?project_id=1&owner_id=session-1", nil ],
           [ [ "task", "claim-next", "--project-id", "1", "--task-type-key", "development", "--owner-id", "session-1" ],
@@ -88,12 +100,14 @@ class CliTest < ActiveSupport::TestCase
             "POST", "/tasks/9/claim", { "owner_id" => "session-1" } ],
           [ [ "task", "resumable", "--project-id", "1", "--task-type-key", "fix" ],
             "GET", "/tasks/resumable?project_id=1&task_type_key=fix", nil ],
-          [ [ "task", "resume", "9", "--owner-id", "session-2", "--takeover-confirmed" ],
-            "POST", "/tasks/9/resume", { "owner_id" => "session-2", "takeover_confirmed" => true } ],
+          [ [ "task", "resume", "9", "--owner-id", "session-2", "--claim-version", "5", "--step", "develop",
+            "--answer-file", description_file.path ],
+            "POST", "/tasks/9/resume", { "owner_id" => "session-2", "claim_version" => 5, "step" => "develop",
+              "answer" => "# Task\n\nMultiline description.\n", "takeover_confirmed" => false } ],
           [ [ "task", "report-attempt", "9", "--owner-id", "session-2", "--claim-version", "6",
-            "--step", "develop", "--outcome", "ready" ],
+            "--step", "develop", "--outcome", "ready", "--artifact-file", description_file.path ],
             "POST", "/tasks/9/report-attempt", { "owner_id" => "session-2", "claim_version" => 6,
-              "step" => "develop", "outcome" => "ready" } ],
+              "step" => "develop", "outcome" => "ready", "artifact" => "# Task\n\nMultiline description.\n" } ],
             [ [ "task", "cancel", "9" ], "POST", "/tasks/9/cancel", {} ],
             [ [ "task", "validate-children", "9", "--definition-file", children_file.path ],
               "POST", "/tasks/9/validate-children", { "children" => [ {
@@ -138,6 +152,21 @@ class CliTest < ActiveSupport::TestCase
         environment: {})
       assert_equal 2, status.exitstatus
       assert_includes JSON.parse(error).fetch("message"), "exactly one"
+    end
+  end
+
+  test "strictly validates project command arguments" do
+    cases = [
+      [ "project", "show" ],
+      [ "project", "update", "not-an-id", "--name", "KOS" ],
+      [ "project", "update", "7" ],
+      [ "project", "show", "--repository-identity", "example.test/acme/kos", "extra" ]
+    ]
+
+    cases.each do |arguments|
+      _output, error, status = run_cli(*arguments, environment: {})
+      assert_equal 2, status.exitstatus, arguments.join(" ")
+      assert_equal "usage_error", JSON.parse(error).fetch("error")
     end
   end
 
@@ -229,6 +258,24 @@ class CliTest < ActiveSupport::TestCase
     assert_equal 2, status.exitstatus
     assert_equal "usage_error", JSON.parse(error).fetch("error")
     assert_not_includes error, "cli.rb:"
+  end
+
+  test "reads report artifacts from stdin and rejects empty or oversized artifacts locally" do
+    arguments = [ "task", "report-attempt", "9", "--owner-id", "session", "--claim-version", "1",
+      "--step", "develop", "--outcome", "ready", "--artifact-file", "-" ]
+    output, error, status, request = run_cli_with_server(*arguments, stdin_data: "# Artifact\n")
+
+    assert_predicate status, :success?
+    assert_equal "# Artifact\n", request.dig(:body, "artifact")
+    assert_equal "{\"task\":{\"id\":9}}", output
+    assert_empty error
+
+    [ "", "x" * (1024 * 1024 + 1) ].each do |artifact|
+      _output, local_error, local_status = run_cli(*arguments,
+        environment: { "KOS_API_TOKEN" => "test-secret" }, stdin_data: artifact)
+      assert_equal 2, local_status.exitstatus
+      assert_equal "local_input_error", JSON.parse(local_error).fetch("error")
+    end
   end
 
   private

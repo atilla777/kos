@@ -119,7 +119,7 @@ The first version has exactly five domain tables:
 
 | Table | Required purpose and fields |
 | --- | --- |
-| `projects` | `id`, `name`, `remote_url`, `default_branch`, timestamps |
+| `projects` | `id`, `name`, unique canonical `repository_identity`, `remote_url`, `default_branch`, timestamps |
 | `workflows` | `id`, `name`, `definition_json`, `created_at` |
 | `task_types` | `id`, stable machine `key`, `name`, `workflow_id`, timestamps |
 | `tasks` | `id`, `project_id`, `task_type_id`, `workflow_id`, optional `parent_id`, `title`, `description_markdown`, `status`, `current_step`, `owner_id`, `claim_version`, `lease_expires_at`, timestamps |
@@ -358,10 +358,12 @@ This replaceable step-artifact protocol does not alter the atomic durability
 requirements for human-answer sidecars, command intents and receipts, brief
 graph authority files, or other long-lived recovery state.
 
-Worktree paths are derived, not stored. The Git skill creates a worktree from
-the repository where `/kos` was invoked and verifies that its remote matches
-the project's `remote_url`. Unknown, mismatched, or ambiguous worktrees are not
-deleted automatically; the task becomes `blocked`.
+Worktree paths are derived, not stored. Before task or local recovery mutation,
+the Git and CLI skills cooperatively require one `origin` fetch URL and one push
+URL, normalize equivalent HTTPS and SSH spellings to a canonical repository
+identity, and look up that exact registered identity. Unknown, mismatched,
+malformed, or ambiguous repositories and worktrees are not deleted or repaired
+automatically; work stops as `blocked`.
 
 ## Product Specifications
 
@@ -476,8 +478,9 @@ instruction without changing ownership. `resume` replaces ownership and keeps
 the current step. `report-attempt` sends only the execution identity and
 outcome, not Markdown, SHA, checkpoint, or universal state.
 
-Administrative operations may register projects, workflows, and task types;
-update unclaimed descriptions and dependencies; and cancel tasks.
+Administrative operations may register projects, update or rename-transfer an
+existing project in place, register workflows and task types, update unclaimed
+descriptions and dependencies, and cancel tasks.
 
 Brief graph materialization is one fenced, transactional operation. It accepts
 the complete child definitions with local keys and sibling blockers plus the

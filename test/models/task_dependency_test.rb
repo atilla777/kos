@@ -35,10 +35,12 @@ class TaskDependencyTest < ActiveSupport::TestCase
   test "rejects unsaved tasks from different unsaved projects" do
     workflow = create_workflow
     task_type = create_task_type(workflow:)
-    task = Task.new(project: Project.new(name: "First", remote_url: "https://example.test/first.git",
+    task = Task.new(project: Project.new(name: "First", remote_url: "https://example.test/test/first.git",
+      repository_identity: "example.test/test/first",
       default_branch: "main"), task_type:, workflow:, title: "Task", description_markdown: "Description",
       current_step: "develop")
-    blocker = Task.new(project: Project.new(name: "Second", remote_url: "https://example.test/second.git",
+    blocker = Task.new(project: Project.new(name: "Second", remote_url: "https://example.test/test/second.git",
+      repository_identity: "example.test/test/second",
       default_branch: "main"), task_type:, workflow:, title: "Blocker", description_markdown: "Description",
       current_step: "develop")
 
@@ -99,9 +101,9 @@ class TaskDependencyTest < ActiveSupport::TestCase
     lifecycle = TaskLifecycle.new
     blocker_claim = lifecycle.claim_next!(project:, owner_id: "blocker-session")
     advanced = lifecycle.report_attempt!(task_id: blocker_claim.id, owner_id: "blocker-session",
-      claim_version: blocker_claim.claim_version, step: "develop", outcome: "ready")
+      claim_version: blocker_claim.claim_version, step: "develop", outcome: "ready", artifact: "# Develop")
     lifecycle.report_attempt!(task_id: blocker_claim.id, owner_id: "blocker-session",
-      claim_version: advanced.claim_version, step: "check", outcome: "passed")
+      claim_version: advanced.claim_version, step: "check", outcome: "passed", artifact: "# Check")
     lifecycle.claim_next!(project:, owner_id: "session")
 
     replacement = create_task(project:)

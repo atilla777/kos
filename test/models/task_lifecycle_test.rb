@@ -135,9 +135,9 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     blocker = create_task(project:, workflow:, task_type:)
     blocker = @lifecycle.claim!(task_id: blocker.id, owner_id: "blocker-session")
     blocker = @lifecycle.report_attempt!(task_id: blocker.id, owner_id: "blocker-session",
-      claim_version: blocker.claim_version, step: "develop", outcome: "ready")
+      claim_version: blocker.claim_version, step: "develop", outcome: "ready", artifact: "# Develop")
     blocker = @lifecycle.report_attempt!(task_id: blocker.id, owner_id: "blocker-session",
-      claim_version: blocker.claim_version, step: "check", outcome: "passed")
+      claim_version: blocker.claim_version, step: "check", outcome: "passed", artifact: "# Check")
     arguments = {
       project:, task_type:, title: "Created", description_markdown: "Description", owner_id: "session",
       blockers: [ blocker ]
@@ -175,7 +175,8 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     active = @lifecycle.claim!(task_id: active.id, owner_id: "session")
     paused = @lifecycle.claim!(task_id: paused.id, owner_id: "pause-session")
     paused = @lifecycle.report_attempt!(task_id: paused.id, owner_id: "pause-session",
-      claim_version: paused.claim_version, step: "develop", outcome: "question")
+      claim_version: paused.claim_version, step: "develop", outcome: "question", artifact: "# Question",
+      message: "Which behavior?")
 
     assert_equal active, @lifecycle.show_owned(project:, owner_id: "session")
     assert_equal [ active, paused ], @lifecycle.resumable(project:, task_type:).to_a
@@ -200,9 +201,9 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     TaskDependency.create!(task: blocked, blocker:)
     claim = @lifecycle.claim_next!(project:, owner_id: "session")
     advanced = @lifecycle.report_attempt!(task_id: claim.id, owner_id: "session", claim_version: claim.claim_version,
-      step: "develop", outcome: "ready")
+      step: "develop", outcome: "ready", artifact: "# Develop")
     @lifecycle.report_attempt!(task_id: claim.id, owner_id: "session", claim_version: advanced.claim_version,
-      step: "check", outcome: "passed")
+      step: "check", outcome: "passed", artifact: "# Check")
 
     assert_equal blocked, @lifecycle.claim_next!(project:, owner_id: "session-2")
   end
@@ -211,23 +212,23 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     task = claim_task(owner_id: "session")
 
     advanced = @lifecycle.report_attempt!(task_id: task.id, owner_id: "session", claim_version: 1,
-      step: "develop", outcome: "ready")
+      step: "develop", outcome: "ready", artifact: "# Develop")
     assert_equal "check", advanced.current_step
     assert_equal 2, advanced.claim_version
     assert_equal "active", advanced.status
     assert_equal "session", advanced.owner_id
 
     paused = @lifecycle.report_attempt!(task_id: task.id, owner_id: "session", claim_version: 2,
-      step: "check", outcome: "blocked")
+      step: "check", outcome: "blocked", artifact: "# Blocked", message: "CI is unavailable")
     assert_equal "blocked", paused.status
     assert_equal "check", paused.current_step
     assert_equal 3, paused.claim_version
     assert_nil paused.owner_id
     assert_nil paused.lease_expires_at
 
-    resumed = @lifecycle.resume!(task_id: task.id, owner_id: "session-2")
+    resumed = @lifecycle.resume!(task_id: task.id, owner_id: "session-2", claim_version: 3, step: "check")
     completed = @lifecycle.report_attempt!(task_id: task.id, owner_id: "session-2",
-      claim_version: resumed.claim_version, step: "check", outcome: "passed")
+      claim_version: resumed.claim_version, step: "check", outcome: "passed", artifact: "# Passed")
     assert_equal "completed", completed.status
     assert_nil completed.owner_id
   end
@@ -242,20 +243,22 @@ class TaskLifecycleTest < ActiveSupport::TestCase
       { owner_id: "session", claim_version: 1, step: "check", outcome: "passed" }
     ]
     invalid_reports.each do |report|
-      assert_raises(TaskLifecycle::Conflict) { @lifecycle.report_attempt!(task_id: task.id, **report) }
+      assert_raises(TaskLifecycle::Conflict) do
+        @lifecycle.report_attempt!(task_id: task.id, artifact: "# Attempt", **report)
+      end
       assert_equal original, task.reload.attributes
     end
 
     assert_raises(TaskLifecycle::InvalidTransition) do
       @lifecycle.report_attempt!(task_id: task.id, owner_id: "session", claim_version: 1,
-        step: "develop", outcome: "missing")
+        step: "develop", outcome: "missing", artifact: "# Missing")
     end
     assert_equal original, task.reload.attributes
 
     @now += 2.hours
     assert_raises(TaskLifecycle::Conflict) do
       @lifecycle.report_attempt!(task_id: task.id, owner_id: "session", claim_version: 1,
-        step: "develop", outcome: "ready")
+        step: "develop", outcome: "ready", artifact: "# Expired")
     end
     assert_equal original, task.reload.attributes
   end
@@ -264,18 +267,20 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     task = claim_task(owner_id: "session-1")
 
     assert_raises(TaskLifecycle::Conflict) do
-      @lifecycle.resume!(task_id: task.id, owner_id: "session-2")
+      @lifecycle.resume!(task_id: task.id, owner_id: "session-2", claim_version: 1, step: "develop")
     end
     assert_raises(TaskLifecycle::Conflict) do
-      @lifecycle.resume!(task_id: task.id, owner_id: "session-2", takeover_confirmed: "true")
+      @lifecycle.resume!(task_id: task.id, owner_id: "session-2", claim_version: 1, step: "develop",
+        takeover_confirmed: "true")
     end
 
-    replaced = @lifecycle.resume!(task_id: task.id, owner_id: "session-2", takeover_confirmed: true)
+    replaced = @lifecycle.resume!(task_id: task.id, owner_id: "session-2", claim_version: 1, step: "develop",
+      takeover_confirmed: true)
     assert_equal 2, replaced.claim_version
     assert_equal "develop", replaced.current_step
 
     @now += 2.hours
-    resumed = @lifecycle.resume!(task_id: task.id, owner_id: "session-3")
+    resumed = @lifecycle.resume!(task_id: task.id, owner_id: "session-3", claim_version: 2, step: "develop")
     assert_equal 3, resumed.claim_version
     assert_equal "session-3", resumed.owner_id
   end
@@ -291,7 +296,7 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     assert_nil cancelled.lease_expires_at
     assert_raises(TaskLifecycle::Conflict) do
       @lifecycle.report_attempt!(task_id: task.id, owner_id: "session", claim_version: 1,
-        step: "develop", outcome: "ready")
+        step: "develop", outcome: "ready", artifact: "# Stale")
     end
   end
 
@@ -299,7 +304,9 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     task = claim_task(owner_id: "session")
     @lifecycle.cancel!(task_id: task.id)
 
-    assert_raises(TaskLifecycle::Conflict) { @lifecycle.resume!(task_id: task.id, owner_id: "new") }
+    assert_raises(TaskLifecycle::Conflict) do
+      @lifecycle.resume!(task_id: task.id, owner_id: "new", claim_version: 1, step: "develop")
+    end
     assert_raises(TaskLifecycle::Conflict) { @lifecycle.cancel!(task_id: task.id) }
   end
 
@@ -320,14 +327,79 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     task = @lifecycle.claim_next!(project:, owner_id: "session")
 
     accepted = @lifecycle.report_attempt!(task_id: task.id, owner_id: "session", claim_version: 1,
-      step: "develop", outcome: "again")
+      step: "develop", outcome: "again", artifact: "# First")
     assert_equal "develop", accepted.current_step
     assert_equal 2, accepted.claim_version
 
     assert_raises(TaskLifecycle::Conflict) do
       @lifecycle.report_attempt!(task_id: task.id, owner_id: "session", claim_version: 1,
-        step: "develop", outcome: "again")
+        step: "develop", outcome: "again", artifact: "# Duplicate")
     end
+  end
+
+  test "accepted artifacts transition atomically and a repeated successful step replaces its record" do
+    definition = valid_workflow_definition
+    definition["steps"][0]["outcomes"]["again"] = { "next_step" => "develop" }
+    workflow = create_workflow(definition:)
+    task = create_task(workflow:, task_type: create_task_type(workflow:))
+    task = @lifecycle.claim!(task_id: task.id, owner_id: "session")
+
+    task = @lifecycle.report_attempt!(task_id: task.id, owner_id: "session", claim_version: 1,
+      step: "develop", outcome: "again", artifact: "# First")
+    task = @lifecycle.report_attempt!(task_id: task.id, owner_id: "session", claim_version: 2,
+      step: "develop", outcome: "again", artifact: "# Second")
+
+    assert_equal 3, task.claim_version
+    assert_equal({
+      "outcome" => "again", "markdown" => "# Second", "accepted_claim_version" => 2, "reconstructed" => false
+    }, task.accepted_artifacts.fetch("develop"))
+
+    before = task.attributes
+    assert_raises(TaskLifecycle::Conflict) do
+      @lifecycle.report_attempt!(task_id: task.id, owner_id: "session", claim_version: 2,
+        step: "develop", outcome: "again", artifact: "# Stale")
+    end
+    assert_equal before, task.reload.attributes
+  end
+
+  test "validates artifact bytes before changing task state" do
+    task = claim_task(owner_id: "session")
+    invalid_utf8 = "\xFF".b.force_encoding(Encoding::UTF_8)
+
+    [ nil, "", invalid_utf8, "x" * (TaskLifecycle::MAX_ARTIFACT_BYTES + 1) ].each do |artifact|
+      assert_raises(TaskLifecycle::InvalidInput) do
+        @lifecycle.report_attempt!(task_id: task.id, owner_id: "session", claim_version: 1,
+          step: "develop", outcome: "ready", artifact:)
+      end
+      assert_equal({}, task.reload.accepted_artifacts)
+      assert_equal 1, task.claim_version
+    end
+  end
+
+  test "binds a human answer to the exact paused claim and clears it after transition" do
+    task = claim_task(owner_id: "session")
+    task = @lifecycle.report_attempt!(task_id: task.id, owner_id: "session", claim_version: 1,
+      step: "develop", outcome: "question", artifact: "# Question", message: "Which option?")
+
+    assert_raises(TaskLifecycle::Conflict) do
+      @lifecycle.resume!(task_id: task.id, owner_id: "new", claim_version: 1, step: "develop", answer: "A")
+    end
+    assert_nil task.reload.human_answer
+    assert_raises(TaskLifecycle::InvalidInput) do
+      @lifecycle.resume!(task_id: task.id, owner_id: "new", claim_version: 2, step: "develop")
+    end
+
+    task = @lifecycle.resume!(task_id: task.id, owner_id: "new", claim_version: 2, step: "develop", answer: "A")
+    reloaded = Task.find(task.id)
+    assert_equal "A", reloaded.human_answer
+    assert_equal "develop", reloaded.human_answer_step
+    assert_equal 2, reloaded.human_answer_claim_version
+
+    task = @lifecycle.report_attempt!(task_id: task.id, owner_id: "new", claim_version: 3,
+      step: "develop", outcome: "ready", artifact: "# Decision")
+    assert_equal "check", task.current_step
+    assert_nil task.human_answer
+    assert_nil task.pause_message
   end
 
   private
@@ -525,7 +597,7 @@ class TaskLifecycleConcurrencyTest < ActiveSupport::TestCase
         ActiveRecord::Base.connection_pool.with_connection do
           gate.pop
           result = TaskLifecycle.new.report_attempt!(task_id: task.id, owner_id: "session", claim_version: 1,
-            step: "develop", outcome: "ready")
+            step: "develop", outcome: "ready", artifact: "# Concurrent")
         rescue StandardError => error
           result = error
         ensure
@@ -552,7 +624,7 @@ class TaskLifecycleConcurrencyTest < ActiveSupport::TestCase
     operations = {
       report: -> {
         TaskLifecycle.new.report_attempt!(task_id: task.id, owner_id: "session", claim_version: 1,
-          step: "develop", outcome: "ready")
+          step: "develop", outcome: "ready", artifact: "# Concurrent")
       },
       cancel: -> { TaskLifecycle.new.cancel!(task_id: task.id) }
     }

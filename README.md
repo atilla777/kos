@@ -124,13 +124,14 @@ Database preparation automatically installs the built-in `brief`,
 `development`, and `fix` task types and their canonical workflows. Use the
 administrative CLI commands below only to register the project and any custom
 workflows or task types. Custom task types require a stable `--key`; the three
-built-in keys are reserved. Then expose the trusted installation context to the
-OpenCode process:
+built-in keys are reserved. Register each checkout explicitly:
 
 ```sh
-export KOS_PROJECT_ID="<registered-project-id>"
-export KOS_PROJECT_REMOTE_URL="<registered-project-remote-url>"
-export KOS_PROJECT_DEFAULT_BRANCH="<registered-default-branch>"
+kos project create --name KOS \
+  --remote-url https://github.com/atilla777/kos.git \
+  --repository-identity github.com/atilla777/kos \
+  --default-branch main
+kos project show --repository-identity github.com/atilla777/kos
 ```
 
 Restart OpenCode after installation or model changes, verify `GET /up`, and
@@ -167,6 +168,8 @@ All application endpoints accept JSON and require the configured bearer token.
 
 ```text
 POST  /projects
+GET   /projects
+PATCH /projects/:id
 POST  /workflows
 POST  /task_types
 PATCH /task_types/:id
@@ -200,7 +203,7 @@ For example:
 curl --request POST http://127.0.0.1:3000/projects \
   --header "Authorization: Bearer $KOS_API_TOKEN" \
   --header "Content-Type: application/json" \
-  --data '{"name":"KOS","remote_url":"https://example.test/kos.git","default_branch":"main"}'
+  --data '{"name":"KOS","remote_url":"https://github.com/atilla777/kos.git","repository_identity":"github.com/atilla777/kos","default_branch":"main"}'
 ```
 
 ## CLI
@@ -214,17 +217,15 @@ export KOS_API_TOKEN="your-server-token"
 export KOS_CLI_PATH="$(realpath "$(command -v kos)")"
 ```
 
-The `/kos` OpenCode orchestrator also requires administrator-installed project
-context. `KOS_PROJECT_ID`, `KOS_PROJECT_REMOTE_URL`, and
-`KOS_PROJECT_DEFAULT_BRANCH` identify the registered project without asking an
-ordinary user to manage internal IDs. `/kos` accepts no task text, never creates
-tasks, and selects or resumes only the built-in `development` type.
+The `/kos` OpenCode orchestrator discovers the invoking checkout's single
+`origin` fetch and push identity and looks up the exact registered project.
+`/kos` accepts no task text, never creates tasks, and selects or resumes only the
+built-in `development` type.
 `/kos-fix <problem>` creates and exactly claims the built-in `fix` type, or
 resumes fix work explicitly selected by the user. `/kos-brief <request>` creates
 and exactly claims the built-in `brief` type, develops its product specification
 in the main conversational agent, publishes the reviewed `specs/` change, and
-then atomically creates its development graph. These values
-must match the records registered through the administrative CLI.
+then atomically creates its development graph.
 `KOS_CLI_PATH` must be the absolute path to this version's installed CLI; the
 orchestrator validates its command inventory and never falls back to an
 unqualified `kos` executable.
@@ -240,6 +241,8 @@ The CLI exposes every current API operation:
 
 ```text
 kos project create
+kos project show
+kos project update ID
 kos workflow create
 kos task-type create
 kos task-type update ID

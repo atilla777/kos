@@ -19,6 +19,10 @@
 - Migration tests assign deterministic non-reserved keys to existing types,
   preserve their workflow references, reject reserved-key collisions, and stop
   safely on partially migrated data.
+- Repository-identity migration tests preserve numeric IDs, relationships,
+  workflow snapshots, and execution columns; malformed or colliding remotes
+  roll back both schema and data. URL and branch tests cover ambiguous slashes,
+  unsafe credentials, and Git-invalid names.
 - Request and CLI tests cover task type keys, filtered next-claim, exact claim,
   idempotent create-and-claim, owned and resumable observation, and atomic
   brief-child graph validation, creation, and observation.

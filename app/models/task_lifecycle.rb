@@ -4,8 +4,10 @@ class TaskLifecycle
   class Error < StandardError; end
   class Conflict < Error; end
   class InvalidTransition < Error; end
+  class InvalidInput < Error; end
 
   PAUSED_STATUSES = %w[needs_human blocked].freeze
+  MAX_ARTIFACT_BYTES = 1.megabyte
 
   def initialize(clock: -> { Time.current }, lease_duration: Rails.application.config.x.kos.lease_duration)
     raise ArgumentError, "lease_duration must be positive" unless lease_duration.positive?
@@ -105,45 +107,71 @@ class TaskLifecycle
     Task.where(project:, task_type:, status: [ "active", *PAUSED_STATUSES ]).order(:created_at, :id)
   end
 
-  def resume!(task_id:, owner_id:, takeover_confirmed: false)
+  def resume!(task_id:, owner_id:, claim_version:, step:, answer: nil, takeover_confirmed: false)
     validate_owner!(owner_id)
-    Task.find(task_id)
+    validate_human_answer!(answer) unless answer.nil?
+    task = Task.find(task_id)
     ensure_owner_available!(owner_id, task_id:)
     now = @clock.call
-    resumable = Task.where(id: task_id, status: PAUSED_STATUSES)
-    active = Task.where(id: task_id, status: "active")
-    active = active.where("lease_expires_at <= ?", now) unless takeover_confirmed == true
-
+    fence = { id: task_id, claim_version:, current_step: step }
     Task.transaction do
-      updated = resumable.or(active).update_all(
+      current = Task.where(fence).pick(:status)
+      raise Conflict, "task claim is stale or does not match the current step" unless current
+
+      if current == "needs_human" && answer.nil?
+        raise InvalidInput, "answer must be present when resuming a needs_human task"
+      end
+      if current != "needs_human" && !answer.nil?
+        raise InvalidInput, "answer is allowed only when resuming a needs_human task"
+      end
+
+      changes = {
         status: "active",
         owner_id:,
         claim_version: Arel.sql("claim_version + 1"),
         lease_expires_at: now + @lease_duration,
         updated_at: now
-      )
+      }
+      if current == "needs_human"
+        changes.merge!(human_answer: answer, human_answer_step: step, human_answer_claim_version: claim_version)
+      end
+
+      resumable = Task.where(fence, status: PAUSED_STATUSES, pause_step: step, pause_claim_version: claim_version)
+      active = Task.where(fence, status: "active")
+      active = active.where("lease_expires_at <= ?", now) unless takeover_confirmed == true
+      scope = PAUSED_STATUSES.include?(current) ? resumable : active
+      updated = scope.update_all(changes)
       raise Conflict, "task cannot be resumed from its current state" unless updated == 1
 
-      Task.find(task_id)
+      task.reload
     end
   rescue ActiveRecord::RecordNotUnique
     raise Conflict, "owner already identifies another task"
   end
 
-  def report_attempt!(task_id:, owner_id:, claim_version:, step:, outcome:)
-    task = Task.includes(:workflow).find(task_id)
-    action = task.workflow.action_for(step, outcome)
-    raise InvalidTransition, "outcome is not allowed for the reported step" unless action
-
-    now = @clock.call
-    changes = transition_changes(action, task, now)
-    current_claim = Task.where(id: task_id, status: "active", owner_id:, claim_version:, current_step: step)
-      .where("lease_expires_at > ?", now)
+  def report_attempt!(task_id:, owner_id:, claim_version:, step:, outcome:, artifact:, message: nil)
+    validate_artifact!(artifact)
     Task.transaction do
+      task = Task.includes(:workflow).find(task_id)
+      action = task.workflow.action_for(step, outcome)
+      raise InvalidTransition, "outcome is not allowed for the reported step" unless action
+      validate_pause_message!(message) if action["pause"]
+
+      now = @clock.call
+      artifacts = task.accepted_artifacts.deep_dup
+      artifacts[step] = {
+        "outcome" => outcome,
+        "markdown" => artifact,
+        "accepted_claim_version" => claim_version,
+        "reconstructed" => false
+      }
+      changes = transition_changes(action, task, now, message:).merge(accepted_artifacts: artifacts)
+      current_claim = Task.where(id: task_id, status: "active", owner_id:, claim_version:, current_step: step)
+        .where("lease_expires_at > ?", now)
       updated = current_claim.update_all(changes)
       raise Conflict, "task claim is stale or does not match the current step" unless updated == 1
 
-      Task.find(task_id)
+      task.reload
     end
   end
 
@@ -155,6 +183,12 @@ class TaskLifecycle
         status: "cancelled",
         owner_id: nil,
         lease_expires_at: nil,
+        pause_message: nil,
+        pause_step: nil,
+        pause_claim_version: nil,
+        human_answer: nil,
+        human_answer_step: nil,
+        human_answer_claim_version: nil,
         claim_version: Arel.sql("claim_version + CASE WHEN status = 'active' THEN 1 ELSE 0 END"),
         updated_at: now
       )
@@ -238,12 +272,22 @@ class TaskLifecycle
     raise Conflict, "brief child graphs can change only through materialization"
   end
 
-  def transition_changes(action, task, now)
-    changes = { claim_version: Arel.sql("claim_version + 1"), updated_at: now }
+  def transition_changes(action, task, now, message:)
+    changes = {
+      claim_version: Arel.sql("claim_version + 1"),
+      pause_message: nil,
+      pause_step: nil,
+      pause_claim_version: nil,
+      human_answer: nil,
+      human_answer_step: nil,
+      human_answer_claim_version: nil,
+      updated_at: now
+    }
     if action.key?("next_step")
       changes[:current_step] = action["next_step"]
     elsif action["pause"]
-      changes.merge!(status: action["pause"], owner_id: nil, lease_expires_at: nil)
+      changes.merge!(status: action["pause"], owner_id: nil, lease_expires_at: nil, pause_message: message,
+        pause_step: task.current_step, pause_claim_version: task.claim_version + 1)
     elsif action["complete_task"]
       changes.merge!(status: "completed", owner_id: nil, lease_expires_at: nil)
     else
@@ -254,5 +298,22 @@ class TaskLifecycle
 
   def validate_owner!(owner_id)
     raise ArgumentError, "owner_id must be present" if owner_id.blank?
+  end
+
+  def validate_artifact!(artifact)
+    raise InvalidInput, "artifact must be a string" unless artifact.is_a?(String)
+    raise InvalidInput, "artifact must be non-empty" if artifact.empty?
+    raise InvalidInput, "artifact must be valid UTF-8" unless artifact.encoding == Encoding::UTF_8 && artifact.valid_encoding?
+    raise InvalidInput, "artifact must be at most 1 MiB" if artifact.bytesize > MAX_ARTIFACT_BYTES
+  end
+
+  def validate_pause_message!(message)
+    raise InvalidInput, "message must be a nonblank string for a pause" unless message.is_a?(String) && message.present?
+  end
+
+  def validate_human_answer!(answer)
+    unless answer.is_a?(String) && answer.present? && answer.encoding == Encoding::UTF_8 && answer.valid_encoding?
+      raise InvalidInput, "answer must be a nonblank valid UTF-8 string"
+    end
   end
 end

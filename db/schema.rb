@@ -10,13 +10,15 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_21_010000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_23_000000) do
   create_table "projects", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "default_branch", null: false
     t.string "name", null: false
     t.string "remote_url", null: false
+    t.string "repository_identity", null: false
     t.datetime "updated_at", null: false
+    t.index ["repository_identity"], name: "index_projects_on_repository_identity", unique: true
   end
 
   create_table "task_dependencies", force: :cascade do |t|
@@ -39,13 +41,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_21_010000) do
   end
 
   create_table "tasks", force: :cascade do |t|
+    t.json "accepted_artifacts", default: {}, null: false
     t.integer "claim_version", default: 0, null: false
     t.datetime "created_at", null: false
     t.string "current_step", null: false
     t.text "description_markdown", null: false
+    t.text "human_answer"
+    t.integer "human_answer_claim_version"
+    t.string "human_answer_step"
     t.datetime "lease_expires_at"
     t.string "owner_id"
     t.integer "parent_id"
+    t.integer "pause_claim_version"
+    t.text "pause_message"
+    t.string "pause_step"
     t.integer "project_id", null: false
     t.string "status", default: "pending", null: false
     t.integer "task_type_id", null: false

@@ -57,10 +57,10 @@ module Kos
         KOS task coordination CLI
 
         Resources and actions:
-          project create
+          project create | show | update
           workflow create
           task-type create | update
-          task create | create-and-claim | update | show | show-owned | claim-next | claim | resumable | resume | report-attempt | cancel
+          task create | create-and-claim | update | show | context | artifact | show-owned | claim-next | claim | resumable | resume | report-attempt | cancel
           task validate-children | materialize-children | children
 
         Options:
@@ -77,6 +77,8 @@ module Kos
 
       case [ resource, action ]
       when [ "project", "create" ] then project_create
+      when [ "project", "show" ] then project_show
+      when [ "project", "update" ] then project_update
       when [ "workflow", "create" ] then workflow_create
       when [ "task-type", "create" ] then task_type_create
       when [ "task-type", "update" ] then task_type_update
@@ -84,6 +86,8 @@ module Kos
       when [ "task", "create-and-claim" ] then task_create_and_claim
       when [ "task", "update" ] then task_update
       when [ "task", "show" ] then task_show
+      when [ "task", "context" ] then task_context
+      when [ "task", "artifact" ] then task_artifact
       when [ "task", "show-owned" ] then task_show_owned
       when [ "task", "claim-next" ] then task_claim_next
       when [ "task", "claim" ] then task_claim
@@ -103,10 +107,32 @@ module Kos
       values = parse_options("kos project create", {
         "--name NAME" => [ :name, String, "Project name" ],
         "--remote-url URL" => [ :remote_url, String, "Git remote URL" ],
-        "--default-branch BRANCH" => [ :default_branch, String, "Default Git branch" ]
+        "--default-branch BRANCH" => [ :default_branch, String, "Default Git branch" ],
+        "--repository-identity IDENTITY" => [ :repository_identity, String, "Canonical host/namespace/repository" ]
       })
       require_values!(values, :name, :remote_url, :default_branch)
       [ :post, "/projects", values ]
+    end
+
+    def project_show
+      values = parse_options("kos project show", {
+        "--repository-identity IDENTITY" => [ :repository_identity, String, "Canonical host/namespace/repository" ]
+      })
+      require_values!(values, :repository_identity)
+      [ :get, query_path("/projects", values), nil ]
+    end
+
+    def project_update
+      id = shift_id!("project")
+      values = parse_options("kos project update ID", {
+        "--name NAME" => [ :name, String, "Project name" ],
+        "--remote-url URL" => [ :remote_url, String, "Git remote URL" ],
+        "--default-branch BRANCH" => [ :default_branch, String, "Default Git branch" ],
+        "--repository-identity IDENTITY" => [ :repository_identity, String, "Canonical host/namespace/repository" ]
+      })
+      raise Error.new("usage_error", "provide at least one project field") if values.empty?
+
+      [ :patch, "/projects/#{id}", values ]
     end
 
     def workflow_create
@@ -169,6 +195,21 @@ module Kos
       [ :get, "/tasks/#{id}", nil ]
     end
 
+    def task_context
+      id = shift_id!("task")
+      parse_options("kos task context ID", {})
+      [ :get, "/tasks/#{id}/context", nil ]
+    end
+
+    def task_artifact
+      id = shift_id!("task")
+      values = parse_options("kos task artifact ID", {
+        "--step STEP" => [ :step, String, "Accepted workflow step" ]
+      })
+      require_values!(values, :step)
+      [ :get, query_path("/tasks/#{id}/artifact", values), nil ]
+    end
+
     def task_show_owned
       values = parse_options("kos task show-owned", owner_options.merge(
         "--project-id ID" => [ :project_id, Integer, "Project ID" ]
@@ -205,9 +246,14 @@ module Kos
     def task_resume
       id = shift_id!("task")
       values = parse_options("kos task resume ID", owner_options.merge(
+        "--claim-version VERSION" => [ :claim_version, Integer, "Expected claim version" ],
+        "--step STEP" => [ :step, String, "Expected current workflow step" ],
+        "--answer-file FILE" => [ :answer_file, String, "Human answer file, or - for STDIN" ],
         "--takeover-confirmed" => [ :takeover_confirmed, true, "Confirm replacement of an active owner" ]
       ))
-      require_values!(values, :owner_id)
+      require_values!(values, :owner_id, :claim_version, :step)
+      answer_file = values.delete(:answer_file)
+      values[:answer] = read_file(answer_file) if answer_file
       values[:takeover_confirmed] ||= false
       [ :post, "/tasks/#{id}/resume", values ]
     end
@@ -217,9 +263,14 @@ module Kos
       values = parse_options("kos task report-attempt ID", owner_options.merge(
         "--claim-version VERSION" => [ :claim_version, Integer, "Current claim version" ],
         "--step STEP" => [ :step, String, "Current workflow step" ],
-        "--outcome OUTCOME" => [ :outcome, String, "Reported step outcome" ]
+        "--outcome OUTCOME" => [ :outcome, String, "Reported step outcome" ],
+        "--artifact-file FILE" => [ :artifact_file, String, "Accepted Markdown artifact, or - for STDIN" ],
+        "--message MESSAGE" => [ :message, String, "Question or technical reason for a pause" ]
       ))
-      require_values!(values, :owner_id, :claim_version, :step, :outcome)
+      require_values!(values, :owner_id, :claim_version, :step, :outcome, :artifact_file)
+      artifact_file = values.delete(:artifact_file)
+      values[:artifact] = read_file(artifact_file)
+      validate_artifact!(values[:artifact])
       [ :post, "/tasks/#{id}/report-attempt", values ]
     end
 
@@ -450,6 +501,11 @@ module Kos
       return utf8 if utf8.valid_encoding?
 
       raise Error.new(kind, "#{label} must be valid UTF-8")
+    end
+
+    def validate_artifact!(artifact)
+      raise Error.new("local_input_error", "artifact must be non-empty") if artifact.empty?
+      raise Error.new("local_input_error", "artifact must be at most 1 MiB") if artifact.bytesize > 1024 * 1024
     end
 
     def write_error(kind, message)

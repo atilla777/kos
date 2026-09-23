@@ -78,20 +78,19 @@ export KOS_CLI_PATH="$(realpath "$(command -v kos)")"
 curl --fail "$KOS_API_URL/up"
 "$KOS_CLI_PATH" project create \
   --name "My project" \
-  --remote-url "$(git remote get-url origin)" \
-  --default-branch "$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')"
+  --remote-url "https://github.com/example/my-project.git" \
+  --repository-identity "github.com/example/my-project" \
+  --default-branch "main"
 ```
 
-Retain the returned project ID and expose the server, CLI, and exact registered
-project values to the OpenCode process:
+Expose the server and installed CLI to the OpenCode process. The skills discover
+the invoking checkout's canonical `origin` identity and perform an exact project
+lookup before task or local recovery mutation:
 
 ```sh
 export KOS_API_TOKEN="<installation-token>"
 export KOS_API_URL="http://127.0.0.1:3000"
 export KOS_CLI_PATH="$(realpath "$(command -v kos)")"
-export KOS_PROJECT_ID="<registered-project-id>"
-export KOS_PROJECT_REMOTE_URL="<registered-project-remote-url>"
-export KOS_PROJECT_DEFAULT_BRANCH="<registered-default-branch>"
 ```
 
 Database preparation installs the `brief`, `development`, and `fix` task types

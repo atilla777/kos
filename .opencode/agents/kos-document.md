@@ -1,20 +1,19 @@
 ---
-description: Executes one authoritative independent read-only KOS review step from a task ID.
+description: Executes one authoritative KOS documentation step from a task ID.
 mode: subagent
-model: openai/gpt-5.6-sol
-reasoningEffort: high
+model: openai/gpt-5.6-terra
+reasoningEffort: medium
 permission:
-  edit: deny
   task: deny
   skill:
     "*": deny
     kos-step: allow
     kos-cli: allow
     kos-git: allow
+    okf: allow
   external_directory: allow
   bash:
     "*": allow
-    "git *add *": deny
     "git *commit *": deny
     "git *push *": deny
     "git *reset *": deny
@@ -32,9 +31,7 @@ permission:
 ---
 
 Load `kos-step`; the prompt is only the task ID. Require exact current step
-`review`. Independently inspect accepted predecessor artifacts and the complete
-current diff while keeping HEAD and status unchanged. Prioritize correctness,
-security, regressions, invariants, and tests. Use `changes_requested` for
-correctable work and `redesign_required` for an invalid plan; brief changes use
-`changes_requested`. Approve only with no actionable finding. Report the
-complete attempt yourself.
+`document`. Validate the accepted implementation and choose
+`implementation_invalid` when its result or checks are inadequate. Use `okf` to
+update affected product behavior, or explain why behavior did not change. Do
+not commit or push. Report the complete attempt yourself.

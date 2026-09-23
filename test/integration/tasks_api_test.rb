@@ -46,6 +46,53 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     assert_equal "not_found", response.parsed_body["error"]
   end
 
+  test "context returns the bounded agent projection and artifact bodies are read separately" do
+    task = create_task(project: @project, workflow: @workflow, task_type: @task_type)
+    lifecycle = TaskLifecycle.new
+    task = lifecycle.claim!(task_id: task.id, owner_id: "session")
+    lifecycle.report_attempt!(task_id: task.id, owner_id: "session", claim_version: 1,
+      step: "develop", outcome: "question", artifact: "# Private artifact", message: "Choose a mode")
+
+    get context_task_path(task), headers: @headers, as: :json
+
+    assert_response :success
+    body = response.parsed_body
+    assert_equal %w[claim_version current_step description_markdown id lease_expires_at owner_id project_id status title],
+      body.fetch("task").keys.sort
+    assert_equal %w[default_branch id name remote_url repository_identity], body.fetch("project").keys.sort
+    assert_equal @project.repository_identity, body.dig("project", "repository_identity")
+    assert_equal %w[allowed_outcomes artifact_template id instruction model_tier name], body.fetch("step").keys.sort
+    assert_equal %w[question ready], body.dig("step", "allowed_outcomes").sort
+    assert_equal [ {
+      "step" => "develop", "outcome" => "question", "accepted_claim_version" => 1, "reconstructed" => false
+    } ], body.fetch("artifacts")
+    assert_not_includes body.to_json, "Private artifact"
+    assert_equal "Choose a mode", body.dig("pause", "message")
+
+    get artifact_task_path(task), params: { step: "develop" }, headers: @headers
+    assert_response :success
+    assert_equal({
+      "outcome" => "question", "markdown" => "# Private artifact", "accepted_claim_version" => 1,
+      "reconstructed" => false
+    }, response.parsed_body)
+
+    get artifact_task_path(task), params: { step: "check" }, headers: @headers
+    assert_response :not_found
+  end
+
+  test "report failure leaves both lifecycle state and artifacts unchanged" do
+    task = create_task(project: @project, workflow: @workflow, task_type: @task_type)
+    task = TaskLifecycle.new.claim!(task_id: task.id, owner_id: "session")
+    before = task.attributes
+
+    post report_attempt_task_path(task), params: {
+      owner_id: "wrong", claim_version: 1, step: "develop", outcome: "ready", artifact: "# Rejected"
+    }, headers: @headers, as: :json
+
+    assert_response :conflict
+    assert_equal before, task.reload.attributes
+  end
+
   test "creates and claims idempotently by owner and exact definition" do
     parameters = task_parameters.except(:task_type_id).merge(task_type_key: @task_type.key, owner_id: "session")
 
@@ -239,25 +286,35 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     assert_equal 1, response.parsed_body.dig("task", "claim_version")
 
     post report_attempt_task_path(task), params: {
-      owner_id: "session-1", claim_version: 1, step: "develop", outcome: "question"
+      owner_id: "session-1", claim_version: 1, step: "develop", outcome: "question",
+      artifact: "# Question", message: "Which option?"
     }, headers: @headers, as: :json
     assert_response :success
     assert_equal "needs_human", response.parsed_body.dig("task", "status")
     assert_equal "develop", response.parsed_body.dig("task", "current_step")
 
-    post resume_task_path(task), params: { owner_id: "session-2" }, headers: @headers, as: :json
+    post resume_task_path(task), params: {
+      owner_id: "session-2", claim_version: 2, step: "develop", answer: "Option A"
+    }, headers: @headers, as: :json
     assert_response :success
     claim_version = response.parsed_body.dig("task", "claim_version")
 
+    get context_task_path(task), headers: @headers, as: :json
+    assert_equal "Option A", response.parsed_body.dig("pause", "answer")
+
     post report_attempt_task_path(task), params: {
-      owner_id: "session-2", claim_version:, step: "develop", outcome: "ready"
+      owner_id: "session-2", claim_version:, step: "develop", outcome: "ready", artifact: "# Develop"
     }, headers: @headers, as: :json
     assert_response :success
     assert_equal "check", response.parsed_body.dig("step", "id")
     claim_version = response.parsed_body.dig("task", "claim_version")
 
+    get task_path(task), headers: @headers, as: :json
+    assert_equal "check", response.parsed_body.dig("task", "current_step")
+    assert_equal claim_version, response.parsed_body.dig("task", "claim_version")
+
     post report_attempt_task_path(task), params: {
-      owner_id: "session-2", claim_version:, step: "check", outcome: "passed"
+      owner_id: "session-2", claim_version:, step: "check", outcome: "passed", artifact: "# Check"
     }, headers: @headers, as: :json
     assert_response :success
     assert_equal "completed", task.reload.status
@@ -287,25 +344,29 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     assert_response :success
 
     post report_attempt_task_path(task), params: {
-      owner_id: "session", claim_version: 1, step: "develop", outcome: "unknown"
+      owner_id: "session", claim_version: 1, step: "develop", outcome: "unknown", artifact: "# Unknown"
     }, headers: @headers, as: :json
     assert_response :unprocessable_entity
     assert_equal "invalid_transition", response.parsed_body["error"]
 
     post report_attempt_task_path(task), params: {
-      owner_id: "stale", claim_version: 1, step: "develop", outcome: "ready"
+      owner_id: "stale", claim_version: 1, step: "develop", outcome: "ready", artifact: "# Stale"
     }, headers: @headers, as: :json
     assert_response :conflict
     assert_equal "conflict", response.parsed_body["error"]
 
-    post resume_task_path(task), params: { owner_id: "other", takeover_confirmed: "true" },
+    post resume_task_path(task), params: {
+      owner_id: "other", claim_version: 1, step: "develop", takeover_confirmed: "true"
+    },
       headers: @headers, as: :json
     assert_response :bad_request
     assert_equal "bad_request", response.parsed_body["error"]
   end
 
   test "returns not found when resuming or cancelling an unknown task" do
-    post resume_task_path(-1), params: { owner_id: "session" }, headers: @headers, as: :json
+    post resume_task_path(-1), params: {
+      owner_id: "session", claim_version: 1, step: "develop"
+    }, headers: @headers, as: :json
     assert_response :not_found
 
     post cancel_task_path(-1), headers: @headers, as: :json
@@ -346,6 +407,10 @@ class TasksApiTest < ActionDispatch::IntegrationTest
       -> { post tasks_path, params: {}, as: :json },
       -> { post tasks_create_and_claim_path, params: {}, as: :json },
       -> { get task_path(1), as: :json },
+      -> { get context_task_path(1), as: :json },
+      -> { get artifact_task_path(1), headers: {
+        "Authorization" => "Bearer wrong"
+      }, as: :json },
       -> { get tasks_show_owned_path, as: :json },
       -> { get tasks_resumable_path, as: :json },
       -> { patch task_path(1), params: {}, as: :json },
@@ -390,9 +455,9 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     brief = lifecycle.create!(project: @project, task_type: brief_type, title: "Brief", description_markdown: "Request")
     claim = lifecycle.claim!(task_id: brief.id, owner_id: "brief-owner")
     claim = lifecycle.report_attempt!(task_id: brief.id, owner_id: "brief-owner", claim_version: claim.claim_version,
-      step: "brief", outcome: "specified")
+      step: "brief", outcome: "specified", artifact: "# Brief")
     claim = lifecycle.report_attempt!(task_id: brief.id, owner_id: "brief-owner", claim_version: claim.claim_version,
-      step: "review", outcome: "approved")
+      step: "review", outcome: "approved", artifact: "# Review")
     [ brief, claim ]
   end
 end
