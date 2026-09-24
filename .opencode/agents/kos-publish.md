@@ -55,17 +55,17 @@ permission:
     "printenv HOME": allow
     "printf *KOS_CLI_PATH*": allow
     "*git *add*": allow
-    "git commit -F *": allow
-    "git push origin HEAD:refs/heads/*": allow
+    "git commit *": deny
+    "git push *": deny
+    "git commit -F ?*": allow
+    "git push origin HEAD:refs/heads/?*": allow
     "git commit *--amend*": deny
-    "git commit -F * *": deny
     "git push --force *": deny
     "git push -f *": deny
     "git push --delete *": deny
     "git push --mirror *": deny
     "git push --all *": deny
     "git push origin +*": deny
-    "git push origin HEAD:refs/heads/* *": deny
     "*git *reset*": deny
     "*git *clean*": deny
     "*git *checkout*": deny
@@ -77,8 +77,10 @@ permission:
     "*git *worktree prune*": deny
     "*git *branch -D*": deny
     "*git *update-ref*": deny
-    "git checkout --merge --detach *": allow
-    "git checkout --merge --detach * *": deny
+    "git checkout --merge --detach ?*": allow
+    "git commit -F * ?*": deny
+    "git push origin HEAD:refs/heads/* ?*": deny
+    "git checkout --merge --detach * ?*": deny
     "\"$KOS_CLI_PATH\" --version": allow
     "\"$KOS_CLI_PATH\" --help": allow
     "\"$KOS_CLI_PATH\" task * --help": allow
