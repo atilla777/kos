@@ -96,7 +96,7 @@ and explicitly register the repository:
 export KOS_API_TOKEN="<installation-token>"
 export KOS_API_URL="http://127.0.0.1:3000"
 export KOS_CLI_PATH="$(realpath "$(command -v kos)")"
-curl --fail "$KOS_API_URL/up"
+"$KOS_CLI_PATH" health
 "$KOS_CLI_PATH" project create \
   --name "My project" \
   --remote-url "https://github.com/example/my-project.git" \
@@ -105,6 +105,10 @@ curl --fail "$KOS_API_URL/up"
 "$KOS_CLI_PATH" project show \
   --repository-identity "github.com/example/my-project"
 ```
+
+`health` uses `KOS_API_URL` to call the public `GET /up` endpoint and does not
+require a token. All other CLI operations use the same `KOS_API_URL` and require
+the `KOS_API_TOKEN` configured when Rails started.
 
 The registration identity must exactly match the canonical identity derived
 from the invoking checkout's single `origin` fetch and push URLs. Equivalent

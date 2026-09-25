@@ -65,12 +65,13 @@ repository explicitly:
 export KOS_API_URL="http://127.0.0.1:3000"
 bin/rails server
 
-kos project create \
+"$KOS_CLI_PATH" health
+"$KOS_CLI_PATH" project create \
   --name KOS \
   --remote-url https://github.com/atilla777/kos.git \
   --repository-identity github.com/atilla777/kos \
   --default-branch main
-kos project show --repository-identity github.com/atilla777/kos
+"$KOS_CLI_PATH" project show --repository-identity github.com/atilla777/kos
 ```
 
 Commands derive canonical `host/namespace/repository` from the invoking
@@ -214,6 +215,7 @@ export KOS_CLI_PATH="$(realpath "$(command -v kos)")"
 The installed executable exposes every API operation:
 
 ```text
+kos health
 kos project create
 kos project show
 kos project update ID
@@ -271,7 +273,8 @@ returns the complete observed graph for recovery.
 
 Server bodies are written unchanged to stdout. HTTP errors exit 1; local usage,
 configuration, and input errors are JSON on stderr and exit 2; transport errors
-exit 3. CLI-generated errors never expose the token.
+exit 3. `kos health` uses `KOS_API_URL` and the public `GET /up` endpoint without
+requiring `KOS_API_TOKEN`. CLI-generated errors never expose the token.
 
 ## Workflow Authority
 

@@ -9,8 +9,9 @@
 - Concurrency tests cover selection, ownership and request-creation uniqueness,
   leases, claim fencing, report fencing, dependencies, and graph materialization.
 - CLI tests execute the packaged public command and validate exact options,
-  standard-input artifact handling, output preservation, and exit statuses.
-- Gem tests build and install the CLI into an isolated gem home.
+  health, standard-input artifact handling, output preservation, and exit statuses.
+- Gem tests build and install the CLI into an isolated gem home, then use that
+  executable against an isolated prepared Rails server for a core lifecycle smoke test.
 - Skill and profile contract tests verify scheduler boundaries, ID-only dispatch,
   focused operations, permission deny-lists, and step-owned reporting.
 - Git tests use temporary source repositories, task worktrees, and bare remotes.

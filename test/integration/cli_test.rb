@@ -11,6 +11,12 @@ class CliTest < ActiveSupport::TestCase
 
     assert_predicate status, :success?
     assert_includes output, "Usage: kos <resource> <action> [options]"
+    assert_includes output, "  health\n"
+    assert_includes output, "  project create | show | update\n"
+    assert_includes output, "  workflow create\n"
+    assert_includes output, "  task-type create | update\n"
+    assert_includes output, "  task create | create-and-claim | update | show | context | artifact | show-owned | claim-next | claim | resumable | resume | report-attempt | cancel\n"
+    assert_includes output, "  task validate-children | materialize-children | children\n"
     assert_empty error
 
     output, error, status = run_cli("task", "report-attempt", "--help", environment: {})
@@ -19,6 +25,17 @@ class CliTest < ActiveSupport::TestCase
     assert_includes output, "--claim-version VERSION"
     assert_includes output, "--artifact-file FILE"
     assert_empty error
+  end
+
+  test "checks public server health without a token" do
+    output, error, status, request = run_cli_with_server("health", response_body: "<html>ready</html>", token: nil)
+
+    assert_predicate status, :success?
+    assert_equal "<html>ready</html>", output
+    assert_empty error
+    assert_equal "GET", request.fetch(:method)
+    assert_equal "/api/up", request.fetch(:path)
+    refute request.fetch(:headers).key?("authorization")
   end
 
   test "prints its version without configuration" do
@@ -282,7 +299,7 @@ class CliTest < ActiveSupport::TestCase
   private
 
   def run_cli_with_server(*arguments, response_status: 200, response_body: "{\"task\":{\"id\":9}}", stdin_data: "",
-    cli_environment: {})
+    cli_environment: {}, token: "test-secret")
     server = TCPServer.new("127.0.0.1", 0)
     requests = Queue.new
     thread = Thread.new do
@@ -309,10 +326,8 @@ class CliTest < ActiveSupport::TestCase
     end
     thread.report_on_exception = false
 
-    environment = cli_environment.merge(
-      "KOS_API_URL" => "http://127.0.0.1:#{server.local_address.ip_port}/api/",
-      "KOS_API_TOKEN" => "test-secret"
-    )
+    environment = cli_environment.merge("KOS_API_URL" => "http://127.0.0.1:#{server.local_address.ip_port}/api/")
+    environment["KOS_API_TOKEN"] = token if token
     output, error, status = run_cli(*arguments, environment:, stdin_data:)
     unless thread.join(2)
       server.close

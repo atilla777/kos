@@ -57,6 +57,7 @@ module Kos
         KOS task coordination CLI
 
         Resources and actions:
+          health
           project create | show | update
           workflow create
           task-type create | update
@@ -76,6 +77,7 @@ module Kos
       action = @arguments.shift
 
       case [ resource, action ]
+      when [ "health", nil ] then health
       when [ "project", "create" ] then project_create
       when [ "project", "show" ] then project_show
       when [ "project", "update" ] then project_update
@@ -101,6 +103,10 @@ module Kos
       else
         raise Error.new("usage_error", "unknown command #{[ resource, action ].compact.join(" ").inspect}")
       end
+    end
+
+    def health
+      [ :get, "/up", nil ]
     end
 
     def project_create
@@ -447,7 +453,7 @@ module Kos
       request_class = { get: Net::HTTP::Get, patch: Net::HTTP::Patch, post: Net::HTTP::Post }.fetch(method)
       http_request = request_class.new(uri)
       http_request["Accept"] = "application/json"
-      http_request["Authorization"] = "Bearer #{api_token}"
+      http_request["Authorization"] = "Bearer #{api_token}" unless path == "/up"
       if payload
         http_request["Content-Type"] = "application/json"
         http_request.body = JSON.generate(normalize_payload(payload))

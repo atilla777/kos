@@ -1,7 +1,12 @@
 require "test_helper"
+require "json"
+require "net/http"
 require "open3"
 require "rbconfig"
+require "socket"
+require "tempfile"
 require "tmpdir"
+require "timeout"
 
 class GemPackageTest < ActiveSupport::TestCase
   test "builds and installs a standalone kos executable" do
@@ -31,7 +36,63 @@ class GemPackageTest < ActiveSupport::TestCase
 
       output, error, status = Open3.capture3(environment, bin_dir.join("kos").to_s, "--help", chdir: directory)
       assert_predicate status, :success?, error
-      assert_includes output, "KOS task coordination CLI"
+      [
+        "health",
+        "project create | show | update",
+        "workflow create",
+        "task-type create | update",
+        "task create | create-and-claim | update | show | context | artifact | show-owned | claim-next | claim | resumable | resume | report-attempt | cancel",
+        "task validate-children | materialize-children | children"
+      ].each { |inventory| assert_includes output, inventory }
+    end
+  end
+
+  test "installed CLI drives a prepared server through the core lifecycle" do
+    with_installed_cli do |cli, cli_environment, root|
+      system = { data_home: root.join("data"), token: "smoke-secret", log: root.join("server.log") }
+      _output, error, status = Open3.capture3(server_environment(system), Rails.root.join("bin/rails").to_s,
+        "db:prepare")
+      assert_predicate status, :success?, error
+
+      start_server(system)
+      environment = cli_environment.merge("KOS_API_URL" => system.fetch(:api_url))
+      output, error, status = Open3.capture3(environment, cli.to_s, "health", chdir: root.to_s)
+      assert_predicate status, :success?, error
+      assert_not_empty output
+
+      authenticated = environment.merge("KOS_API_TOKEN" => system.fetch(:token))
+      project = run_installed_json(cli, authenticated, root, "project", "create", "--name", "Smoke",
+        "--remote-url", "https://example.test/test/smoke.git", "--default-branch", "main").fetch("project")
+      shown = run_installed_json(cli, authenticated, root, "project", "show", "--repository-identity",
+        "example.test/test/smoke").fetch("project")
+      assert_equal project.fetch("id"), shown.fetch("id")
+
+      Tempfile.create([ "smoke-task", ".md" ], root.to_s) do |artifact|
+        artifact.write("# Smoke task\n")
+        artifact.flush
+        task = run_installed_json(cli, authenticated, root, "task", "create", "--project-id",
+          project.fetch("id").to_s, "--task-type-key", "development", "--title", "Smoke lifecycle",
+          "--description-file", artifact.path).fetch("task")
+        task = run_installed_json(cli, authenticated, root, "task", "claim", task.fetch("id").to_s,
+          "--owner-id", "smoke-owner").fetch("task")
+
+        {
+          "plan" => "planned", "implement" => "implemented", "document" => "documented",
+          "review" => "approved", "publish" => "published", "verify" => "verified"
+        }.each do |step, outcome|
+          task = run_installed_json(cli, authenticated, root, "task", "report-attempt", task.fetch("id").to_s,
+            "--owner-id", "smoke-owner", "--claim-version", task.fetch("claim_version").to_s,
+            "--step", step, "--outcome", outcome, "--artifact-file", artifact.path).fetch("task")
+        end
+
+        context = run_installed_json(cli, authenticated, root, "task", "context", task.fetch("id").to_s)
+        assert_equal [ "completed", "verify", nil, nil ],
+          context.fetch("task").values_at("status", "current_step", "owner_id", "lease_expires_at")
+        assert_equal %w[plan implement document review publish verify],
+          context.fetch("artifacts").map { |entry| entry.fetch("step") }
+      end
+    ensure
+      stop_server(system) if system
     end
   end
 
@@ -111,6 +172,89 @@ class GemPackageTest < ActiveSupport::TestCase
   end
 
   private
+
+  def with_installed_cli
+    Dir.mktmpdir("kos-installed-cli") do |directory|
+      root = Pathname(directory)
+      package = root.join("kos.gem")
+      gem_home = root.join("gem-home")
+      bin_dir = root.join("bin")
+      _output, error, status = Open3.capture3(RbConfig.ruby, "-S", "gem", "build", "kos.gemspec",
+        "--output", package.to_s, chdir: Rails.root.to_s)
+      assert_predicate status, :success?, error
+      _output, error, status = Open3.capture3(RbConfig.ruby, "-S", "gem", "install", package.to_s,
+        "--install-dir", gem_home.to_s, "--bindir", bin_dir.to_s, "--no-document")
+      assert_predicate status, :success?, error
+      environment = {
+        "BUNDLE_GEMFILE" => nil, "GEM_HOME" => gem_home.to_s, "GEM_PATH" => gem_home.to_s,
+        "RUBYGEMS_GEMDEPS" => nil, "RUBYOPT" => nil, "RUBYLIB" => nil
+      }
+      yield bin_dir.join("kos"), environment, root
+    end
+  end
+
+  def run_installed_json(cli, environment, root, *arguments)
+    output, error, status = Open3.capture3(environment, cli.to_s, *arguments, chdir: root.to_s)
+    assert_predicate status, :success?, "#{arguments.join(" ")} failed:\n#{output}#{error}"
+    JSON.parse(output)
+  end
+
+  def server_environment(system)
+    {
+      "RAILS_ENV" => "development", "KOS_API_TOKEN" => system.fetch(:token),
+      "KOS_DATA_HOME" => system.fetch(:data_home).to_s, "RAILS_LOG_TO_STDOUT" => "1", "DATABASE_URL" => nil
+    }
+  end
+
+  def start_server(system)
+    3.times do
+      system[:port] = available_port
+      system[:api_url] = "http://127.0.0.1:#{system.fetch(:port)}"
+      system[:pid] = Process.spawn(server_environment(system), Rails.root.join("bin/rails").to_s, "server",
+        "--binding", "127.0.0.1", "--port", system.fetch(:port).to_s,
+        "--pid", system.fetch(:data_home).join("server.pid").to_s,
+        out: system.fetch(:log).to_s, err: system.fetch(:log).to_s, pgroup: true)
+      started = Timeout.timeout(15) do
+        loop do
+          if Process.waitpid(system.fetch(:pid), Process::WNOHANG)
+            system[:pid] = nil
+            break false
+          end
+          response = Net::HTTP.start("127.0.0.1", system.fetch(:port), open_timeout: 0.2, read_timeout: 0.2) do |http|
+            http.get("/up")
+          end
+          break true if response.is_a?(Net::HTTPSuccess)
+        rescue Errno::ECONNREFUSED, EOFError, Net::OpenTimeout, Net::ReadTimeout
+          sleep 0.05
+        end
+      end
+      return if started
+    end
+    flunk("Rails server exited before binding:\n#{system.fetch(:log).read}")
+  rescue Timeout::Error
+    flunk("Rails server did not start:\n#{system.fetch(:log).read}")
+  end
+
+  def stop_server(system)
+    return unless system[:pid]
+
+    Process.kill("TERM", -system.fetch(:pid))
+    Timeout.timeout(10) { Process.wait(system.fetch(:pid)) }
+  rescue Errno::ESRCH, Errno::ECHILD
+    nil
+  rescue Timeout::Error
+    Process.kill("KILL", -system.fetch(:pid))
+    Process.wait(system.fetch(:pid))
+  ensure
+    system[:pid] = nil
+  end
+
+  def available_port
+    server = TCPServer.new("127.0.0.1", 0)
+    server.local_address.ip_port
+  ensure
+    server&.close
+  end
 
   def installed_names(directory)
     directory.children.map { |path| path.basename.to_s }.sort

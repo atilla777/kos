@@ -286,6 +286,10 @@ API routes.
 `task create-and-claim` accepts optional `--creation-key KEY`; ordinary task
 creation does not.
 
+`kos health` calls the public `GET /up` endpoint selected by `KOS_API_URL`
+without requiring `KOS_API_TOKEN`. Every application operation requires the
+configured token.
+
 ## Recovery And Upgrade
 
 Recovery uses authoritative current state, never local step files or attempt
