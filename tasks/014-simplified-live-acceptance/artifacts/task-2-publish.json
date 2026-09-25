@@ -1,0 +1,6 @@
+{
+  "outcome": "published",
+  "markdown": "# Publication\n\n## Reviewed commit sequence\n\nBase: `07154f11ecbaf731b0c594f48701d9ac88c271ee`\n\n1. `219952f6ca34bfcdae4ed302bf2c9d776def81f2`\n2. `1658387a16682011e2749580be56bda8cfaf4a2f`\n\nTip: `1658387a16682011e2749580be56bda8cfaf4a2f`\n\n## Remote observation\n\nFetched `origin/main` before publication at the reviewed base, then pushed the exact reviewed tip without force. A subsequent fetch observed `origin/main` at `1658387a16682011e2749580be56bda8cfaf4a2f`; walking to the approved base yielded the exact ordered commits and approved trees.\n",
+  "accepted_claim_version": 6,
+  "reconstructed": false
+}

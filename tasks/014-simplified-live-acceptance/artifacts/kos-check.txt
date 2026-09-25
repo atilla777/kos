@@ -1,0 +1,8 @@
+$ bin/check
+Inspecting 83 files
+...................................................................................
+
+83 files inspected, no offenses detected
+
+Running 240 tests in parallel using 16 processes
+240 runs, 3739 assertions, 0 failures, 0 errors, 0 skips

@@ -4,12 +4,6 @@ This is the authoritative ordered list for development of KOS itself. Detailed
 scope and progress live in each linked task directory. Task files are repository
 development records and are not read by the KOS server or CLI.
 
-## Active
-
-| ID | Task | Status | Dependencies |
-| --- | --- | --- | --- |
-| 014 | [Run simplified live acceptance](014-simplified-live-acceptance/task.md) | active | 011, 012, 013 |
-
 ## Completed
 
 | ID | Task | Status | Dependencies |
@@ -27,6 +21,13 @@ development records and are not read by the KOS server or CLI.
 | 011 | [Complete built-in tasks at publication](011-terminal-publication/task.md) | done | 010 |
 | 012 | [Materialize brief graphs atomically](012-atomic-brief-materialization/task.md) | done | 011 |
 | 013 | [Publish reviewed commit sequences](013-reviewed-commit-ranges/task.md) | done | 011, 012 |
+| 014 | [Run simplified live acceptance](014-simplified-live-acceptance/task.md) | done | 011, 012, 013 |
+
+## Planned
+
+| ID | Task | Status | Dependencies |
+| --- | --- | --- | --- |
+| 015 | [Preserve exact slash-command arguments](015-preserve-slash-command-arguments/task.md) | planned | 014 |
 
 ## Future Decisions
 

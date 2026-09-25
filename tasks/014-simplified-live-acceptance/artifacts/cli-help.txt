@@ -1,0 +1,31 @@
+$ kos --version
+kos 0.1.0
+
+$ kos --help
+Usage: kos <resource> <action> [options]
+
+KOS task coordination CLI
+
+Resources and actions:
+  health
+  project create | show | update
+  workflow create
+  task-type create | update
+  task create | create-or-get | create-and-claim | update | show | context | artifact | show-owned | claim-next | claim | resumable | resume | report-attempt | cancel
+  task materialize-children | children
+
+Options:
+  -v, --version             Show the installed CLI version
+
+Run `kos <resource> <action> --help` for command options.
+
+$ kos task children --help
+Usage: kos task children ID [options]
+    -h, --help                       Show this help
+
+$ kos task materialize-children --help
+Usage: kos task materialize-children ID [options]
+    -h, --help                       Show this help
+        --owner-id OWNER             Orchestrator session ID
+        --definition-file FILE       Child graph JSON file, or - for STDIN
+        --claim-version VERSION      Current claim version

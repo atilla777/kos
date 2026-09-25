@@ -1,0 +1,26 @@
+$ git fetch origin main
+Fetched isolated fixture remote main into the independent observer.
+
+$ git worktree add --detach observer-published origin/main
+HEAD is now at 3a499d3 Restore Hello greeting
+
+$ git status --short
+
+$ git rev-parse HEAD
+3a499d3a2ac5a92caae4e42a58d6e3b8dbb368ef
+
+$ bin/check --seed 1
+Run options: --seed 1
+
+# Running:
+
+...
+
+3 runs, 23 assertions, 0 failures, 0 errors, 0 skips
+
+$ git fsck --strict
+
+$ git bundle verify fixture-remote.bundle
+fixture-remote.bundle is okay
+The bundle records a complete history.
+The bundle uses this hash algorithm: sha1

@@ -1,0 +1,6 @@
+{
+  "outcome": "published",
+  "markdown": "# Publication\n\n## Reviewed commit sequence\n\n- Base: `9bd261e119da5ee170c222ab8c8743f2de1155dc` (tree `7f241bad6d3a5dbca1b5521bdce0e89d37f9bba1`)\n- Commit: `07154f11ecbaf731b0c594f48701d9ac88c271ee` (tree `3d2eb668afba6fbe8cd0042bc676ee24e0ef0b78`)\n- Tip: `07154f11ecbaf731b0c594f48701d9ac88c271ee`\n- Changed path: `specs/greeting.md`\n- Binary diff SHA-256: `f38facd08abfcc666fab81e453f19190825a8fef3fa97e3675ec06fb2a209381`\n- The single-parent sequence and exact canonical `KOS-Task: 1` trailer were revalidated.\n\n## Remote observation\n\nAfter the atomic non-force push, a fresh fetch observed `origin/main` at `07154f11ecbaf731b0c594f48701d9ac88c271ee`. Walking back to the reviewed base yielded the exact approved commit and matching tree and diff digest.\n\n## Child graph\n\nMaterialized exactly one `development` child, `Development child — Add loud greeting mode`, with no sibling blockers. The accepted graph digest is `sha256:6926b2f25ed3f0e126c2b80c3cbde1c16773da77e5c7e95dcde4466dee4d30cd`.\n",
+  "accepted_claim_version": 7,
+  "reconstructed": false
+}

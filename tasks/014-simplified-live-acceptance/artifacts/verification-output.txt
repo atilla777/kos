@@ -1,0 +1,57 @@
+$ ruby artifacts/verify_evidence.rb
+PASS installed inventory has no kos-verify
+PASS CLI help has no validate-children
+PASS sanitized launch evidence has no verifier
+PASS task 1 launch evidence reaches publication
+PASS task 2 launch evidence covers the complete workflow
+PASS task 3 launch evidence covers the complete workflow
+PASS timing evidence covers every command
+PASS argument observation expected digest
+PASS argument observation submitted digest
+PASS argument observation isolates wrapper quotes
+PASS remote main is task 3 reviewed tip
+PASS task 1 reviewed tip is on remote main
+PASS task 1 ordered SHAs
+PASS task 1 07154f11ecbaf731b0c594f48701d9ac88c271ee parent
+PASS task 1 07154f11ecbaf731b0c594f48701d9ac88c271ee exact raw trailer
+PASS task 1 trees
+PASS task 1 binary diff SHA-256
+PASS task 1 changed paths
+PASS task 2 reviewed tip is on remote main
+PASS task 2 ordered SHAs
+PASS task 2 219952f6ca34bfcdae4ed302bf2c9d776def81f2 parent
+PASS task 2 219952f6ca34bfcdae4ed302bf2c9d776def81f2 exact raw trailer
+PASS task 2 1658387a16682011e2749580be56bda8cfaf4a2f parent
+PASS task 2 1658387a16682011e2749580be56bda8cfaf4a2f exact raw trailer
+PASS task 2 trees
+PASS task 2 binary diff SHA-256
+PASS task 2 changed paths
+PASS task 3 reviewed tip is on remote main
+PASS task 3 ordered SHAs
+PASS task 3 3a499d3a2ac5a92caae4e42a58d6e3b8dbb368ef parent
+PASS task 3 3a499d3a2ac5a92caae4e42a58d6e3b8dbb368ef exact raw trailer
+PASS task 3 trees
+PASS task 3 binary diff SHA-256
+PASS task 3 changed paths
+PASS brief graph has exactly one child
+PASS brief child title
+PASS brief child description
+PASS brief child type
+PASS brief child parent/blockers
+PASS brief graph digest
+PASS accepted brief names exact child
+PASS accepted brief contains child requirement: Implement and test default and n
+PASS accepted brief contains child requirement: Create exactly two coherent comm
+PASS accepted brief contains child requirement: Review and publish both commits
+PASS accepted brief records no sibling blockers
+PASS accepted review approves exact graph cardinality
+PASS task 1 completed at publish with released ownership
+PASS task 1 brief response matches accepted index
+PASS task 1 review response matches accepted index
+PASS task 1 publish response matches accepted index
+PASS task 2 completed at publish with released ownership
+PASS task 2 review response matches accepted index
+PASS task 2 publish response matches accepted index
+PASS task 3 completed at publish with released ownership
+PASS task 3 review response matches accepted index
+PASS task 3 publish response matches accepted index

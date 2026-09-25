@@ -1,0 +1,10 @@
+{
+  "children": [
+    {
+      "key": "loud-greeting",
+      "title": "Development child — Add loud greeting mode",
+      "description_markdown": "Implement and test default and named greetings in normal and loud modes, including first-argument-only flag handling and ignored later arguments. Create exactly two coherent commits in order: first code and tests, then README documentation. Review and publish both commits unchanged.",
+      "blocker_keys": []
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "outcome": "published",
+  "markdown": "# Publication\n\n## Reviewed commit sequence\n\n- Base: `9c9b0783756e994ff330383399aecc4b688939db`\n- Commit: `3a499d3a2ac5a92caae4e42a58d6e3b8dbb368ef` (`KOS-Task: 3`)\n- Tip: `3a499d3a2ac5a92caae4e42a58d6e3b8dbb368ef`\n- Base tree: `c0ba5b40181b9f75b2016ac67a9cd60fe379a404`\n- Tip tree: `aae9e9c2a41743576f40542308b201c5f7f1d38d`\n- Changed path: `lib/greeting.rb`\n- Binary diff SHA-256: `640aa8782eedea90e3f2c40dfbdba663e1cec0ca6981f57f07ccdee8ec6bd8a5`\n\n## Remote observation\n\nFetched `origin/main` after pushing. Its tip is exactly `3a499d3a2ac5a92caae4e42a58d6e3b8dbb368ef`; walking it back to the approved base yields exactly the approved one-commit sequence with matching parent and tree. The remotely observed diff digest and changed path match review.\n",
+  "accepted_claim_version": 7,
+  "reconstructed": false
+}

@@ -1,0 +1,26 @@
+{
+  "source": "sanitized task-tool projection from the three retained OpenCode scheduler sessions",
+  "calls": [
+    { "profile": "kos-brief", "prompt": "1", "status": "completed" },
+    { "profile": "kos-brief", "prompt": "1", "status": "completed" },
+    { "profile": "kos-review", "prompt": "1", "status": "completed" },
+    { "profile": "kos-brief", "prompt": "1", "status": "completed" },
+    { "profile": "kos-review", "prompt": "1", "status": "completed" },
+    { "profile": "kos-publish", "prompt": "1", "status": "completed" },
+    { "profile": "kos-plan", "prompt": "2", "status": "completed" },
+    { "profile": "kos-implement", "prompt": "2", "status": "completed" },
+    { "profile": "kos-document", "prompt": "2", "status": "completed" },
+    { "profile": "kos-review", "prompt": "2", "status": "completed" },
+    { "profile": "kos-publish", "prompt": "2", "status": "running" },
+    { "profile": "kos-publish", "prompt": "2", "status": "completed" },
+    { "profile": "kos-diagnose", "prompt": "3", "status": "error" },
+    { "profile": "kos-diagnose", "prompt": "3", "status": "error" },
+    { "profile": "kos-diagnose", "prompt": "3", "status": "completed" },
+    { "profile": "kos-plan", "prompt": "3", "status": "completed" },
+    { "profile": "kos-implement", "prompt": "3", "status": "completed" },
+    { "profile": "kos-document", "prompt": "3", "status": "completed" },
+    { "profile": "kos-review", "prompt": "3", "status": "completed" },
+    { "profile": "kos-publish", "prompt": "3", "status": "completed" }
+  ],
+  "verifier_launches": 0
+}

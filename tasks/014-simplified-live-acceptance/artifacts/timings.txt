@@ -1,0 +1,20 @@
+All timestamps are UTC and come from the local OpenCode session store.
+
+/kos-brief
+start: 2026-09-25 15:39:40
+end: 2026-09-25 15:56:49
+elapsed: 1029 seconds (17 minutes 9 seconds)
+
+/kos
+start: 2026-09-25 15:57:19
+end: 2026-09-25 19:31:27
+wall elapsed: 12848 seconds (3 hours 34 minutes 8 seconds)
+interrupted gap: 12174 seconds (3 hours 22 minutes 54 seconds)
+active elapsed excluding the API interruption: 674 seconds (11 minutes 14 seconds)
+
+/kos-fix
+start: 2026-09-25 19:32:42
+end: 2026-09-25 19:49:18
+elapsed: 996 seconds (16 minutes 36 seconds)
+
+Total active elapsed: 2699 seconds (44 minutes 59 seconds)

@@ -1,0 +1,6 @@
+{
+  "outcome": "approved",
+  "markdown": "# Review\n\n## Findings\n\nNo actionable findings.\n\n## Decision\n\nApproved. The product specification is implementation-neutral, matches the requested behavior, and preserves the existing normal output. The proposed graph contains exactly one development child with no sibling blockers and carries the required two-commit order, review, and unchanged-publication constraints.\n\n## Reviewed revision\n\n- Base: `9bd261e119da5ee170c222ab8c8743f2de1155dc`\n- Ordered commits:\n  1. `07154f11ecbaf731b0c594f48701d9ac88c271ee`\n- Tip: `07154f11ecbaf731b0c594f48701d9ac88c271ee`\n- Trees:\n  - Base: `7f241bad6d3a5dbca1b5521bdce0e89d37f9bba1`\n  - `07154f11ecbaf731b0c594f48701d9ac88c271ee`: `3d2eb668afba6fbe8cd0042bc676ee24e0ef0b78`\n- Changed paths: `specs/greeting.md`\n- Complete base-to-tip binary diff SHA-256: `f38facd08abfcc666fab81e453f19190825a8fef3fa97e3675ec06fb2a209381`\n",
+  "accepted_claim_version": 6,
+  "reconstructed": false
+}

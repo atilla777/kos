@@ -1,0 +1,17 @@
+{
+  "boundary": "visible slash-command payload to persisted create-or-get request",
+  "expected_payload": "Add an optional --loud flag only when it is the first argument to bin/greet. Without it, preserve current output. With it, uppercase the complete greeting. In both modes use the first name argument and ignore later arguments. Update the OKF product specification and README, and test default and named greetings in normal and loud modes. Materialize exactly one development child with no sibling blockers. The child must create exactly two coherent commits in order: first code and tests, then README documentation; review and publish both unchanged.",
+  "expected": {
+    "bytes": 550,
+    "sha256": "23c731240046011bd5ae60c5a9f66320f5536fcb03814a9cfd9bbb26116b6e93",
+    "first_byte": 65,
+    "last_byte": 46
+  },
+  "submitted": {
+    "bytes": 552,
+    "sha256": "bf5422678ad2a85c4e8efb5697500ab5cab4fd1ed39bd8eca4b7746d393f68f7",
+    "first_byte": 34,
+    "last_byte": 34
+  },
+  "observation": "The persisted request is one leading and one trailing 0x22 byte around the expected payload. Task 015 owns reproduction and localization of where those delimiter bytes entered the payload."
+}

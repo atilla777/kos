@@ -1,0 +1,6 @@
+{
+  "outcome": "approved",
+  "markdown": "# Review\n\n## Commit sequence\n\nBase: `07154f11ecbaf731b0c594f48701d9ac88c271ee`\n\n1. `219952f6ca34bfcdae4ed302bf2c9d776def81f2`\n2. `1658387a16682011e2749580be56bda8cfaf4a2f`\n\nTip: `1658387a16682011e2749580be56bda8cfaf4a2f`\n\n## Trees and diff digest\n\n- Base tree: `3d2eb668afba6fbe8cd0042bc676ee24e0ef0b78`\n- `219952f6ca34bfcdae4ed302bf2c9d776def81f2` tree: `0fbd1837751e19a867d50fe2c0aaab2458f147ac`\n- `1658387a16682011e2749580be56bda8cfaf4a2f` tree: `aae9e9c2a41743576f40542308b201c5f7f1d38d`\n- Changed paths: `README.md`, `bin/greet`, `test/greeting_test.rb`\n- Complete binary diff SHA-256: `ef4b6ed17e8e554498b52c309ad004f8b05fbd92f5baa8f699cebf4da57702be`\n\n## Findings\n\nNo actionable findings.\n\n## Decision\n\nApproved.\n",
+  "accepted_claim_version": 4,
+  "reconstructed": false
+}
