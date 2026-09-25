@@ -8,13 +8,7 @@ development records and are not read by the KOS server or CLI.
 
 | ID | Task | Status | Dependencies |
 | --- | --- | --- | --- |
-| 013 | [Publish reviewed commit sequences](013-reviewed-commit-ranges/task.md) | active | 011, 012 |
-
-## Planned
-
-| ID | Task | Status | Dependencies |
-| --- | --- | --- | --- |
-| 014 | [Run simplified live acceptance](014-simplified-live-acceptance/task.md) | planned | 011, 012, 013 |
+| 014 | [Run simplified live acceptance](014-simplified-live-acceptance/task.md) | active | 011, 012, 013 |
 
 ## Completed
 
@@ -32,6 +26,7 @@ development records and are not read by the KOS server or CLI.
 | 010 | [Prevent publication without required checks](010-enforce-check-evidence/task.md) | done | 009 |
 | 011 | [Complete built-in tasks at publication](011-terminal-publication/task.md) | done | 010 |
 | 012 | [Materialize brief graphs atomically](012-atomic-brief-materialization/task.md) | done | 011 |
+| 013 | [Publish reviewed commit sequences](013-reviewed-commit-ranges/task.md) | done | 011, 012 |
 
 ## Future Decisions
 

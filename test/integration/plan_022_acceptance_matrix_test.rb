@@ -46,23 +46,23 @@ class Plan022AcceptanceMatrixTest < ActiveSupport::TestCase
       [ "test/skills/kos_skills_test.rb", "review plan and diagnose profiles are read-only" ]
     ]),
     Criterion.new("independent read-only review", [
-      [ "test/integration/acceptance_scenarios_test.rb", "a moved base repeats checks and review before one publication commit" ]
+      [ "test/integration/acceptance_scenarios_test.rb", "a moved base repeats content checks and exact-range review before publication" ]
     ]),
     Criterion.new("publish completes", [
       [ "test/integration/acceptance_scenarios_test.rb", "built in development and fix lifecycles complete at publication" ]
     ]),
     Criterion.new("publish observes remote", [
-      [ "test/skills/kos_skills_test.rb", "publication observes the expected remote result" ]
+      [ "test/skills/kos_skills_test.rb", "publication observes the exact reviewed remote range" ]
     ]),
     Criterion.new("publication prerequisites gate completion", [
       [ "test/models/brief_task_graph_test.rb", "rejects published before materialization without accepting an artifact" ]
     ]),
-    Criterion.new("nonpublish no commit/push", [
+    Criterion.new("no push before publish", [
       [ "test/skills/kos_skills_test.rb", "profiles retain operational role boundaries" ]
     ]),
     Criterion.new("existing IDs/relationships/workflows/worktrees", [
       [ "test/integration/repository_identity_migration_test.rb", "backfill and reversal preserve IDs relationships workflow snapshots and execution state" ],
-      [ "test/integration/acceptance_scenarios_test.rb", "two tasks retain independent ownership artifacts and uncommitted worktrees" ]
+      [ "test/integration/acceptance_scenarios_test.rb", "two tasks retain independent ownership artifacts and local commit ranges" ]
     ]),
     Criterion.new("clean install assets/workflows", [
       [ "test/integration/gem_package_test.rb", "installs the complete OpenCode integration from the checkout" ],
@@ -83,7 +83,7 @@ class Plan022AcceptanceMatrixTest < ActiveSupport::TestCase
     "crash before completion unchanged", "lost response ordinary show", "stale/wrong no write",
     "bad predecessor backward allowed", "repeated replaces", "answer stored/restart", "scheduler only ID",
     "scheduler no Markdown/Git", "profile policy", "independent read-only review", "publish completes",
-    "publish observes remote", "publication prerequisites gate completion", "nonpublish no commit/push",
+    "publish observes remote", "publication prerequisites gate completion", "no push before publish",
     "existing IDs/relationships/workflows/worktrees", "clean install assets/workflows",
     "real development/fix/brief scenarios E2E", "no local tasks/id dir", "bin/check"
   ].freeze

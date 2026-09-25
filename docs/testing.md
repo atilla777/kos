@@ -45,7 +45,7 @@ The acceptance matrix preserves these exact 23 user-required criteria in order:
 15. Publish completes.
 16. Publish observes remote.
 17. Publication prerequisites gate completion.
-18. Nonpublish no commit/push.
+18. No push before publish.
 19. Existing IDs/relationships/workflows/worktrees.
 20. Clean install assets/workflows.
 21. Real development/fix/brief scenarios E2E.
@@ -60,7 +60,10 @@ release evidence remains an explicit separate requirement.
 ## Scenario Coverage
 
 Deterministic development E2E follows `plan`, `implement`, `document`, `review`,
-and `publish`. It proves required checks occur in implementation, no
+and `publish`. It proves content agents leave a clean linear task-owned commit
+range, and review inspects the full diff and records its exact base, ordered
+SHAs, tip, trees, paths, and SHA-256 digest with external diff drivers and
+textconv disabled. It proves required checks occur in implementation, no
 built-in `check` step exists, ordinary changes return to implementation, design
 failures return to planning, invalid predecessor outcomes route precisely, and
 only `published` completes. A custom workflow step named `check` remains valid.
@@ -80,7 +83,7 @@ alongside the implementation Markdown.
 
 Deterministic brief E2E runs briefing in a fresh `kos-brief` agent, verifies OKF
 conformance, independently reviews the specification and exact graph, observes
-remote publication before one fenced atomic materialization operation, and
+remote publication of the exact reviewed range before one fenced atomic materialization operation, and
 completes only after observing the materialized graph. One-child and acyclic
 multi-child graphs, sibling blockers, parent availability, every backward
 outcome, invalid-graph rollback, repeated materialization, and post-publication graph
@@ -88,7 +91,7 @@ conflict are covered.
 
 State recovery tests restart the server after accepted reports and between
 question, answer, resume, and next report. They drop responses before and after
-create, report, commit, push, and materialization boundaries and prove recovery
+create, report, push, and materialization boundaries and prove recovery
 through the appropriate authoritative read. No test creates or consults a local
 task artifact directory.
 Request-bound creation tests cover lost responses, changed owners, progressed
@@ -109,8 +112,8 @@ runtime boundary, and verify command and skill discovery.
 Required live release acceptance invokes `/kos-brief`, `/kos`, and `/kos-fix` against an
 isolated Rails database, KOS data home, fixture repository, task worktrees, and
 bare remote. It proves ID-only scheduling, fresh focused agents, mandatory
-checks, read-only authorities, accepted evidence, one publication commit per
-task, remote publication observation, completed state, ownership release, and the
+checks, read-only review, accepted exact-range evidence, unchanged task commits,
+remote publication observation, completed state, ownership release, and the
 brief child graph. The automated suite proves lifecycle and installed-asset
 contracts only. Live model execution remains separate release evidence rather
 than a credential-dependent ordinary test, and this document does not claim

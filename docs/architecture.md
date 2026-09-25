@@ -14,8 +14,8 @@ These rules describe the implemented PLAN-022 state-oriented architecture.
   worktree operations, checks, artifact production, outcome choice, and reporting.
 - The filesystem owns task worktrees. It does not own request-bound creation
   recovery, accepted step artifacts, or human answers.
-- Git owns commits and SHA values. Only the publication profile may mutate Git
-  history or a remote.
+- Git owns commits and SHA values. Rails has no Git-specific SHA fields. Content
+  profiles may create local task history; only publication may mutate a remote.
 - Product behavior lives in repository `specs/`; technical contracts live in
   `docs/`; accepted execution evidence lives in KOS task state.
 
@@ -29,8 +29,10 @@ These rules describe the implemented PLAN-022 state-oriented architecture.
 - Derive machine-local worktree paths; never persist them as domain state.
 - Keep external side effects outside Rails transactions and recover ambiguity by
   observing authoritative task, Git, remote, or child-graph state before retry.
-- Never create a task commit before publication; built-in tasks complete only
-  after publication observes its required remote and graph results.
+- Every local task commit is content-agent-owned, carries exactly one raw
+  canonical task trailer line with no case variant or duplicate, and remains
+  unpushed until publication; built-in tasks complete
+  only after publication observes the reviewed remote range and graph results.
 - Store only the last accepted artifact per step, not attempts, pending reports,
   receipts, or a universal arbitrary state object.
 - Never use local artifact fallback, dual reads, or automatic import of legacy files.
@@ -172,18 +174,19 @@ The exact built-in dispatch map is:
 | --- | --- | --- | --- |
 | `diagnose` | `kos-diagnose` | advanced | read-only KOS/Git; reproduction from an exported tree with an isolated empty environment |
 | `plan` | `kos-plan` | advanced | read-only |
-| `implement` | `kos-implement` | standard | edit and run checks; no commit or push |
-| `document` | `kos-document` | standard | edit and use `okf`; no commit or push |
-| `brief` | `kos-brief` | advanced | edit authorized specification/graph work; no commit or push |
-| `review` | `kos-review` | advanced | independent and read-only |
-| `publish` | `kos-publish` | standard | sole base-update, stage, commit, push, and graph-materialization authority |
+| `implement` | `kos-implement` | standard | integrate base, edit, check, and create local task commits; never push |
+| `document` | `kos-document` | standard | edit, use `okf`, and create local task commits; never push |
+| `brief` | `kos-brief` | advanced | authorized specification/graph edits and local task commits; never push |
+| `review` | `kos-review` | advanced | independent read-only review of an exact commit range |
+| `publish` | `kos-publish` | standard | validate and push only the approved range; graph materialization authority |
 
 Managed profiles intentionally contain no KOS-specific OpenCode permission
 blocks. They are role and model selection, not a security boundary; tool approval
 comes from the administrator's OpenCode configuration. Their prompts define the
-expected procedure: read-only roles preserve the worktree, publish alone performs
-Git publication and brief graph mutation, and generic custom-step roles do not
-commit or push. The shared bearer token remains the authorization boundary;
+expected procedure: read-only roles preserve the repository, content roles leave
+a clean task-owned commit range, publish alone pushes and performs brief graph
+mutation, and generic custom-step roles do not commit or push. The shared bearer
+token remains the authorization boundary;
 lifecycle fencing coordinates trusted concurrent operations, while independent
 review checks the resulting work.
 
@@ -207,14 +210,20 @@ step validates the exact predecessors and current repository state it relies on.
 ## Publication
 
 Publication validates accepted plan, implementation, documentation, and review
-evidence. A brief also validates its accepted specification and graph. If the
-remote base moved, the publisher preserves task work on the new base and reports
-the explicit backward outcome without committing. Otherwise it stages only
-validated paths, verifies the complete staged result, creates one detached
-commit with one `KOS-Task: <id>` trailer, pushes without force, and reports
-`published` only after remote observation. Interrupted publication observes and
-reuses valid existing state rather than duplicating a commit or push. Brief
-children are atomically materialized only after remote publication is observed.
+evidence. Review inspects the complete aggregate diff and approval identifies
+the exact base, ordered commit SHAs, tip, trees, paths, and SHA-256 diff digest
+of a clean linear range whose every commit has one exact canonical `KOS-Task`
+trailer line. A brief also validates its accepted
+specification and graph. Publication first accepts an exact reviewed remote tip
+and sequence as success, otherwise pushes only from the exact reviewed base. A
+remote differing from both is a moved-base outcome or conflict; the publisher
+changes nothing so briefing or implementation can integrate it and repeat the
+downstream steps. Publication never
+creates or rewrites history: it pushes the exact reviewed range without force
+and reports `published` only after fetching and observing that exact sequence
+remotely. Interrupted or ambiguous publication recovers from the same remote
+observation. Brief children are atomically materialized only after remote
+publication is observed.
 
 `published` completes a built-in task and releases ownership. The publisher may
 report it only after observing the expected remote commit and, for a brief, the

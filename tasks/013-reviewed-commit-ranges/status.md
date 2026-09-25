@@ -1,18 +1,25 @@
 # Status
 
-State: active
+State: done
 Updated: 2026-09-25
 
 ## Current
 
-Ready to define and publish exact reviewed commit sequences now that tasks 011
-and 012 are complete.
+Implemented exact reviewed commit sequences. Content steps may create local task
+commits but never push; review binds approval to the exact clean range; publication
+pushes and observes that range unchanged without rewriting history. Independent
+review fixes now use bounded diff digests, canonical raw trailers, accepted-artifact
+parsing, exact-tip-first recovery, real nonzero-push observation, and clean-state
+review enforcement. Raw trailer checks preserve carriage returns, and digest
+calculation disables external diff drivers and textconv.
 
-## Next
+## Checks
 
-Specify the reviewed commit-range and authority contract without changing task
-012's atomic brief materialization behavior.
+- Focused skill, profile, catalog, Git, recovery, scenario, and matrix tests pass:
+  43 tests, 2035 assertions.
+- `bin/lint` passes.
+- `bin/check` passes: 240 tests, 3739 assertions.
 
 ## Blockers
 
-None. Dependencies 011 and 012 are done.
+None.

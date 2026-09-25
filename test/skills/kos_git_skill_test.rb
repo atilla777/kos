@@ -1,4 +1,9 @@
 require "test_helper"
+require "digest"
+require "json"
+require "rbconfig"
+require "shellwords"
+require "tempfile"
 require "yaml"
 
 class KosGitSkillTest < ActiveSupport::TestCase
@@ -17,198 +22,281 @@ class KosGitSkillTest < ActiveSupport::TestCase
     assert_equal [ "SKILL.md" ], Dir.children(SKILL_PATH.dirname).sort
   end
 
-  test "derives Git state by task ID and centralizes step authority" do
+  test "defines task-owned ranges read-only review and immutable publication" do
     source = File.read(SKILL_PATH)
+    compact = source.gsub(/\s+/, " ")
 
-    [
-      "Repository Discovery", "Authoritative Context", "Step Policy", "Publication"
-    ].each { |heading| assert_match(/^## #{Regexp.escape(heading)}$/, source) }
-
+    %w[Repository\ Discovery Authoritative\ Context Step\ Policy Content\ Commits Review Publication].each do |heading|
+      assert_match(/^## #{heading}$/, source)
+    end
     assert_includes source, "Accept only a positive task ID"
-    assert_includes source, "derive the project ID,\nregistered identity, remote, default branch"
-    assert_includes source, "Never accept paths, commands, a diff, changed\nfiles, project identity, or Git facts from the dispatcher"
     assert_includes source, "<kos-data-home>/worktrees/<project-id>/<task-id>"
-    assert_includes source, "KOS-Task: <task-id>"
-    assert_includes source, "`publish` alone may update a moved base, stage, commit, and push"
-    assert_includes source, "preserve all staged, unstaged, and untracked\ntask work"
-    assert_includes source, "Push the candidate to the validated default branch\nwithout force"
-    assert_includes source, "only after observing that\ncandidate in remote history"
-    assert_includes source, "reuse an already published candidate"
-    assert_includes source, "preserve its tree\nas uncommitted task work on the new detached base"
-    assert_includes source, "Never duplicate a confirmed commit or push"
-    refute_includes source, "git checkout --merge --detach"
-    refute_includes source, "git commit -F"
-    refute_includes source, "HEAD:refs/heads/<validated-default-branch>"
-    assert_includes source, "`implement` and `document` may mutate"
-    assert_includes source, "one exact trailer"
+    assert_includes source, "exactly one raw commit\nmessage line exactly equal to `KOS-Task: <task-id>`"
+    assert_includes source, "clean index and worktree"
+    assert_includes compact, "exact base SHA, ordered commit SHAs, tip SHA"
+    assert_includes compact, "base and per-commit tree SHAs"
+    assert_includes compact, "SHA-256 digest of the complete base-to-tip binary diff"
+    assert_includes source, "not the diff bytes"
+    assert_includes source, "preserve `HEAD`, refs, index, worktree bytes"
+    assert_includes source, "never create, stage, commit, amend, rebase, squash, cherry-pick, or append a\ncommit"
+    assert_includes source, "remote tip equals the reviewed tip"
+    assert_includes source, "differs from both reviewed tip and base"
+    assert_includes source, "including errors and lost responses"
+    assert_includes source, "exact ordered sequence with the same commit and tree\nobjects"
     assert_includes source, "never reports a KOS\nattempt"
     assert_includes source, "exactly one configured fetch URL"
     assert_includes source, "exactly one configured push URL"
     assert_includes source, "absolute scp path"
     assert_includes source, "duplicate or ambiguous leading slashes"
-    assert_includes source, "Fetch and push spellings may\ndiffer only when both normalize to the same identity"
-    assert_includes source, "Before a task ID exists, a scheduler returns that canonical\nidentity to `kos-cli` for exact project lookup"
-    assert_includes source, "compare the discovered identity directly with the registered identity in `task\ncontext`; do not call `project show`"
-    assert_match(/stops before task or local recovery\s+mutation/, source)
   end
 
-  test "separate task worktrees preserve independent uncommitted changes without commits" do
-    with_repository do |repository|
-      first = repository[:root].join("data/kos/worktrees/1/11")
-      second = repository[:root].join("data/kos/worktrees/1/12")
-      base = git("rev-parse", "origin/main", chdir: repository[:source]).strip
-
-      git("worktree", "add", "--detach", first.to_s, "origin/main", chdir: repository[:source])
-      git("worktree", "add", "--detach", second.to_s, "origin/main", chdir: repository[:source])
-      File.write(first.join("first.txt"), "first task\n")
-      File.write(second.join("second.txt"), "second task\n")
-
-      assert_equal base, git("rev-parse", "HEAD", chdir: first).strip
-      assert_equal base, git("rev-parse", "HEAD", chdir: second).strip
-      assert_includes git("status", "--porcelain", chdir: first), "first.txt"
-      refute_includes git("status", "--porcelain", chdir: first), "second.txt"
-      assert_includes git("status", "--porcelain", chdir: second), "second.txt"
-      refute_includes git("status", "--porcelain", chdir: second), "first.txt"
-      assert_equal "1", git("rev-list", "--count", "HEAD", chdir: first).strip
-      assert_equal "1", git("rev-list", "--count", "HEAD", chdir: second).strip
-    end
-  end
-
-  test "a moved base keeps compatible task work uncommitted" do
+  test "content steps leave a clean contiguous multi-commit task range" do
     with_repository do |repository|
       worktree = repository[:root].join("data/kos/worktrees/1/21")
       git("worktree", "add", "--detach", worktree.to_s, "origin/main", chdir: repository[:source])
-      File.write(worktree.join("task.txt"), "task change\n")
+      base = git("rev-parse", "HEAD", chdir: worktree).strip
 
-      File.write(repository[:publisher].join("base.txt"), "remote change\n")
-      git("add", "base.txt", chdir: repository[:publisher])
-      git("commit", "-m", "Move base", chdir: repository[:publisher])
-      git("push", "origin", "main", chdir: repository[:publisher])
-      git("fetch", "--no-tags", "origin", "refs/heads/main:refs/remotes/origin/main", chdir: repository[:source])
-      remote_head = git("rev-parse", "origin/main", chdir: repository[:source]).strip
+      first = task_commit(worktree, 21, "Implement", "implementation.txt", "implemented\n")
+      second = task_commit(worktree, 21, "Document", "documentation.txt", "documented\n")
+      commits = git("rev-list", "--reverse", "#{base}..HEAD", chdir: worktree).lines.map(&:strip)
 
-      git("checkout", "--merge", "--detach", remote_head, chdir: worktree)
-
-      assert_equal remote_head, git("rev-parse", "HEAD", chdir: worktree).strip
-      assert_equal "task change\n", File.read(worktree.join("task.txt"))
-      assert_includes git("status", "--porcelain", chdir: worktree), "task.txt"
-      assert_equal "2", git("rev-list", "--count", "HEAD", chdir: worktree).strip
-    end
-  end
-
-  test "publication recovery observes the existing remote commit without creating another" do
-    with_repository do |repository|
-      worktree = repository[:root].join("data/kos/worktrees/1/31")
-      git("worktree", "add", "--detach", worktree.to_s, "origin/main", chdir: repository[:source])
-      File.write(worktree.join("task.txt"), "published task\n")
-      git("add", "task.txt", chdir: worktree)
-      git("commit", "-m", "KOS task 31: Publish", "-m", "KOS-Task: 31", chdir: worktree)
-      candidate = git("rev-parse", "HEAD", chdir: worktree).strip
-
-      git("push", "--porcelain", "origin", "#{candidate}:refs/heads/main", chdir: worktree)
-      commit_count = git("rev-list", "--count", "HEAD", chdir: worktree)
-      remote_before_recovery = git("--git-dir", repository[:remote].to_s, "rev-parse", "refs/heads/main")
-
-      # A restarted publication observes first and must not commit or push again.
-      git("fetch", "--no-tags", "origin", "refs/heads/main:refs/remotes/origin/main", chdir: repository[:source])
-      observed = git("rev-parse", "origin/main", chdir: repository[:source]).strip
-      published = git_success?("merge-base", "--is-ancestor", candidate, observed, chdir: worktree)
-
-      assert_equal candidate, observed
-      assert published
-      assert_equal commit_count, git("rev-list", "--count", "HEAD", chdir: worktree)
+      assert_equal [ first, second ], commits
       assert_empty git("status", "--porcelain", chdir: worktree)
-      assert_equal "31", git("log", "-1", "--format=%(trailers:key=KOS-Task,valueonly)", chdir: worktree).strip
-      assert_equal remote_before_recovery,
-        git("--git-dir", repository[:remote].to_s, "rev-parse", "refs/heads/main")
+      commits.each do |commit|
+        task_lines = git("log", "-1", "--format=%B", commit, chdir: worktree).lines.map(&:chomp)
+          .select { |line| line.match?(/\A\s*(?i:kos-task)\s*:/) }
+        assert_equal [ "KOS-Task: 21" ], task_lines
+      end
+      assert_equal [ first, base ], git("rev-list", "--parents", "-n", "1", first, chdir: worktree).split
+      assert_equal [ second, first ], git("rev-list", "--parents", "-n", "1", second, chdir: worktree).split
     end
   end
 
-  test "publication recovery preserves an unpublished candidate when the remote advances" do
+  test "a moved remote base leaves the approved range and worktree unchanged" do
     with_repository do |repository|
-      worktree = repository[:root].join("data/kos/worktrees/1/32")
+      worktree = repository[:root].join("data/kos/worktrees/1/22")
       git("worktree", "add", "--detach", worktree.to_s, "origin/main", chdir: repository[:source])
-      previous_base = git("rev-parse", "HEAD", chdir: worktree).strip
-      File.write(worktree.join("task.txt"), "interrupted task\n")
-      git("add", "task.txt", chdir: worktree)
-      git("commit", "-m", "KOS task 32: Publish", "-m", "KOS-Task: 32", chdir: worktree)
+      base = git("rev-parse", "HEAD", chdir: worktree).strip
+      task_commit(worktree, 22, "Implement", "task.txt", "task change\n")
+      review = review_facts(worktree, base, 22, [ "task.txt" ])
+      head = git("rev-parse", "HEAD", chdir: worktree)
+      status = git("status", "--porcelain=v2", "--untracked-files=all", "-z", chdir: worktree)
 
       File.write(repository[:publisher].join("base.txt"), "remote change\n")
       git("add", "base.txt", chdir: repository[:publisher])
       git("commit", "-m", "Move base", chdir: repository[:publisher])
       git("push", "origin", "main", chdir: repository[:publisher])
       git("fetch", "--no-tags", "origin", "refs/heads/main:refs/remotes/origin/main", chdir: repository[:source])
-      moved_base = git("rev-parse", "origin/main", chdir: repository[:source]).strip
+      remote = git("rev-parse", "origin/main", chdir: repository[:source]).strip
 
-      git("reset", "--mixed", previous_base, chdir: worktree)
-      git("checkout", "--merge", "--detach", moved_base, chdir: worktree)
-
-      assert_equal moved_base, git("rev-parse", "HEAD", chdir: worktree).strip
-      assert_equal "interrupted task\n", File.read(worktree.join("task.txt"))
-      assert_includes git("status", "--porcelain", chdir: worktree), "?? task.txt"
-      assert_equal "2", git("rev-list", "--count", "HEAD", chdir: worktree).strip
+      refute_equal base, remote
+      _output, error, publication_status = run_publication(repository, worktree, 22, review)
+      refute_predicate publication_status, :success?
+      assert_includes error, "remote tip differs from reviewed base and tip"
+      assert_equal head, git("rev-parse", "HEAD", chdir: worktree)
+      assert_equal status, git("status", "--porcelain=v2", "--untracked-files=all", "-z", chdir: worktree)
+      assert_equal "task change\n", File.read(worktree.join("task.txt"))
     end
   end
 
-  test "rewritten remote history blocks base movement without changing task state" do
-    with_repository do |repository|
-      worktree = repository[:root].join("data/kos/worktrees/1/41")
-      git("worktree", "add", "--detach", worktree.to_s, "origin/main", chdir: repository[:source])
-      previous_base = git("rev-parse", "HEAD", chdir: worktree).strip
-      File.write(worktree.join("task.txt"), "preserve me\n")
+  test "publication recovery pushes or observes the exact reviewed sequence without new commits" do
+    [ :push, :already_published, :nonzero_after_success ].each do |recovery_case|
+      with_repository do |repository|
+        worktree = repository[:root].join("data/kos/worktrees/1/31")
+        git("worktree", "add", "--detach", worktree.to_s, "origin/main", chdir: repository[:source])
+        base = git("rev-parse", "HEAD", chdir: worktree).strip
+        commits = [
+          task_commit(worktree, 31, "Implement", "task.txt", "published task\n"),
+          task_commit(worktree, 31, "Document", "docs.txt", "published docs\n")
+        ]
+        review = review_facts(worktree, base, 31, %w[docs.txt task.txt])
+        expected_count = git("rev-list", "--count", "HEAD", chdir: worktree).strip
+        if recovery_case == :already_published
+          git("push", "origin", "#{commits.last}:refs/heads/main", chdir: worktree)
+        end
 
-      git("checkout", "--orphan", "replacement", chdir: repository[:publisher])
-      git("rm", "-rf", ".", chdir: repository[:publisher])
-      File.write(repository[:publisher].join("replacement.txt"), "rewritten\n")
-      git("add", "replacement.txt", chdir: repository[:publisher])
-      git("commit", "-m", "Rewrite history", chdir: repository[:publisher])
-      git("push", "--force", "origin", "replacement:main", chdir: repository[:publisher])
-      git("fetch", "--no-tags", "--force", "origin", "refs/heads/main:refs/remotes/origin/main",
-        chdir: repository[:source])
-      rewritten_base = git("rev-parse", "origin/main", chdir: repository[:source]).strip
+        mode = "nonzero-after-success" if recovery_case == :nonzero_after_success
+        output, error, status = run_publication(repository, worktree, 31, review, mode:)
+        assert_predicate status, :success?, error
+        recovered = JSON.parse(output)
 
-      refute git_success?("merge-base", "--is-ancestor", previous_base, rewritten_base, chdir: worktree)
-      assert_equal previous_base, git("rev-parse", "HEAD", chdir: worktree).strip
-      assert_equal "preserve me\n", File.read(worktree.join("task.txt"))
-      assert_includes git("status", "--porcelain", chdir: worktree), "task.txt"
+        assert_equal commits.last, recovered.fetch("tip")
+        assert_equal commits, recovered.fetch("commits")
+        assert_equal expected_count, recovered.fetch("commit_count")
+        assert_equal recovery_case != :already_published, recovered.fetch("pushed")
+        if recovery_case == :nonzero_after_success
+          assert_equal false, recovered.fetch("push_success")
+          assert_operator recovered.fetch("push_exitstatus"), :>, 0
+        end
+
+        assert_equal commits.last,
+          git("--git-dir", repository[:remote].to_s, "rev-parse", "refs/heads/main").strip
+        assert_equal commits,
+          git("--git-dir", repository[:remote].to_s, "rev-list", "--reverse", "#{base}..main").lines.map(&:strip)
+        assert_empty git("status", "--porcelain", chdir: worktree)
+      end
     end
   end
 
-  test "reuse detects a local pre-publication commit and preserves it for inspection" do
-    with_repository do |repository|
-      worktree = repository[:root].join("data/kos/worktrees/1/51")
-      git("worktree", "add", "--detach", worktree.to_s, "origin/main", chdir: repository[:source])
-      fetched_base = git("rev-parse", "origin/main", chdir: repository[:source]).strip
-      File.write(worktree.join("unexpected.txt"), "unexpected commit\n")
-      git("add", "unexpected.txt", chdir: worktree)
-      git("commit", "-m", "Unexpected commit", chdir: worktree)
-      unexpected_head = git("rev-parse", "HEAD", chdir: worktree).strip
+  test "publication rejects wrong duplicate and noncanonical task trailers without remote mutation" do
+    {
+      wrong: "KOS-Task: 999",
+      duplicate: "KOS-Task: 41\nKOS-Task: 41",
+      noncanonical: "kos-task: 41",
+      crlf: "KOS-Task: 41\r"
+    }.each do |name, trailer|
+      with_repository do |repository|
+        worktree = repository[:root].join("data/kos/worktrees/1/41-#{name}")
+        git("worktree", "add", "--detach", worktree.to_s, "origin/main", chdir: repository[:source])
+        base = git("rev-parse", "HEAD", chdir: worktree).strip
+        File.write(worktree.join("invalid.txt"), "invalid\n")
+        git("add", "invalid.txt", chdir: worktree)
+        if name == :crlf
+          tree = git("write-tree", chdir: worktree).strip
+          parent = git("rev-parse", "HEAD", chdir: worktree).strip
+          Tempfile.create([ "message", ".txt" ]) do |message|
+            message.binmode
+            message.write("Invalid\r\n\r\n#{trailer}\n")
+            message.flush
+            commit = git("commit-tree", tree, "-p", parent, "-F", message.path, chdir: worktree).strip
+            git("checkout", "--detach", commit, chdir: worktree)
+          end
+          assert_includes git("log", "-1", "--format=%B", chdir: worktree), "KOS-Task: 41\r\n"
+        else
+          git("commit", "-m", "Invalid", "-m", trailer, chdir: worktree)
+        end
+        review = range_facts(worktree, base)
 
-      refute git_success?("merge-base", "--is-ancestor", unexpected_head, fetched_base, chdir: worktree)
-      assert git_success?("merge-base", "--is-ancestor", fetched_base, unexpected_head, chdir: worktree)
-      assert_equal unexpected_head, git("rev-parse", "HEAD", chdir: worktree).strip
-      assert File.exist?(worktree.join("unexpected.txt"))
+        _output, error, status = run_publication(repository, worktree, 41, review)
+
+        refute_predicate status, :success?, name
+        assert_includes error, "commit verification failed", name
+        assert_equal base,
+          git("--git-dir", repository[:remote].to_s, "rev-parse", "refs/heads/main").strip
+      end
     end
   end
 
-  test "candidate observations reject a matching trailer with the wrong subject and paths" do
+  test "read-only review rejects dirty index tracked and untracked state" do
+    {
+      index: ->(worktree) { File.write(worktree.join("task.txt"), "staged dirty\n"); git("add", "task.txt", chdir: worktree) },
+      tracked: ->(worktree) { File.write(worktree.join("task.txt"), "tracked dirty\n") },
+      untracked: ->(worktree) { File.write(worktree.join("untracked.txt"), "untracked dirty\n") }
+    }.each do |name, dirty|
+      with_repository do |repository|
+        worktree = repository[:root].join("data/kos/worktrees/1/dirty-#{name}")
+        git("worktree", "add", "--detach", worktree.to_s, "origin/main", chdir: repository[:source])
+        base = git("rev-parse", "HEAD", chdir: worktree).strip
+        task_commit(worktree, 51, "Implement", "task.txt", "clean\n")
+        dirty.call(worktree)
+
+        _output, error, status = Open3.capture3(RbConfig.ruby,
+          Rails.root.join("test/support/read_only_review_process.rb").to_s,
+          worktree.to_s, base, "51", JSON.generate([ "task.txt" ]))
+
+        refute_predicate status, :success?, name
+        assert_includes error, "review requires a clean worktree", name
+      end
+    end
+  end
+
+  test "review and publication digest bypass configured textconv without executing it" do
     with_repository do |repository|
-      worktree = repository[:root].join("data/kos/worktrees/1/61")
+      File.write(repository[:publisher].join(".gitattributes"), "*.txt diff=evil\n")
+      File.write(repository[:publisher].join("data.txt"), "base\n")
+      git("add", ".gitattributes", "data.txt", chdir: repository[:publisher])
+      git("commit", "-m", "Add textconv fixture", chdir: repository[:publisher])
+      git("push", "origin", "main", chdir: repository[:publisher])
+      git("fetch", "--no-tags", "origin", "refs/heads/main:refs/remotes/origin/main", chdir: repository[:source])
+
+      worktree = repository[:root].join("data/kos/worktrees/1/52")
       git("worktree", "add", "--detach", worktree.to_s, "origin/main", chdir: repository[:source])
-      remote_before = git("--git-dir", repository[:remote].to_s, "rev-parse", "refs/heads/main").strip
-      File.write(worktree.join("unrelated.txt"), "not reviewed\n")
-      git("add", "unrelated.txt", chdir: worktree)
-      git("commit", "-m", "Wrong subject", "-m", "KOS-Task: 61", chdir: worktree)
+      base = git("rev-parse", "HEAD", chdir: worktree).strip
+      task_commit(worktree, 52, "Implement", "data.txt", "task\n")
+      marker = repository[:root].join("textconv-ran")
+      converter = repository[:root].join("textconv")
+      File.write(converter, <<~SH)
+        #!/bin/sh
+        : > #{Shellwords.escape(marker.to_s)}
+        printf 'converted:'
+        cat "$1"
+      SH
+      File.chmod(0o700, converter)
+      git("config", "diff.evil.textconv", converter.to_s, chdir: repository[:source])
 
-      subject = git("log", "-1", "--format=%s", chdir: worktree).strip
-      paths = git("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD", chdir: worktree).lines.map(&:strip)
-      trailer = git("log", "-1", "--format=%(trailers:key=KOS-Task,valueonly)", chdir: worktree).strip
+      review = review_facts(worktree, base, 52, [ "data.txt" ])
+      refute_predicate marker, :exist?
+      raw_diff = git("diff", "--no-ext-diff", "--no-textconv", "--binary", base, "HEAD", chdir: worktree)
+      assert_equal Digest::SHA256.hexdigest(raw_diff.b), review.fetch("diff_sha256")
 
-      assert_equal "61", trailer
-      refute_equal "KOS task 61: Expected", subject
-      refute_equal [ "expected.txt" ], paths
-      assert_equal remote_before,
+      output, error, status = run_publication(repository, worktree, 52, review)
+      assert_predicate status, :success?, error
+      assert_equal review.fetch("tip"), JSON.parse(output).fetch("tip")
+      refute_predicate marker, :exist?
+
+      converted_diff = git("diff", "--textconv", base, "HEAD", chdir: worktree)
+      assert_predicate marker, :exist?
+      refute_equal raw_diff, converted_diff
+    end
+  end
+
+  test "ambiguous recovery rejects a partial remote sequence" do
+    with_repository do |repository|
+      worktree = repository[:root].join("data/kos/worktrees/1/42")
+      git("worktree", "add", "--detach", worktree.to_s, "origin/main", chdir: repository[:source])
+      base = git("rev-parse", "HEAD", chdir: worktree).strip
+      commits = [
+        task_commit(worktree, 42, "First", "first.txt", "first\n"),
+        task_commit(worktree, 42, "Second", "second.txt", "second\n")
+      ]
+      review = review_facts(worktree, base, 42, %w[first.txt second.txt])
+      git("push", "origin", "#{commits.first}:refs/heads/main", chdir: worktree)
+
+      _output, error, status = run_publication(repository, worktree, 42, review)
+
+      refute_predicate status, :success?
+      assert_includes error, "remote tip differs from reviewed base and tip"
+      assert_equal commits.first,
         git("--git-dir", repository[:remote].to_s, "rev-parse", "refs/heads/main").strip
+    end
+  end
+
+  private
+
+  def task_commit(worktree, task_id, subject, path, contents)
+    File.write(worktree.join(path), contents)
+    git("add", path, chdir: worktree)
+    git("commit", "-m", subject, "-m", "KOS-Task: #{task_id}", chdir: worktree)
+    git("rev-parse", "HEAD", chdir: worktree).strip
+  end
+
+  def review_facts(worktree, base, task_id, paths)
+    output, error, status = Open3.capture3(RbConfig.ruby,
+      Rails.root.join("test/support/read_only_review_process.rb").to_s,
+      worktree.to_s, base, task_id.to_s, JSON.generate(paths))
+    assert_predicate status, :success?, error
+    JSON.parse(output)
+  end
+
+  def range_facts(worktree, base)
+    tip = git("rev-parse", "HEAD", chdir: worktree).strip
+    commits = git("rev-list", "--reverse", "#{base}..#{tip}", chdir: worktree).lines.map(&:strip)
+    trees = ([ base ] + commits).to_h do |commit|
+      [ commit, git("rev-parse", "#{commit}^{tree}", chdir: worktree).strip ]
+    end
+    paths = git("diff", "--name-only", base, tip, chdir: worktree).lines.map(&:strip).sort
+    diff = git("diff", "--no-ext-diff", "--no-textconv", "--binary", base, tip, chdir: worktree)
+    { "base" => base, "commits" => commits, "tip" => tip, "trees" => trees, "paths" => paths,
+      "diff_sha256" => Digest::SHA256.hexdigest(diff.b) }
+  end
+
+  def run_publication(repository, worktree, task_id, review, mode: nil)
+    Tempfile.create([ "accepted-review", ".md" ]) do |artifact|
+      artifact.write("# Review\n\n```json\n#{JSON.generate(review)}\n```\n")
+      artifact.flush
+      return Open3.capture3(RbConfig.ruby,
+        Rails.root.join("test/support/publication_recovery_process.rb").to_s,
+        worktree.to_s, repository[:source].to_s, task_id.to_s, artifact.path, mode.to_s)
     end
   end
 end

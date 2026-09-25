@@ -1,7 +1,8 @@
+require "digest"
 require "json"
 require "open3"
 
-worktree, expected_paths_json = ARGV
+worktree, base, task_id, expected_paths_json = ARGV
 expected_paths = JSON.parse(expected_paths_json).sort
 environment = {
   "GIT_CONFIG_NOSYSTEM" => "1",
@@ -23,14 +24,27 @@ end
 
 head = run_git.call("rev-parse", "HEAD")
 status = run_git.call("status", "--porcelain=v2", "--untracked-files=all", "-z")
-changed_paths = (run_git.call("diff", "--name-only", "HEAD").lines +
-  run_git.call("ls-files", "--others", "--exclude-standard").lines).map(&:strip).uniq.sort
+abort("review requires a clean worktree") unless status.empty?
+commits = run_git.call("rev-list", "--reverse", "#{base}..HEAD").lines.map(&:strip)
+previous = base
+trees = { base => run_git.call("rev-parse", "#{base}^{tree}").strip }
+commits.each do |commit|
+  parents = run_git.call("rev-list", "--parents", "-n", "1", commit).split
+  message_lines = run_git.call("log", "-1", "--format=%B", commit).split("\n", -1)
+  task_trailers = message_lines.select { |line| line.match?(/\A\s*(?i:kos-task)\s*:/) }
+  canonical_trailer = "KOS-Task: #{task_id}"
+  abort("invalid task commit") unless parents == [ commit, previous ] && task_trailers == [ canonical_trailer ]
+  trees[commit] = run_git.call("rev-parse", "#{commit}^{tree}").strip
+  previous = commit
+end
+abort("empty reviewed sequence") if commits.empty?
+changed_paths = run_git.call("diff", "--name-only", base, "HEAD").lines.map(&:strip).sort
 abort("review path set is incomplete") unless changed_paths == expected_paths
-tracked_patch = run_git.call("diff", "--no-ext-diff", "--binary", "HEAD", "--", *expected_paths)
-contents = expected_paths.to_h { |path| [ path, File.binread(File.join(worktree, path)) ] }
+reviewed_diff = run_git.call("diff", "--no-ext-diff", "--no-textconv", "--binary", base, "HEAD")
 
 abort("review changed HEAD") unless head == run_git.call("rev-parse", "HEAD")
 abort("review changed worktree status") unless status ==
   run_git.call("status", "--porcelain=v2", "--untracked-files=all", "-z")
 
-puts JSON.generate(paths: changed_paths, tracked_patch:, contents:)
+puts JSON.generate(base:, commits:, tip: commits.last, trees:, paths: changed_paths,
+  diff_sha256: Digest::SHA256.hexdigest(reviewed_diff.b))

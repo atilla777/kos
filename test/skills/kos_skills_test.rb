@@ -161,14 +161,20 @@ class KosSkillsTest < ActiveSupport::TestCase
     implement = File.read(AGENT_PATHS.fetch("kos-implement"))
     assert_includes implement.gsub(/\s+/, " "), "Run every required test, lint, formatting, build, and type check"
     assert_includes implement, "structured required-check result"
-    assert_includes implement, "Keep all changes uncommitted"
+    assert_includes implement.gsub(/\s+/, " "), "clean task-owned commit sequence"
+    assert_includes implement, "Never push"
     assert_includes File.read(AGENT_PATHS.fetch("kos-review")), "required-check evidence"
+    review = File.read(AGENT_PATHS.fetch("kos-review")).gsub(/\s+/, " ")
+    assert_includes review, "record base, ordered commits, tip, trees, paths, and its SHA-256 digest only"
+    assert_includes review, "preserve all repository state"
     publish = File.read(AGENT_PATHS.fetch("kos-publish"))
     assert_includes publish.gsub(/\s+/, " "), "required-check evidence"
-    assert_includes publish.gsub(/\s+/, " "), "inspect the exact reviewed graph before commit or push"
-    assert_includes publish.gsub(/\s+/, " "), "submit it once for atomic materialization"
-    assert_includes File.read(AGENT_PATHS.fetch("kos-document")).gsub(/\s+/, " "), "Do not commit or push"
-    assert_includes File.read(AGENT_PATHS.fetch("kos-brief")).gsub(/\s+/, " "), "Do not commit, push"
+    assert_includes publish.gsub(/\s+/, " "), "never change history or content"
+    assert_includes publish.gsub(/\s+/, " "), "exact base, ordered commits, tip, trees, paths, recomputed diff digest"
+    assert_includes publish.gsub(/\s+/, " "), "Accept the exact remote tip before testing the base"
+    assert_includes publish.gsub(/\s+/, " "), "atomically materialize it"
+    assert_includes File.read(AGENT_PATHS.fetch("kos-document")).gsub(/\s+/, " "), "Commit documentation changes locally"
+    assert_includes File.read(AGENT_PATHS.fetch("kos-brief")).gsub(/\s+/, " "), "clean task-owned commit sequence"
     assert_includes File.read(AGENT_PATHS.fetch("kos-step-standard")), "without commit or push"
     assert_includes File.read(AGENT_PATHS.fetch("kos-step-advanced")), "without commit or push"
     diagnose = File.read(AGENT_PATHS.fetch("kos-diagnose"))
@@ -185,12 +191,11 @@ class KosSkillsTest < ActiveSupport::TestCase
     end
   end
 
-  test "publication observes the expected remote result" do
+  test "publication observes the exact reviewed remote range" do
     source = File.read(AGENT_PATHS.fetch("kos-publish"))
 
-    assert_includes source, "expected remote result"
-    assert_includes source, "every side effect"
-    assert_includes source, "Report\n`published` only"
+    assert_includes source, "fetching and observing the exact range"
+    assert_includes source, "Report `published` only"
   end
 
   private

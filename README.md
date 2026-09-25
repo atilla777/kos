@@ -13,7 +13,7 @@ result.
 A scheduler dispatches only a task ID; each fresh step agent reads its own
 authoritative context and predecessor evidence, performs one step, and atomically
 reports its artifact and transition. Independent review precedes publication;
-publication observes the expected remote result and completes a built-in task
+publication observes the exact reviewed remote result and completes a built-in task
 with `published`.
 
 ## Prerequisites
@@ -257,11 +257,11 @@ The exact built-in profile mapping is:
 | --- | --- | --- |
 | `diagnose` | `kos-diagnose` | advanced, read-only |
 | `plan` | `kos-plan` | advanced, read-only |
-| `implement` | `kos-implement` | standard, edits and all required checks, no commit |
-| `document` | `kos-document` | standard, edits and OKF, no commit |
-| `brief` | `kos-brief` | advanced, authorized specification and graph edits, no commit |
-| `review` | `kos-review` | advanced, independent read-only review |
-| `publish` | `kos-publish` | standard, only commit/push and graph mutation authority |
+| `implement` | `kos-implement` | standard, base integration, edits, checks, and local task commits; no push |
+| `document` | `kos-document` | standard, edits, OKF, and local task commits; no push |
+| `brief` | `kos-brief` | advanced, authorized specification/graph edits and local task commits; no push |
+| `review` | `kos-review` | advanced, read-only review of an exact commit range |
+| `publish` | `kos-publish` | standard, exact reviewed-range push and graph mutation authority |
 
 Development routes invalid plans back to `plan`, invalid implementation evidence
 to `implement`, review changes to `implement`, redesign to `plan`, invalid review
@@ -272,7 +272,7 @@ materialization prevents `published` from being reported.
 
 Every built-in step supports `needs_human` and `blocked`. `published` completes
 the built-in task and releases ownership after the publisher has observed the
-expected remote result and, for a brief, the materialized child graph.
+exact reviewed remote range and, for a brief, the materialized child graph.
 
 Managed profiles select the role, model, reasoning effort, and focused prompt.
 They contain no KOS-specific OpenCode permission policy and are not a security
@@ -305,10 +305,17 @@ Git worktrees are derived as:
 <kos-data-home>/worktrees/<project-id>/<task-id>
 ```
 
-Publication alone may fetch/update the base, stage, commit, and push. It creates
-one commit with exactly one `KOS-Task: <task-id>` trailer, pushes without force,
-and observes remote history. A moved base preserves work and repeats the required
-post-plan path. Interrupted commit/push recovery observes Git before retrying.
+Briefing, implementation, and documentation may create local commits but never
+push. Successful content steps leave a clean linear range from the observed base
+to `HEAD`, with exactly one raw canonical `KOS-Task: <task-id>` line per commit
+and no case variant or duplicate.
+Review inspects the complete aggregate diff and records the exact base, ordered
+commits, tip, trees, paths, and SHA-256 diff digest.
+Publication does not alter that approved history or content: it pushes the exact
+range without force and fetches to observe the same sequence remotely. A moved
+base changes nothing at publication and repeats the content, checks,
+documentation, and review path after integration. Ambiguous pushes recover by
+observing the exact remote range.
 
 ## Verify
 

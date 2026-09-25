@@ -51,7 +51,8 @@ class BuiltInCatalogTest < ActiveSupport::TestCase
     steps = BuiltInCatalog.definitions.fetch("brief").fetch("steps").index_by { |step| step.fetch("id") }
     publish = steps.fetch("publish")
 
-    assert_includes publish.fetch("instruction"), "observe the remote result"
+    assert_includes publish.fetch("instruction"), "exact reviewed specification commits unchanged"
+    assert_includes publish.fetch("instruction"), "observe them remotely"
     assert_equal({ "complete_task" => true }, publish.dig("outcomes", "published"))
     assert_equal({ "next_step" => "review" }, publish.dig("outcomes", "review_invalid"))
     assert_equal({ "next_step" => "brief" }, publish.dig("outcomes", "base_moved"))

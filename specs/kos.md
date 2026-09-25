@@ -61,10 +61,18 @@ reading the task instead of reconstructing progress from local execution files.
   answer is durably bound to that pause before the same step is retried.
 - Product behavior changes update the repository's `specs/` bundle before
   independent review. Technical-only work records why no product concept changed.
-- Work remains uncommitted through implementation, documentation, and review.
-  Publication is the only step that may commit or push.
-- Publication validates reviewed work, pushes without force, observes the
-  expected remote result, and completes the built-in task with `published`.
+- Briefing, implementation, and documentation may create local task commits but
+  never push. Every task commit has exactly one raw canonical
+  `KOS-Task: <task-id>` line with no case variant or duplicate, and
+  each successful content step leaves a clean linear task-owned commit sequence
+  from its observed base to its tip.
+- Independent review is read-only and approves an exact base, ordered commit
+  sequence, tip, trees, paths, and SHA-256 digest after inspecting the complete
+  aggregate diff. No history or content may change after approval within the
+  reviewed task range or worktree.
+- Publication validates and pushes the exact reviewed sequence without force or
+  history rewriting, observes that sequence remotely, and completes the built-in
+  task with `published`.
 - Brief publication includes remote publication followed by atomic
   materialization of the reviewed child graph before reporting `published`.
 - The server accepts built-in completion only from the `published` publication
@@ -108,8 +116,9 @@ reading the task instead of reconstructing progress from local execution files.
 - This pre-release workflow change provides no legacy workflow support or data
   migration. Existing local database state will be reset separately; old local
   artifacts are not read.
-- If the default branch moves before publication, implementation checks,
-  documentation, and independent review repeat on the new base.
+- If the default branch moves before publication, publication changes nothing
+  and returns to briefing or implementation. The content agent integrates the
+  new base, then checks, documentation, and independent review repeat.
 - A corrective outcome may move a task backward. The newly accepted artifact for
   a repeated step supersedes its prior accepted artifact.
 - Brief-created children remain unavailable until their parent completes at
@@ -123,10 +132,11 @@ reading the task instead of reconstructing progress from local execution files.
 - After explicit project registration, all commands discover the project from
   the checkout without project environment variables.
 - Restart and lost-response recovery do not duplicate tasks, transitions, child
-  graphs, commits, or pushes.
+  graphs, commits, or pushes; an ambiguous push is resolved by observing the
+  exact ordered remote sequence.
 - Completed work exposes durable accepted Markdown evidence, required checks,
-  independent review, one remotely observed published commit, completed status,
-  and released ownership.
+  independent review of an exact commit sequence, that unchanged sequence in
+  remote history, completed status, and released ownership.
 - Scheduler dispatch contains only the task ID; each fresh step agent obtains,
   validates, and reports its own authoritative state and evidence.
 - Accepted artifact and transition changes are atomic and ownership-fenced.

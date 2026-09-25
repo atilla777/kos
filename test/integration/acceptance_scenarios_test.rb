@@ -1,4 +1,5 @@
 require "test_helper"
+require "digest"
 require "json"
 require "net/http"
 require "rbconfig"
@@ -165,22 +166,22 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
     assert completed.children.all? { |child| child.parent_id == completed.id && child.blocker_ids.include?(completed.id) }
   end
 
-  test "a moved base repeats checks and review before one publication commit" do
+  test "a moved base repeats content checks and exact-range review before publication" do
     with_repository do |repository|
       task, lifecycle = claimed_acceptance_task
       worktree = repository[:root].join("data/worktrees/#{task.project_id}/#{task.id}")
       git("worktree", "add", "--detach", worktree.to_s, "origin/main", chdir: repository[:source])
       previous_base = git("rev-parse", "HEAD", chdir: worktree).strip
-      File.write(worktree.join("README.md"), "staged task change\n")
-      git("add", "README.md", chdir: worktree)
-      File.open(worktree.join("README.md"), "a") { |file| file.write("unstaged task change\n") }
-      File.write(worktree.join("task.txt"), "task change\n")
 
       task = run_read_only_plan(lifecycle, task, worktree, repository[:root])
+      implementation_commit = task_commit(worktree, task.id, "Implement task", "task.txt", "task change\n")
       task = run_implementation(lifecycle, task, worktree, repository[:root], attempt: 1)
+      documentation_commit = task_commit(worktree, task.id, "Document task", "README.md", "task documentation\n")
       task = run_documentation(lifecycle, task, repository[:root], attempt: 1)
-      task = run_read_only_review(lifecycle, task, worktree, repository[:root], attempt: 1)
+      task, first_review = run_read_only_review(lifecycle, task, worktree, previous_base,
+        %w[README.md task.txt], attempt: 1)
       assert_equal "publish", task.current_step
+      assert_equal [ implementation_commit, documentation_commit ], first_review.fetch("commits")
 
       File.write(repository[:publisher].join("base.txt"), "base change\n")
       git("add", "base.txt", chdir: repository[:publisher])
@@ -190,38 +191,49 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
       moved_base = git("rev-parse", "origin/main", chdir: repository[:source]).strip
       assert git_success?("merge-base", "--is-ancestor", previous_base, moved_base, chdir: worktree)
 
-      git("reset", "--mixed", "HEAD", chdir: worktree)
-      git("checkout", "--merge", "--detach", moved_base, chdir: worktree)
+      reviewed_head = git("rev-parse", "HEAD", chdir: worktree)
+      reviewed_status = git("status", "--porcelain=v2", "--untracked-files=all", "-z", chdir: worktree)
+      _output, error, publication_status = run_publication_recovery(worktree, repository[:source], task.id,
+        task.accepted_artifacts.dig("review", "markdown"))
+      refute_predicate publication_status, :success?
+      assert_includes error, "remote tip differs from reviewed base and tip"
       task = report(lifecycle, task, "publish", "base_moved")
 
       assert_equal "implement", task.current_step
-      assert_equal moved_base, git("rev-parse", "HEAD", chdir: worktree).strip
-      assert_equal "staged task change\nunstaged task change\n", File.read(worktree.join("README.md"))
+      assert_equal reviewed_head, git("rev-parse", "HEAD", chdir: worktree)
+      assert_equal reviewed_status, git("status", "--porcelain=v2", "--untracked-files=all", "-z", chdir: worktree)
       assert_equal "task change\n", File.read(worktree.join("task.txt"))
-      status = git("status", "--porcelain", chdir: worktree)
-      assert_includes status, " M README.md"
-      assert_includes status, "?? task.txt"
+      assert_equal "task documentation\n", File.read(worktree.join("README.md"))
 
+      git("rebase", "--onto", moved_base, previous_base, "HEAD", chdir: worktree)
       task = run_implementation(lifecycle, task, worktree, repository[:root], attempt: 2)
       task = run_documentation(lifecycle, task, repository[:root], attempt: 2)
-      task = run_read_only_review(lifecycle, task, worktree, repository[:root], attempt: 2)
+      task, second_review = run_read_only_review(lifecycle, task, worktree, moved_base,
+        %w[README.md task.txt], attempt: 2)
       assert_includes task.accepted_artifacts.dig("implement", "markdown"), "Attempt 2"
       assert_includes task.accepted_artifacts.dig("document", "markdown"), "Attempt 2"
       assert_includes task.accepted_artifacts.dig("review", "markdown"), "Attempt 2"
-      git("add", "README.md", "task.txt", chdir: worktree)
-      git("commit", "-m", "KOS task #{task.id}: #{task.title}", "-m", "KOS-Task: #{task.id}", chdir: worktree)
-      candidate = git("rev-parse", "HEAD", chdir: worktree).strip
-      git("push", "origin", "#{candidate}:refs/heads/main", chdir: worktree)
+      refute_equal first_review.fetch("commits"), second_review.fetch("commits")
+      accepted_review = parse_review_artifact(task.accepted_artifacts.dig("review", "markdown"))
+      assert_equal second_review, accepted_review
+      output, error, publication_status = run_publication_recovery(worktree, repository[:source], task.id,
+        task.accepted_artifacts.dig("review", "markdown"))
+      assert_predicate publication_status, :success?, error
+      publication = JSON.parse(output)
+      reviewed_tip = accepted_review.fetch("tip")
+      assert_equal reviewed_tip, publication.fetch("tip")
+      assert_equal accepted_review.fetch("commits"), publication.fetch("commits")
       task = report(lifecycle, task, "publish", "published")
 
       assert_equal "completed", task.status
-      assert_equal candidate, git("--git-dir", repository[:remote].to_s, "rev-parse", "refs/heads/main").strip
-      assert_equal "3", git("--git-dir", repository[:remote].to_s, "rev-list", "--count", "main").strip
-      assert_equal moved_base, git("rev-parse", "#{candidate}^", chdir: worktree).strip
+      assert_equal reviewed_tip, git("--git-dir", repository[:remote].to_s, "rev-parse", "refs/heads/main").strip
+      assert_equal second_review.fetch("commits"),
+        git("--git-dir", repository[:remote].to_s, "rev-list", "--reverse", "#{moved_base}..main").lines.map(&:strip)
+      assert_equal "4", git("--git-dir", repository[:remote].to_s, "rev-list", "--count", "main").strip
     end
   end
 
-  test "two tasks retain independent ownership artifacts and uncommitted worktrees" do
+  test "two tasks retain independent ownership artifacts and local commit ranges" do
     with_repository do |repository|
       project = create_project
       workflow = create_workflow(definition: acceptance_workflow_definition)
@@ -238,8 +250,10 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
       second_worktree = repository[:root].join("data/worktrees/#{project.id}/#{second.id}")
       git("worktree", "add", "--detach", first_worktree.to_s, "origin/main", chdir: repository[:source])
       git("worktree", "add", "--detach", second_worktree.to_s, "origin/main", chdir: repository[:source])
-      File.write(first_worktree.join("first.txt"), "first task\n")
-      File.write(second_worktree.join("second.txt"), "second task\n")
+      first_base = git("rev-parse", "HEAD", chdir: first_worktree).strip
+      second_base = git("rev-parse", "HEAD", chdir: second_worktree).strip
+      first_commit = task_commit(first_worktree, first.id, "First task", "first.txt", "first task\n")
+      second_commit = task_commit(second_worktree, second.id, "Second task", "second.txt", "second task\n")
 
       report(lifecycle, first_claim, "plan", "planned", artifact: "# First\n")
 
@@ -247,12 +261,12 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
       assert_equal [ "plan", "owner-b" ], second.reload.values_at(:current_step, :owner_id)
       assert_equal "# First\n", first.reload.accepted_artifacts.dig("plan", "markdown")
       assert_empty second.reload.accepted_artifacts
-      assert_includes git("status", "--porcelain", chdir: first_worktree), "first.txt"
-      refute_includes git("status", "--porcelain", chdir: first_worktree), "second.txt"
-      assert_includes git("status", "--porcelain", chdir: second_worktree), "second.txt"
-      refute_includes git("status", "--porcelain", chdir: second_worktree), "first.txt"
-      assert_equal "1", git("rev-list", "--count", "HEAD", chdir: first_worktree).strip
-      assert_equal "1", git("rev-list", "--count", "HEAD", chdir: second_worktree).strip
+      assert_empty git("status", "--porcelain", chdir: first_worktree)
+      assert_empty git("status", "--porcelain", chdir: second_worktree)
+      assert_equal [ first_commit ], git("rev-list", "--reverse", "#{first_base}..HEAD", chdir: first_worktree).lines.map(&:strip)
+      assert_equal [ second_commit ], git("rev-list", "--reverse", "#{second_base}..HEAD", chdir: second_worktree).lines.map(&:strip)
+      assert_equal first_base,
+        git("--git-dir", repository[:remote].to_s, "rev-parse", "refs/heads/main").strip
     end
   end
 
@@ -271,33 +285,40 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
     assert_equal "plan", task.current_step
   end
 
-  test "publication recovery reuses the candidate before and after push" do
-    [ false, true ].each do |push_before_restart|
+  test "publication recovery pushes or reuses the exact range before and after an ambiguous result" do
+    [ :push, :already_published, :nonzero_after_success ].each do |recovery_case|
       with_repository do |repository|
         worktree = repository[:root].join("data/worktrees/1/31")
         git("worktree", "add", "--detach", worktree.to_s, "origin/main", chdir: repository[:source])
-        File.write(worktree.join("task.txt"), "published task\n")
-        git("add", "task.txt", chdir: worktree)
-        reviewed_patch = repository[:root].join("reviewed.patch")
-        reviewed_patch.write(git("diff", "--cached", "--binary", chdir: worktree))
-        git("commit", "-m", "KOS task 31: Publish", "-m", "KOS-Task: 31", chdir: worktree)
-        expected_candidate = git("rev-parse", "HEAD", chdir: worktree).strip
+        base = git("rev-parse", "HEAD", chdir: worktree).strip
+        commits = [
+          task_commit(worktree, 31, "Implement", "task.txt", "published task\n"),
+          task_commit(worktree, 31, "Document", "README.md", "published docs\n")
+        ]
+        review = review_facts(worktree, base, 31, %w[README.md task.txt])
+        review_markdown = "# Review\n\n```json\n#{JSON.generate(review)}\n```\n"
         expected_count = git("rev-list", "--count", "HEAD", chdir: worktree).strip
-        git("push", "origin", "#{expected_candidate}:refs/heads/main", chdir: worktree) if push_before_restart
+        if recovery_case == :already_published
+          git("push", "origin", "#{commits.last}:refs/heads/main", chdir: worktree)
+        end
 
-        output, error, status = Open3.capture3(RbConfig.ruby,
-          Rails.root.join("test/support/publication_recovery_process.rb").to_s,
-          worktree.to_s, repository[:source].to_s, "31", "Publish", JSON.generate([ "task.txt" ]),
-          reviewed_patch.to_s)
+        mode = "nonzero-after-success" if recovery_case == :nonzero_after_success
+        output, error, status = run_publication_recovery(worktree, repository[:source], 31, review_markdown, mode:)
         assert_predicate status, :success?, error
         recovered = JSON.parse(output)
 
-        assert_equal expected_candidate, recovered.fetch("candidate")
+        assert_equal commits.last, recovered.fetch("tip")
+        assert_equal commits, recovered.fetch("commits")
         assert_equal expected_count, recovered.fetch("commit_count")
-        assert_equal !push_before_restart, recovered.fetch("pushed")
-        assert_equal expected_candidate,
+        assert_equal recovery_case != :already_published, recovered.fetch("pushed")
+        if recovery_case == :nonzero_after_success
+          assert_equal false, recovered.fetch("push_success")
+          assert_operator recovered.fetch("push_exitstatus"), :>, 0
+        end
+        assert_equal commits.last,
           git("--git-dir", repository[:remote].to_s, "rev-parse", "refs/heads/main").strip
-        assert_equal "31", git("log", "-1", "--format=%(trailers:key=KOS-Task,valueonly)", chdir: worktree).strip
+        assert_equal commits,
+          git("--git-dir", repository[:remote].to_s, "rev-list", "--reverse", "#{base}..main").lines.map(&:strip)
         assert_empty git("status", "--porcelain", chdir: worktree)
       end
     end
@@ -371,21 +392,57 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
       artifact: "# Documentation\n\nAttempt #{attempt}: no observable behavior change.\n")
   end
 
-  def run_read_only_review(lifecycle, task, worktree, root, attempt:)
+  def run_read_only_review(lifecycle, task, worktree, base, expected_paths, attempt:)
     head = git("rev-parse", "HEAD", chdir: worktree)
     status = git("status", "--porcelain=v2", "--untracked-files=all", "-z", chdir: worktree)
     output, error, review_status = Open3.capture3(RbConfig.ruby,
       Rails.root.join("test/support/read_only_review_process.rb").to_s,
-      worktree.to_s, JSON.generate([ "README.md", "task.txt" ]))
+      worktree.to_s, base, task.id.to_s, JSON.generate(expected_paths))
     assert_predicate review_status, :success?, error
     review = JSON.parse(output)
-    assert_equal [ "README.md", "task.txt" ], review.fetch("paths")
-    assert_includes review.fetch("tracked_patch"), "staged task change"
-    assert_equal "staged task change\nunstaged task change\n", review.dig("contents", "README.md")
-    assert_equal "task change\n", review.dig("contents", "task.txt")
+    assert_equal expected_paths.sort, review.fetch("paths")
+    assert_equal base, review.fetch("base")
+    assert_equal review.fetch("commits").last, review.fetch("tip")
+    assert_match(/\A[0-9a-f]{64}\z/, review.fetch("diff_sha256"))
+    refute review.key?("diff")
+    expected_diff = git("diff", "--no-ext-diff", "--no-textconv", "--binary", base, "HEAD", chdir: worktree)
+    assert_equal Digest::SHA256.hexdigest(expected_diff.b), review.fetch("diff_sha256")
+    assert_equal [ base, *review.fetch("commits") ].sort, review.fetch("trees").keys.sort
     assert_equal head, git("rev-parse", "HEAD", chdir: worktree)
     assert_equal status, git("status", "--porcelain=v2", "--untracked-files=all", "-z", chdir: worktree)
-    report(lifecycle, task, "review", "approved", artifact: "# Review\n\nAttempt #{attempt}: approved.\n")
+    reviewed = report(lifecycle, task, "review", "approved",
+      artifact: "# Review\n\nAttempt #{attempt}: approved.\n\n```json\n#{JSON.generate(review)}\n```\n")
+    [ reviewed, review ]
+  end
+
+  def task_commit(worktree, task_id, subject, path, contents)
+    File.write(worktree.join(path), contents)
+    git("add", path, chdir: worktree)
+    git("commit", "-m", subject, "-m", "KOS-Task: #{task_id}", chdir: worktree)
+    git("rev-parse", "HEAD", chdir: worktree).strip
+  end
+
+  def review_facts(worktree, base, task_id, expected_paths)
+    output, error, status = Open3.capture3(RbConfig.ruby,
+      Rails.root.join("test/support/read_only_review_process.rb").to_s,
+      worktree.to_s, base, task_id.to_s, JSON.generate(expected_paths))
+    assert_predicate status, :success?, error
+    JSON.parse(output)
+  end
+
+  def parse_review_artifact(markdown)
+    JSON.parse(markdown.match(/```json\s*\n(?<json>.*?)\n```/m)[:json])
+  end
+
+  def run_publication_recovery(worktree, source, task_id, review_markdown, mode: nil)
+    Tempfile.create([ "accepted-review", ".md" ]) do |artifact|
+      artifact.binmode
+      artifact.write(review_markdown)
+      artifact.flush
+      return Open3.capture3(RbConfig.ruby,
+        Rails.root.join("test/support/publication_recovery_process.rb").to_s,
+        worktree.to_s, source.to_s, task_id.to_s, artifact.path, mode.to_s)
+    end
   end
 end
 

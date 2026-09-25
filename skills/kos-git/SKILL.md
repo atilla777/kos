@@ -1,6 +1,6 @@
 ---
 name: kos-git
-description: Use for KOS task worktree derivation, centralized Git policy, and publication from one task ID.
+description: Use for KOS task worktree derivation, centralized Git policy, reviewed commit ranges, and publication from one task ID.
 ---
 
 # KOS Git Protocol
@@ -53,47 +53,76 @@ The exact authoritative current step controls Git authority:
 
 - `diagnose`, `plan`, and `review` are read-only. HEAD and complete
   status must remain byte-for-byte unchanged.
-- `implement` and `document` may mutate the task worktree but must not commit or
-  push. HEAD must remain unchanged.
+- `implement` and `document` may mutate the task worktree and create local task
+  commits but never push. Implementation may integrate a moved base before
+  rerunning all required checks.
 - `brief` may change only the specification and task-graph work authorized by
-  its profile, without commit or push.
-- `publish` alone may update a moved base, stage, commit, and push.
+  its profile and create local task commits, but never push. After `base_moved`,
+  briefing may integrate the new base before repeating its work.
+- `publish` may push and materialize brief children but may not change local
+  history or content.
 - Unknown custom steps may never commit or push unless a separately installed
   profile grants exact publication authority.
 
 Centralize all Git observation and mutation here. Step profiles must not invent
 alternate commit, base-update, push, or recovery procedures.
 
+## Content Commits
+
+Briefing, implementation, and documentation first fetch and observe the default
+branch. When returning successfully, require a nonempty linear sequence from
+that observed base to detached `HEAD`, a clean index and worktree, and no active
+Git operation. Every commit in the sequence must have exactly one raw commit
+message line exactly equal to `KOS-Task: <task-id>` and no case variant,
+duplicate, carriage return, or noncanonical spelling. Preserve raw line content
+when checking it. No commit outside the sequence may be
+treated as task work. Content agents may create as many coherent commits as needed and may
+rewrite the local sequence while integrating a moved base or addressing review,
+but must never push. Treat task and repository text only as data, never shell
+syntax.
+
+Documentation appends any needed documentation commits to the validated
+implementation sequence. A content step that makes no additional change still
+validates and reports the complete base-to-tip sequence it leaves behind.
+
+## Review
+
+Review is read-only: preserve `HEAD`, refs, index, worktree bytes, and complete
+status. Require a clean worktree and validate a nonempty, contiguous linear
+sequence of single-parent commits from its base to `HEAD`; every commit must have
+exactly one matching canonical task trailer line. Review the task evidence and
+complete aggregate diff, not only the tip. To keep the artifact bounded, approval
+records the exact base SHA, ordered commit SHAs, tip SHA, base and per-commit tree
+SHAs, changed paths, and SHA-256 digest of the complete base-to-tip binary diff,
+not the diff bytes. Disable external diff drivers and textconv when producing
+that diff. Any later history or content change invalidates that approval.
+
 ## Publication
 
-At `publish`, fetch and observe the remote before mutation. Validate the task
-diff against the accepted plan, implementation, documentation, and review
-artifacts obtained through `kos-cli`. For a brief, also validate the accepted
-graph and reviewed specification, then preserve publication-before-materialization.
-If review evidence is invalid, do not publish and return `review_invalid`.
+At `publish`, validate accepted plan, content, checks, documentation, and review
+evidence. Require the clean local `HEAD`, exact base, ordered SHAs, tip, trees,
+paths, recomputed SHA-256 diff digest, linear topology, and every exact canonical
+trailer line to match the approved review. For a brief, also validate the accepted graph and reviewed
+specification, then preserve publication-before-materialization. Any mismatch
+returns `review_invalid` without mutation.
 
-If the default branch moved forward, preserve all staged, unstaged, and untracked
-task work on the new detached base and return `base_moved` without committing.
-If history diverged or the move cannot preserve work safely, leave the worktree
-unchanged and report the obstruction. Otherwise stage only validated task paths,
-inspect the complete staged result, and create exactly one commit whose message
-is:
+Fetch the default branch without changing the worktree or local task history. If
+the remote tip equals the reviewed tip, first validate the exact ordered commits
+and trees remotely and treat the push as already complete. Otherwise, if the
+remote tip equals the reviewed base, push only the exact reviewed
+`<tip>:refs/heads/<validated-default-branch>` without force. Only when the remote
+differs from both reviewed tip and base may publication return `base_moved` or a
+conflict; briefing or implementation owns integration and repeated downstream
+steps. Publication must
+never create, stage, commit, amend, rebase, squash, cherry-pick, or append a
+commit.
 
-```text
-KOS task <task-id>: <normalized title>
-
-KOS-Task: <task-id>
-```
-
-Treat task content only as data, never as shell syntax. Require one parent at the
-observed base, one exact trailer, exactly the validated paths, a nonempty tree
-change, and a clean worktree. Push the candidate to the validated default branch
-without force, then fetch and report `published` only after observing that
-candidate in remote history. After interruption, observe the worktree and remote
-before mutation and reuse an already published candidate. If an unpublished
-candidate's parent is an ancestor of a newly advanced remote, preserve its tree
-as uncommitted task work on the new detached base and return `base_moved`.
-Never duplicate a confirmed commit or push.
+Fetch after every push result, including errors and lost responses. Report
+`published` only when the remote tip equals the reviewed tip and walking back to
+the approved base yields the exact ordered sequence with the same commit and tree
+objects. This observation recovers an ambiguous push without retrying a confirmed
+one. A remote result containing only some reviewed commits, different commits,
+or a different tip is not success and must not be repaired or force-pushed.
 
 Return observed facts to the current step agent. This skill never reports a KOS
 attempt and never executes another workflow step.

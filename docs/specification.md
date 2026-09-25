@@ -56,8 +56,9 @@ KOS is responsible for:
 - recovery after Rails, OpenCode, transport, or agent interruption.
 
 KOS does not judge requirements, code, review findings, checks, Git history, or
-Markdown meaning. It has no runtime broker, does not launch agents, and does not
-store Git SHAs. It has no universal arbitrary task-state blob, checkpoint,
+Markdown meaning. It has no runtime broker, does not launch agents, and has no
+dedicated Git SHA fields; SHAs may appear only as agent-authored Markdown evidence.
+It has no universal arbitrary task-state blob, checkpoint,
 attempt log, artifact graph, evaluation gate, or dual artifact source.
 
 Agents and skills clarify tasks, execute steps, select and run project checks,
@@ -182,14 +183,16 @@ are:
 | `review` | `approved` -> `publish`; `changes_requested` -> `brief` |
 | `publish` | `published` -> complete; `review_invalid` -> `review`; `base_moved` -> `brief`; `graph_invalid` -> `brief` |
 
-Diagnosis, planning, and review are advanced and read-only.
-Briefing is advanced and may change only authorized specification and graph
-work. Implementation and documentation are standard, may change the worktree,
-and may not commit or push. Implementation owns all required tests, lint,
-formatting, builds, and type checks. Publication is standard and is the only
-authority allowed to update a moved base, stage, commit, push, and, for a brief,
-materialize children. Unknown custom steps use tier-specific profiles that may
-not commit or push.
+Diagnosis, planning, and review are advanced and read-only. Briefing is advanced
+and may change only authorized specification and graph work. Briefing,
+implementation, and documentation may create local task commits but never push;
+each successful content step leaves a clean linear sequence from its observed
+base to its tip, with exactly one raw canonical `KOS-Task: <task-id>` line and no
+case variant or duplicate on every commit.
+Implementation owns base integration and all required tests, lint, formatting,
+builds, and type checks. Publication is standard and may only validate and push
+the approved sequence and, for a brief, materialize children. Unknown custom
+steps use tier-specific profiles that may not commit or push.
 
 Briefing is a fresh isolated step, not work performed in the main conversation.
 It updates OKF behavior and proposes a minimal acyclic graph. Review independently
@@ -316,28 +319,47 @@ This pre-release workflow change provides no legacy workflow support or data
 migration. Existing local database state will be reset separately rather than
 translated or dual-run.
 
-Git recovery remains observation-oriented. Publication observes the base,
-candidate, and remote before retrying, never force-pushes, and never duplicates
-a confirmed commit. A moved base returns to implementation or briefing as the
-workflow specifies. Brief graph creation recovers by observing the complete
+Git recovery remains observation-oriented. Publication observes the approved
+base, ordered commit sequence, tip, trees, paths, diff digest, and remote before retrying,
+never force-pushes, and never duplicates a confirmed push. A moved base leaves
+history and content unchanged and returns to implementation or briefing as the
+workflow specifies; that content agent integrates before checks, documentation,
+and review repeat. An ambiguous push is resolved by fetching and observing the
+exact sequence remotely. Brief graph creation recovers by observing the complete
 materialized graph and its server-derived digest.
 
 ## Publication
 
-All task changes remain uncommitted until `publish`. The publisher validates
-accepted predecessor evidence and current work, including successful structured
-required-check evidence for development and fix tasks, fetches the default
-branch, and returns the explicit backward outcome if review is invalid or the base
-moved. Otherwise it stages only validated task paths, checks the staged patch,
-creates one commit with subject `KOS task <id>: <title>` and exactly one
-`KOS-Task: <id>` trailer, pushes without force, and confirms the candidate in
-remote history. A brief publisher then atomically materializes its reviewed graph. The
-server will not accept `published` until those children exist, and after they
-exist it permits a technical `blocked` pause but no publication outcome that
-rewinds to briefing or review.
+Briefing, implementation, and documentation may create local commits but never
+push. Every commit in the task range contains exactly one raw canonical
+`KOS-Task: <id>` line with no case variant or duplicate. Before a successful
+content report the worktree and index are clean and
+the commits form one linear, contiguous task-owned sequence from the observed
+default-branch base to `HEAD`.
 
-The publisher reports `published` only after observing the expected candidate in
-remote history and, for a brief, after the exact child graph exists. The server
+Review performs no repository mutation. It inspects the complete base-to-tip
+diff, while its bounded approval records the exact base, ordered commit SHAs,
+tip, base and per-commit tree identities, changed paths, and SHA-256 digest of
+that diff. Approval is valid only while all of those facts and the clean
+worktree remain unchanged.
+
+The publisher validates accepted predecessor evidence and the exact approved
+sequence, including successful structured required-check evidence for
+development and fix tasks, then fetches the default branch. Invalid approval
+returns `review_invalid`. After fetching, an exact reviewed remote tip and
+sequence proves publication; an exact reviewed base permits the push; only a
+remote differing from both permits `base_moved` or a conflict. A moved base
+changes no history or content. Publication creates, amends, rebases, squashes,
+cherry-picks, and appends no commit. It pushes the exact reviewed tip and range
+without force, fetches regardless of push output, and reports success only after
+observing the exact ordered sequence unchanged in remote history. A brief
+publisher then atomically materializes its reviewed graph. The server will not
+accept `published` until those children exist, and after they exist it permits a
+technical `blocked` pause but no publication outcome that rewinds to briefing or
+review.
+
+The publisher reports `published` only after observing the exact reviewed range
+in remote history and, for a brief, after the exact child graph exists. The server
 then completes the task and releases ownership. Review and publication remain
 separate steps; there is no built-in verifier step.
 
@@ -355,6 +377,6 @@ The implemented version excludes cross-host active-task migration, a web UI,
 multiple AI runtimes, a runtime broker, server-started OpenCode, heartbeat,
 random claim tokens, checkpoints, a universal arbitrary task-state document,
 full attempt history, artifact tables or graphs, result evaluators, candidate or
-base SHA fields, review-to-commit binding, pre-publication commits, condition
+base SHA fields outside accepted Markdown evidence, condition
 languages, parallel steps within one task, automatic conflict resolution,
 force-push, automatic deletion of unknown worktrees, and Rails parsing of OKF.

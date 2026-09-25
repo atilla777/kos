@@ -10,4 +10,6 @@ accepted work and complete diff without changing the repository. Prioritize
 correctness, security, regressions, invariants, and tests. For development and
 fix work, require successful structured required-check evidence. Request changes
 for actionable findings, use `redesign_required` for an invalid development
-plan, and approve only when no actionable finding remains.
+plan, and approve only when no actionable finding remains. Inspect the full diff,
+then record base, ordered commits, tip, trees, paths, and its SHA-256 digest only;
+preserve all repository state.

@@ -1,14 +1,14 @@
 ---
-description: Executes the only commit-and-push KOS publish step from a task ID.
+description: Executes the only KOS remote publication step from a task ID.
 mode: subagent
 model: openai/gpt-5.6-terra
 reasoningEffort: medium
 ---
 
-Load `kos-step`; the prompt is only the task ID. This profile alone may update a
-moved base, commit, push, and materialize brief children. Publish only
-independently reviewed work, and require successful structured required-check
-evidence for development and fix work. For a brief, inspect the exact reviewed
-graph before commit or push, then submit it once for atomic materialization after remote publication. Report
-`published` only after every side effect and the expected remote result are
-observed; otherwise use the matching route.
+Load `kos-step`; the prompt is only the task ID. This profile alone may push and
+materialize brief children, but never change history or content. Validate the
+accepted exact base, ordered commits, tip, trees, paths, recomputed diff digest,
+canonical trailers, and required-check evidence. Accept the exact remote tip before testing the base;
+only a remote matching neither may be moved. For a
+brief, inspect the reviewed graph before pushing, then atomically materialize it
+afterward. Report `published` only after fetching and observing the exact range.

@@ -1,8 +1,19 @@
+require "digest"
 require "json"
 require "open3"
+require "tmpdir"
 
-worktree, source, task_id, title, expected_paths_json, reviewed_patch_path = ARGV
-expected_paths = JSON.parse(expected_paths_json).sort
+worktree, source, task_id, review_artifact_path, push_mode = ARGV
+artifact = File.binread(review_artifact_path)
+match = artifact.match(/```json\s*\n(?<json>.*?)\n```/m)
+abort("accepted review artifact has no exact-range evidence") unless match
+review = JSON.parse(match[:json])
+base = review.fetch("base")
+reviewed_commits = review.fetch("commits")
+tip = review.fetch("tip")
+reviewed_trees = review.fetch("trees")
+expected_paths = review.fetch("paths").sort
+reviewed_diff_sha256 = review.fetch("diff_sha256")
 environment = {
   "GIT_CONFIG_NOSYSTEM" => "1",
   "GIT_CONFIG_GLOBAL" => "/dev/null",
@@ -15,38 +26,90 @@ environment = {
   "LC_ALL" => "C"
 }
 
+capture_git = lambda do |directory, *arguments|
+  Open3.capture3(environment, "git", *arguments, chdir: directory)
+end
 run_git = lambda do |directory, *arguments|
-  output, error, status = Open3.capture3(environment, "git", *arguments, chdir: directory)
+  output, error, status = capture_git.call(directory, *arguments)
   abort("git #{arguments.join(" ")} failed: #{output}#{error}") unless status.success?
   output
 end
 
-candidate = run_git.call(worktree, "rev-parse", "HEAD").strip
-parent = run_git.call(worktree, "rev-parse", "#{candidate}^").strip
-parents = run_git.call(worktree, "rev-list", "--parents", "-n", "1", candidate).split
-subject = run_git.call(worktree, "log", "-1", "--format=%s").strip
-trailer = run_git.call(worktree, "log", "-1", "--format=%(trailers:key=KOS-Task,valueonly)").strip
-paths = run_git.call(worktree, "diff-tree", "--no-commit-id", "--name-only", "-r", candidate).lines.map(&:strip).sort
-patch = run_git.call(worktree, "diff", "--binary", parent, candidate)
+head = run_git.call(worktree, "rev-parse", "HEAD").strip
+commits = run_git.call(worktree, "rev-list", "--reverse", "#{base}..#{head}").lines.map(&:strip)
+abort("reviewed sequence changed") unless commits == reviewed_commits && head == tip && tip == reviewed_commits.last
+
+previous = base
+commits.each do |commit|
+  parents = run_git.call(worktree, "rev-list", "--parents", "-n", "1", commit).split
+  message_lines = run_git.call(worktree, "log", "-1", "--format=%B", commit).split("\n", -1)
+  task_trailers = message_lines.select { |line| line.match?(/\A\s*(?i:kos-task)\s*:/) }
+  canonical_trailer = "KOS-Task: #{task_id}"
+  abort("commit verification failed") unless parents == [ commit, previous ] &&
+    task_trailers == [ canonical_trailer ]
+  previous = commit
+end
+
+trees = ([ base ] + commits).to_h do |commit|
+  [ commit, run_git.call(worktree, "rev-parse", "#{commit}^{tree}").strip ]
+end
+paths = run_git.call(worktree, "diff", "--name-only", base, tip).lines.map(&:strip).sort
+diff = run_git.call(worktree, "diff", "--no-ext-diff", "--no-textconv", "--binary", base, tip)
 status = run_git.call(worktree, "status", "--porcelain")
-abort("candidate verification failed") unless parents == [ candidate, parent ] &&
-  subject == "KOS task #{task_id}: #{title}" && trailer == task_id && paths == expected_paths &&
-  patch == File.binread(reviewed_patch_path) && status.empty?
+abort("range verification failed") unless trees == reviewed_trees && paths == expected_paths &&
+  Digest::SHA256.hexdigest(diff.b) == reviewed_diff_sha256 && status.empty?
 
-run_git.call(source, "fetch", "--no-tags", "origin", "refs/heads/main:refs/remotes/origin/main")
-remote = run_git.call(source, "rev-parse", "origin/main").strip
-published = system(environment, "git", "merge-base", "--is-ancestor", candidate, remote, chdir: worktree,
-  out: File::NULL, err: File::NULL)
-pushed = false
-unless published
-  abort("candidate parent is not the remote tip") unless parent == remote
+remote_range_valid = lambda do |remote|
+  next false unless remote == tip
 
-  run_git.call(worktree, "push", "origin", "#{candidate}:refs/heads/main")
-  pushed = true
+  remote_commits = run_git.call(source, "rev-list", "--reverse", "#{base}..#{remote}").lines.map(&:strip)
+  remote_trees = ([ base ] + remote_commits).to_h do |commit|
+    [ commit, run_git.call(source, "rev-parse", "#{commit}^{tree}").strip ]
+  end
+  remote_commits == reviewed_commits && remote_trees == reviewed_trees
 end
 
 run_git.call(source, "fetch", "--no-tags", "origin", "refs/heads/main:refs/remotes/origin/main")
-observed = run_git.call(source, "rev-parse", "origin/main").strip
-abort("publication was not observed") unless candidate == observed
+remote = run_git.call(source, "rev-parse", "origin/main").strip
+pushed = false
+push_success = nil
+push_exitstatus = nil
 
-puts JSON.generate(candidate:, commit_count: run_git.call(worktree, "rev-list", "--count", "HEAD").strip, pushed:)
+if remote == tip
+  abort("remote reviewed sequence is invalid") unless remote_range_valid.call(remote)
+elsif remote != base
+  abort("remote tip differs from reviewed base and tip")
+else
+  if push_mode == "nonzero-after-success"
+    push_status = nil
+    Dir.mktmpdir("kos-receive-pack") do |directory|
+      wrapper = File.join(directory, "receive-pack")
+      File.write(wrapper, <<~SH)
+        #!/bin/sh
+        git-receive-pack "$@"
+        status=$?
+        [ "$status" -eq 0 ] || exit "$status"
+        exit 1
+      SH
+      File.chmod(0o700, wrapper)
+      _push_output, _push_error, push_status = capture_git.call(worktree, "push", "--receive-pack=#{wrapper}",
+        "origin", "#{tip}:refs/heads/main")
+    end
+    abort("receive-pack failure simulation unexpectedly succeeded") if push_status.success?
+  else
+    _push_output, _push_error, push_status = capture_git.call(worktree, "push", "origin",
+      "#{tip}:refs/heads/main")
+  end
+  pushed = true
+  push_success = push_status.success?
+  push_exitstatus = push_status.exitstatus
+
+  run_git.call(source, "fetch", "--no-tags", "origin", "refs/heads/main:refs/remotes/origin/main")
+  remote = run_git.call(source, "rev-parse", "origin/main").strip
+  unless remote_range_valid.call(remote)
+    abort(push_success ? "publication was not observed" : "push failed and exact publication was not observed")
+  end
+end
+
+puts JSON.generate(tip:, commits:, commit_count: run_git.call(worktree, "rev-list", "--count", "HEAD").strip,
+  pushed:, push_success:, push_exitstatus:)

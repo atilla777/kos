@@ -1,12 +1,13 @@
 # Status
 
-State: planned
+State: active
 Updated: 2026-09-25
 
 ## Current
 
-Waiting for tasks 011, 012, and 013.
+Ready to run simplified live acceptance now that tasks 011, 012, and 013 are
+complete.
 
 ## Blockers
 
-Dependencies 011, 012, and 013 are incomplete.
+None. Dependencies 011, 012, and 013 are done.
