@@ -203,10 +203,11 @@ Publication validates accepted plan, implementation, documentation, and review
 evidence. A brief also validates its accepted specification and graph. If the
 remote base moved, the publisher preserves task work on the new base and reports
 the explicit backward outcome without committing. Otherwise it stages only
-validated paths, runs `git diff --cached --check`, creates one detached commit
-with one `KOS-Task: <id>` trailer, pushes without force, fetches again regardless
-of push output, and reports `published` only after remote observation. Brief
-children are atomically materialized only after that observation.
+validated paths, verifies the complete staged result, creates one detached
+commit with one `KOS-Task: <id>` trailer, pushes without force, and reports
+`published` only after remote observation. Interrupted publication observes and
+reuses valid existing state rather than duplicating a commit or push. Brief
+children are atomically materialized only after remote publication is observed.
 
 `published` always transitions to `verify`. A fresh verify profile performs no
 checkout, index update, commit, push, graph mutation, or worktree edit. It fetches

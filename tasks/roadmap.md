@@ -12,7 +12,6 @@ None.
 
 | ID | Task | Status | Dependencies |
 | --- | --- | --- | --- |
-| 008 | [Simplify Git publication](008-simplify-git-publication/task.md) | planned | 007 |
 | 009 | [Run live acceptance scenarios](009-live-acceptance/task.md) | planned | 008 |
 
 ## Completed
@@ -26,6 +25,7 @@ None.
 | 005 | [Rewrite the CLI skill](005-rewrite-cli-skill/task.md) | done | 004 |
 | 006 | [Rewrite schedulers and commands](006-rewrite-schedulers-and-commands/task.md) | done | 003, 005 |
 | 007 | [Simplify step agents](007-simplify-step-agents/task.md) | done | 006 |
+| 008 | [Simplify Git publication](008-simplify-git-publication/task.md) | done | 007 |
 
 ## Future Decisions
 

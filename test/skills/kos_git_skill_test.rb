@@ -30,6 +30,15 @@ class KosGitSkillTest < ActiveSupport::TestCase
     assert_includes source, "<kos-data-home>/worktrees/<project-id>/<task-id>"
     assert_includes source, "KOS-Task: <task-id>"
     assert_includes source, "`publish` alone may update a moved base, stage, commit, and push"
+    assert_includes source, "preserve all staged, unstaged, and untracked\ntask work"
+    assert_includes source, "Push the candidate to the validated default branch\nwithout force"
+    assert_includes source, "only after observing that\ncandidate in remote history"
+    assert_includes source, "reuse an already published candidate"
+    assert_includes source, "preserve its tree\nas uncommitted task work on the new detached base"
+    assert_includes source, "Never duplicate a confirmed commit or push"
+    refute_includes source, "git checkout --merge --detach"
+    refute_includes source, "git commit -F"
+    refute_includes source, "HEAD:refs/heads/<validated-default-branch>"
     assert_includes source, "`implement` and `document` may mutate"
     assert_includes source, "`diagnose`, `plan`, `review`, and `verify` are read-only"
     assert_includes source, "At `verify`, perform no mutation"
@@ -117,6 +126,32 @@ class KosGitSkillTest < ActiveSupport::TestCase
       assert_equal "31", git("log", "-1", "--format=%(trailers:key=KOS-Task,valueonly)", chdir: worktree).strip
       assert_equal remote_before_recovery,
         git("--git-dir", repository[:remote].to_s, "rev-parse", "refs/heads/main")
+    end
+  end
+
+  test "publication recovery preserves an unpublished candidate when the remote advances" do
+    with_repository do |repository|
+      worktree = repository[:root].join("data/kos/worktrees/1/32")
+      git("worktree", "add", "--detach", worktree.to_s, "origin/main", chdir: repository[:source])
+      previous_base = git("rev-parse", "HEAD", chdir: worktree).strip
+      File.write(worktree.join("task.txt"), "interrupted task\n")
+      git("add", "task.txt", chdir: worktree)
+      git("commit", "-m", "KOS task 32: Publish", "-m", "KOS-Task: 32", chdir: worktree)
+
+      File.write(repository[:publisher].join("base.txt"), "remote change\n")
+      git("add", "base.txt", chdir: repository[:publisher])
+      git("commit", "-m", "Move base", chdir: repository[:publisher])
+      git("push", "origin", "main", chdir: repository[:publisher])
+      git("fetch", "--no-tags", "origin", "refs/heads/main:refs/remotes/origin/main", chdir: repository[:source])
+      moved_base = git("rev-parse", "origin/main", chdir: repository[:source]).strip
+
+      git("reset", "--mixed", previous_base, chdir: worktree)
+      git("checkout", "--merge", "--detach", moved_base, chdir: worktree)
+
+      assert_equal moved_base, git("rev-parse", "HEAD", chdir: worktree).strip
+      assert_equal "interrupted task\n", File.read(worktree.join("task.txt"))
+      assert_includes git("status", "--porcelain", chdir: worktree), "?? task.txt"
+      assert_equal "2", git("rev-list", "--count", "HEAD", chdir: worktree).strip
     end
   end
 

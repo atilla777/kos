@@ -72,13 +72,12 @@ artifacts obtained through `kos-cli`. For a brief, also validate the accepted
 graph and reviewed specification and preserve publication-before-materialization.
 If review evidence is invalid, do not publish and return `review_invalid`.
 
-If the default branch moved forward, use only `git checkout --merge --detach`
-to preserve task content on the new detached base and return `base_moved`
-without committing. Otherwise stage only validated
-task paths, inspect the complete staged patch, run `git diff --cached --check`,
-and create one commit using a safe whitespace-free path in the exact command
-`git commit -F <verified-message-file>`, with no trailing argument, so task text
-is never shell syntax:
+If the default branch moved forward, preserve all staged, unstaged, and untracked
+task work on the new detached base and return `base_moved` without committing.
+If history diverged or the move cannot preserve work safely, leave the worktree
+unchanged and report the obstruction. Otherwise stage only validated task paths,
+inspect the complete staged result, and create exactly one commit whose message
+is:
 
 ```text
 KOS task <task-id>: <normalized title>
@@ -86,14 +85,15 @@ KOS task <task-id>: <normalized title>
 KOS-Task: <task-id>
 ```
 
-Require one parent at the fetched base, one exact trailer, exact expected changed
-paths, a nonempty tree change, and a clean worktree. Push only exact
-`HEAD:refs/heads/<validated-default-branch>` to `origin` as one plain command,
-without options, extra refspecs, Git configuration prefixes, shell composition,
-or force; fetch again regardless of push output, and report
-`published` only when the candidate is observed in remote history. Recover an
-interrupted publication by observation before retrying; never create a duplicate
-commit.
+Treat task content only as data, never as shell syntax. Require one parent at the
+observed base, one exact trailer, exactly the validated paths, a nonempty tree
+change, and a clean worktree. Push the candidate to the validated default branch
+without force, then fetch and report `published` only after observing that
+candidate in remote history. After interruption, observe the worktree and remote
+before mutation and reuse an already published candidate. If an unpublished
+candidate's parent is an ancestor of a newly advanced remote, preserve its tree
+as uncommitted task work on the new detached base and return `base_moved`.
+Never duplicate a confirmed commit or push.
 
 ## Independent Verification
 
