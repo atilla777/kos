@@ -15,7 +15,7 @@ class CliTest < ActiveSupport::TestCase
     assert_includes output, "  project create | show | update\n"
     assert_includes output, "  workflow create\n"
     assert_includes output, "  task-type create | update\n"
-    assert_includes output, "  task create | create-and-claim | update | show | context | artifact | show-owned | claim-next | claim | resumable | resume | report-attempt | cancel\n"
+    assert_includes output, "  task create | create-or-get | create-and-claim | update | show | context | artifact | show-owned | claim-next | claim | resumable | resume | report-attempt | cancel\n"
     assert_includes output, "  task validate-children | materialize-children | children\n"
     assert_empty error
 
@@ -102,6 +102,10 @@ class CliTest < ActiveSupport::TestCase
             "POST", "/tasks/create-and-claim", { "project_id" => 1, "task_type_key" => "fix", "title" => "Fix",
               "description_markdown" => "# Task\n\nMultiline description.\n", "owner_id" => "intent-owner",
               "creation_key" => "request:fix:sha256:abc", "blocker_ids" => [] } ],
+          [ [ "task", "create-or-get", "--project-id", "1", "--kind", "fix", "--owner-id", "session",
+            "--request-file", "-" ],
+            "POST", "/tasks/create-or-get", { "project_id" => 1, "kind" => "fix", "owner_id" => "session",
+              "request" => "Exact request\n" }, "Exact request\n" ],
           [ [ "task", "update", "9", "--description-file", "-", "--clear-parent", "--clear-blockers" ],
             "PATCH", "/tasks/9", { "description_markdown" => "Updated through STDIN\n", "parent_id" => nil, "blocker_ids" => [] },
             "Updated through STDIN\n" ],

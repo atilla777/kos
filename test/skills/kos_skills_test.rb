@@ -6,70 +6,38 @@ class KosSkillsTest < ActiveSupport::TestCase
   ORCHESTRATOR_PATH = Rails.root.join("skills/kos/SKILL.md")
   STEP_PATH = Rails.root.join("skills/kos-step/SKILL.md")
   CLI_PATH = Rails.root.join("skills/kos-cli/SKILL.md")
-  CREATE_PATH = Rails.root.join("skills/kos-create/SKILL.md")
   BUILT_IN_PROFILES = %w[diagnose plan implement document brief review publish verify].freeze
   AGENT_PATHS = (BUILT_IN_PROFILES + %w[step-standard step-advanced]).to_h do |name|
     [ "kos-#{name}", Rails.root.join(".opencode/agents/kos-#{name}.md") ]
   end.freeze
 
-  test "defines discoverable scheduler step CLI and creation skills" do
+  test "defines discoverable scheduler step and CLI skills" do
     assert_skill ORCHESTRATOR_PATH, "kos", /scheduler/
     assert_skill STEP_PATH, "kos-step", /positive task ID/
     assert_skill CLI_PATH, "kos-cli", /CLI discovery/
-    assert_skill CREATE_PATH, "kos-create", /pre-task-ID request-bound creation recovery/
 
     config = JSON.parse(File.read(Rails.root.join("opencode.json")))
     assert_equal [ "./skills" ], config.dig("skills", "paths")
   end
 
-  test "request creation has one durable CLI-only recovery authority" do
-    source = File.read(CREATE_PATH)
+  test "request creation uses one server-idempotent CLI operation without local state" do
     scheduler = File.read(ORCHESTRATOR_PATH)
     brief_scheduler = File.read(Rails.root.join("skills/kos-brief/SKILL.md"))
 
-    assert_includes scheduler, "load `kos-create`, and delegate"
-    assert_includes brief_scheduler, "load `kos-create`, and delegate"
-    assert_includes scheduler, "immediately fence its current owner"
-    assert_includes scheduler, "treat this explicit reinvocation of the\nsame exact request as confirmation"
+    [ scheduler, brief_scheduler ].each do |source|
+      assert_match(/`task\s+create-or-get`/, source)
+      assert_includes source, "complete exact request through standard input"
+      assert_includes source, "retry that identical operation once"
+      assert_match(/server-derived\s+creation key/, source)
+      assert_not_includes source, "intent.json"
+      assert_not_includes source, "task.json"
+      assert_not_includes source, "create.lock"
+      assert_not_includes source, "fsync"
+      assert_not_includes source, "inode"
+    end
     assert_includes scheduler, "never use the repeated problem text as its answer"
     assert_includes scheduler, "`--takeover-confirmed`"
-    assert_includes brief_scheduler, "fence the completed\ncreation procedure's current owner"
-    assert_includes brief_scheduler, "explicit reinvocation of the same\nexact request as confirmation"
     assert_includes brief_scheduler, "`--takeover-confirmed`"
-    assert_includes source, "lowercase 64-digit\nSHA-256"
-    assert_includes source, "creation/<project-id>/<kind>/<request-digest>/"
-    assert_includes source, "mode 0700"
-    assert_includes source, "mode 0600"
-    assert_includes source, "Refuse a symlink"
-    assert_includes source, "atomically publish `intent.json` without replacement"
-    assert_includes source, "Age, a missing PID, or a timeout never makes a lock stale"
-    assert_includes source, "`task show-owned`"
-    assert_includes source, "canonical `204 No Content` projection"
-    assert_includes source, "do not pass\n   empty output to a JSON parser"
-    assert_includes source, "Creation is owner-idempotent"
-    assert_includes source, "request:<kind>:sha256:<request-digest>"
-    assert_includes source, "creation key via `--creation-key`"
-    assert_includes source, "MUST-return-first gate"
-    assert_includes source, "complete initial projection"
-    assert_includes source, "complete snapshotted\nworkflow definition"
-    assert_includes source, "receipt\nmay remain permanently"
-    assert_includes source, "accept any current lifecycle status, step, owner, claim version"
-    assert_includes source, "For an existing receipt, compare only immutable identity"
-    assert_includes source, "`task.json` intentionally does not duplicate the workflow body"
-    assert_includes source, "A valid version-1 receipt remains valid"
-    assert_match(/Version 1 is the\s+pre-key current-namespace format/, source)
-    assert_includes source, "Version 2 contains exactly\nthose fields plus `creation_key`"
-    assert_includes source, "<kos-data-home>/intents/<project-id>/<kind>-<request-digest>-task.json"
-    assert_includes source, "contains exactly `kind`, `project_id`, `request_digest`, `owner_id`,"
-    assert_includes source, "Return that ID for any lifecycle state before\nentering the current creation path"
-    assert_includes source, "never create\na new task while unresolved baseline state exists"
-    assert_includes source, "Immediately invoke `task show`\nwith its positive `task_id`"
-    assert_match(/return the receipt's\s+positive task ID without entering the no-receipt create path/, source)
-    assert_match(/Do not require the intent owner,\s+initial status, first step/, source)
-    assert_includes source, "return only its positive decimal task ID"
-    assert_includes source, "Never use HTTP, Rails, SQLite"
-    assert_not_includes source, "report-attempt"
-    assert_not_includes source, "materialize-children"
   end
 
   test "slash commands retain input safety and delegate only to schedulers" do
@@ -116,7 +84,7 @@ class KosSkillsTest < ActiveSupport::TestCase
       assert_includes source, "Never read `KOS_OWNER_ID`"
     end
     assert_includes scheduler, "claim the next available development task with the generated\nowner"
-    assert_includes brief_scheduler, "gets its durable unique owner from\n`kos-create`"
+    assert_includes brief_scheduler, "uses this same owner for `task\ncreate-or-get`"
   end
 
   test "scheduler has no step artifact Git or result-parsing policy" do

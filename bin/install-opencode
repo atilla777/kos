@@ -23,10 +23,11 @@ inventory = {
     kos-brief.md kos-diagnose.md kos-document.md kos-implement.md kos-plan.md kos-publish.md kos-review.md kos-verify.md
     kos-step-advanced.md kos-step-standard.md
   ],
-  "skills" => %w[kos kos-brief kos-cli kos-create kos-git kos-step okf]
+  "skills" => %w[kos kos-brief kos-cli kos-git kos-step okf]
 }
 obsolete = {
-  "agents" => %w[kos-orchestrator.md kos-step.md]
+  "agents" => %w[kos-orchestrator.md kos-step.md],
+  "skills" => %w[kos-create]
 }
 config_home = options.fetch(:config_home)
 
@@ -64,6 +65,14 @@ obsolete.each do |kind, names|
   names.each do |name|
     destination = config_home.join(kind, name)
     abort("Refusing symbolic-link destination: #{destination}") if destination.symlink?
+    expected_type = kind == "skills" ? :directory? : :file?
+    if destination.exist? && !destination.public_send(expected_type)
+      abort("Obsolete managed destination has the wrong type: #{destination}")
+    end
+    if kind == "skills" && destination.exist?
+      linked_entry = destination.glob("**/*", File::FNM_DOTMATCH).find(&:symlink?)
+      abort("Refusing symbolic link in obsolete managed skill: #{linked_entry}") if linked_entry
+    end
   end
 end
 
@@ -81,6 +90,7 @@ inventory.fetch("agents").each do |name|
   FileUtils.cp(source, destination)
 end
 obsolete.fetch("agents").each { |name| FileUtils.rm_f(config_home.join("agents", name)) }
+obsolete.fetch("skills").each { |name| FileUtils.rm_r(config_home.join("skills", name)) if config_home.join("skills", name).exist? }
 
 inventory.fetch("skills").each do |name|
   source = root.join("skills", name)

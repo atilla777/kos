@@ -51,7 +51,7 @@ search by remote URL, accept a near match, or infer a numeric project ID.
 
 An absent registration, malformed projection, mismatched identity, unavailable
 lookup, or ambiguous Git origin stops before every task mutation and before
-intent, receipt, answer, artifact, or worktree recovery mutation. A not-found
+answer, artifact, or worktree recovery mutation. A not-found
 response is an explicit missing registration, not permission to create one;
 project creation and in-place update remain administrative operations.
 
@@ -82,8 +82,11 @@ pass its path as one argument, and remove it after an unambiguous response.
 Never use local task artifact directories.
 
 Read operations may be retried after validating that they have no mutation.
-Never blindly retry a mutation. After an ambiguous claim, create, resume,
-materialization, or report, invoke the operation-specific read projection and
+Never blindly retry a mutation. The one exception is `task create-or-get`,
+which may be retried once with the identical project, kind, owner, and exact
+request because the server derives and enforces its creation key. After an
+ambiguous claim, create-and-claim, resume, materialization, or report, invoke the
+operation-specific read projection and
 compare exact authoritative state. Retry once only when that observation proves
 the mutation did not occur and the same fenced input remains valid. An observed
 transition is success; unavailable or contradictory state is `blocked`.

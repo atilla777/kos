@@ -86,7 +86,7 @@ There are no `KOS_PROJECT_*` environment variables.
 - focused agents `kos-diagnose`, `kos-plan`, `kos-implement`, `kos-document`,
   `kos-brief`, `kos-review`, `kos-publish`, and `kos-verify`;
 - custom-step agents `kos-step-standard` and `kos-step-advanced`; and
-- skills `kos`, `kos-brief`, `kos-cli`, `kos-create`, `kos-step`, `kos-git`, and
+- skills `kos`, `kos-brief`, `kos-cli`, `kos-step`, `kos-git`, and
   `okf`.
 
 Standard agents use `openai/gpt-5.6-terra` with medium reasoning; advanced
@@ -106,22 +106,18 @@ full readiness procedure.
 
 Schedulers may select, create, claim, resume, read state, dispatch one current
 step, and reread state. Each command session generates a fresh unpredictable
-non-secret owner ID; there is no `KOS_OWNER_ID` configuration. Request-bound
-creation retains the owner in its durable pre-ID intent. After obtaining a
+non-secret owner ID; there is no `KOS_OWNER_ID` configuration. After obtaining a
 positive task ID schedulers retain only that ID. They do not read Markdown,
 dispatch descriptions or prior artifacts, inspect Git or checks, parse child
 text, report outcomes, or maintain pending submissions.
 
 Step agents receive only the positive ID. They use focused context and artifact
 reads, validate required predecessors, invoke `kos-git` by ID, execute one exact
-step, reread the fence, and call `report-attempt` themselves. The installed
-`kos-create` skill alone owns pre-ID intents, locks, and receipts for fix and
-brief recovery and returns only a confirmed ID to the scheduler; those files
-are not scheduler or step inputs. It is a main-scheduler skill, not a focused
-agent profile, so the user's primary-agent permission policy governs its calls.
-It derives `request:<kind>:sha256:<digest>`, stores it in intent and receipt, and
-passes it to every create-and-claim attempt. The receipt is checked first; the
-server's scoped unique key is the final defense against duplicate creation.
+step, reread the fence, and call `report-attempt` themselves. For fix and brief
+creation, schedulers send the project, kind, owner, and exact request to
+`task create-or-get`. The server derives the canonical definition and scoped
+creation key, so one identical retry safely recovers a lost response without
+local protocol files.
 
 ## Data Model
 
@@ -153,6 +149,7 @@ POST  /workflows
 POST  /task_types
 PATCH /task_types/:id
 POST  /tasks
+POST  /tasks/create-or-get
 POST  /tasks/create-and-claim
 GET   /tasks/:id
 GET   /tasks/:id/context
@@ -198,7 +195,9 @@ publication rewind.
 Task responses for broader lifecycle operations contain `task`, `workflow`, and
 `step`. `claim-next` and `show-owned` return `204 No Content` when absent. Known
 failures use stable JSON errors and HTTP `400`, `404`, `409`, or `422`.
-`create-and-claim` optionally accepts `creation_key`. It returns the same exact
+`create-or-get` accepts a project, `fix` or `brief` kind, owner, and exact
+request. It derives the canonical task and returns the existing keyed task for
+an identical request without lifecycle mutation. `create-and-claim` optionally accepts `creation_key`. It returns the same exact
 task for a matching scoped key without reclaiming or mutating lifecycle state;
 reusing a key with a different immutable definition returns `409`.
 
@@ -223,6 +222,7 @@ kos workflow create
 kos task-type create
 kos task-type update ID
 kos task create
+kos task create-or-get
 kos task create-and-claim [--creation-key KEY]
 kos task update ID
 kos task show ID
@@ -316,8 +316,7 @@ Task context is authoritative after server, OpenCode, transport, or agent
 interruption. There are no local `tasks/<id>/<step>.md` files, answer sidecars,
 pre-dispatch artifact deletion, inode/rename/fsync protocol, attempt markers,
 report receipts, pending submissions, or dual-read fallback. KOS stores accepted
-artifacts; the filesystem stores only worktrees and separate pre-ID creation
-recovery state.
+artifacts; the filesystem stores only worktrees.
 
 A lost report response is resolved by rereading context and its artifact index.
 A changed fence and expected accepted entry prove success; an unchanged matching

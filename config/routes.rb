@@ -8,6 +8,7 @@ Rails.application.routes.draw do
   patch "task_types/:id", to: "task_types#update", as: :task_type
 
   post "tasks/claim-next", to: "tasks#claim_next"
+  post "tasks/create-or-get", to: "tasks#create_or_get"
   post "tasks/create-and-claim", to: "tasks#create_and_claim"
   get "tasks/show-owned", to: "tasks#show_owned"
   get "tasks/resumable", to: "tasks#resumable"

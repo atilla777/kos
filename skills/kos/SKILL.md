@@ -13,8 +13,7 @@ At command start, generate one cryptographically unpredictable owner ID such as
 current scheduler session and pass it as one argument to exact claim or resume
 operations. Never read `KOS_OWNER_ID`, derive an owner from a PID, task, request,
 timestamp, or project, or reuse an owner from another command. A request-bound
-fix created through `kos-create` already has its intent owner; after creation,
-read that exact owner from authoritative context instead of replacing it.
+fix uses this same owner for `task create-or-get`.
 
 ## Select Or Create
 
@@ -23,29 +22,28 @@ through `kos-cli`, offer resumable `development` tasks by title, status, and
 current step, or claim the next available development task with the generated
 owner. Never create one.
 
-For `/kos-fix`, require a nonblank UTF-8 problem, load `kos-create`, and delegate
-the complete exact request and kind `fix`. Do not implement any part of creation
-or inspect its intent, lock, receipt, owner, definition, or CLI responses. Accept
-from `kos-create` only one confirmed positive ASCII-decimal task ID. After that,
-retain only the ID; creation files are never scheduler or step-execution inputs.
-Read its authoritative context before dispatch. Because the creation procedure
-has ended and no child has started, handle its status before dispatch. For
-`active`, immediately fence its current owner by exact resume with the
-scheduler's fresh owner and `--takeover-confirmed`; for an earlier invocation,
-first require confirmation that its prior command process stopped. For
-`blocked`, show the persisted reason and treat this explicit reinvocation of the
-same exact request as confirmation to recheck the technical obstruction, then
-exactly resume with the fresh owner. For `needs_human`, show the question and
-stop; never use the repeated problem text as its answer. Never dispatch a
-request-created task while it still carries the durable creation owner or a
-paused status.
+For `/kos-fix`, require a nonblank UTF-8 problem, discover the exact project,
+and invoke `task create-or-get` once with that project, kind `fix`, the generated
+owner, and the complete exact request through standard input. If the transport
+response is ambiguous, retry that identical operation once: the server-derived
+creation key makes the retry safe without local recovery files. Require one
+complete task response and retain only its positive ASCII-decimal ID.
+
+Read authoritative context before dispatch. A newly created active task already
+has this scheduler's owner. For an active task owned by an earlier invocation,
+first require confirmation that its prior command process stopped, then exact
+resume with the fresh owner and `--takeover-confirmed`. For `blocked`, show the
+persisted reason and treat explicit reinvocation of the same request as
+confirmation to recheck it, then exactly resume. For `needs_human`, show the
+question and stop; never use the repeated problem text as its answer.
 
 Before claiming new work, offer matching resumable work without exposing an
 internal ID as a user choice. Repeat a persisted `needs_human` question before
 resume. Show a persisted `blocked` reason and resume only after it is resolved.
 Require confirmation before taking over an active task whose prior process has
 stopped. Use `kos-cli` observation rules for every ambiguous selection, claim,
-creation, or resume response.
+or resume response. `create-or-get` alone permits one direct identical retry
+after a transport failure because it is server-idempotent by the exact request.
 
 ## Schedule
 

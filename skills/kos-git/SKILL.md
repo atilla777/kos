@@ -22,7 +22,7 @@ components, an absolute scp path such as `host:/namespace/repository`, and a URI
 path with duplicate or ambiguous leading slashes. Fetch and push spellings may
 differ only when both normalize to the same identity.
 
-Before a task ID exists, a scheduler or `kos-create` returns that canonical
+Before a task ID exists, a scheduler returns that canonical
 identity to `kos-cli` for exact project lookup. After a step agent has a task ID,
 compare the discovered identity directly with the registered identity in `task
 context`; do not call `project show`. A fetch/push identity mismatch or any

@@ -82,9 +82,9 @@ question, answer, resume, and next report. They drop responses before and after
 create, report, commit, push, and materialization boundaries and prove recovery
 through the appropriate authoritative read. No test creates or consults a local
 task artifact directory.
-Request-bound creation tests cover lost receipts, changed owners, progressed and
-terminal tasks, exact-definition conflicts, concurrent creators, null ordinary
-tasks, baseline receipt compatibility, and reversible scoped-key migration.
+Request-bound creation tests cover lost responses, changed owners, progressed
+and terminal tasks, exact-definition conflicts, concurrent creators, null
+ordinary tasks, and reversible scoped-key migration.
 
 Repository-identity migration tests preserve numeric IDs, relationships,
 workflow snapshots, execution context, and accepted evidence. Malformed or

@@ -41,7 +41,7 @@ class GemPackageTest < ActiveSupport::TestCase
         "project create | show | update",
         "workflow create",
         "task-type create | update",
-        "task create | create-and-claim | update | show | context | artifact | show-owned | claim-next | claim | resumable | resume | report-attempt | cancel",
+        "task create | create-or-get | create-and-claim | update | show | context | artifact | show-owned | claim-next | claim | resumable | resume | report-attempt | cancel",
         "task validate-children | materialize-children | children"
       ].each { |inventory| assert_includes output, inventory }
     end
@@ -103,11 +103,14 @@ class GemPackageTest < ActiveSupport::TestCase
       stale_agent = config_home.join("agents/kos-step.md")
       stale_orchestrator = config_home.join("agents/kos-orchestrator.md")
       stale_skill = config_home.join("skills/kos/obsolete.md")
+      obsolete_create_skill = config_home.join("skills/kos-create/SKILL.md")
       FileUtils.mkdir_p(stale_agent.dirname)
       FileUtils.mkdir_p(stale_skill.dirname)
       stale_agent.write("stale\n")
       stale_orchestrator.write("stale\n")
       stale_skill.write("stale\n")
+      FileUtils.mkdir_p(obsolete_create_skill.dirname)
+      obsolete_create_skill.write("obsolete\n")
 
       2.times do
         output, error, status = Open3.capture3(Rails.root.join("bin/install-opencode").to_s,
@@ -121,11 +124,12 @@ class GemPackageTest < ActiveSupport::TestCase
         kos-brief.md kos-diagnose.md kos-document.md kos-implement.md kos-plan.md kos-publish.md kos-review.md
         kos-step-advanced.md kos-step-standard.md kos-verify.md
       ], installed_names(config_home.join("agents"))
-      assert_equal %w[kos kos-brief kos-cli kos-create kos-git kos-step okf],
+      assert_equal %w[kos kos-brief kos-cli kos-git kos-step okf],
         installed_names(config_home.join("skills"))
       refute_predicate stale_agent, :exist?
       refute_predicate stale_orchestrator, :exist?
       refute_predicate stale_skill, :exist?
+      refute_predicate obsolete_create_skill.dirname, :exist?
 
       assert_matching_tree Rails.root.join(".opencode/commands"), config_home.join("commands")
       assert_matching_tree Rails.root.join(".opencode/agents"), config_home.join("agents")

@@ -58,13 +58,12 @@ nonstandard destination. The installer copies this exact inventory:
   `kos-document.md`, `kos-brief.md`, `kos-review.md`, `kos-publish.md`, and
   `kos-verify.md`;
 - custom-step agents: `kos-step-standard.md` and `kos-step-advanced.md`; and
-- skills: `kos`, `kos-brief`, `kos-cli`, `kos-create`, `kos-step`, `kos-git`,
+- skills: `kos`, `kos-brief`, `kos-cli`, `kos-step`, `kos-git`,
   and `okf`.
 
 The installer removes obsolete managed `kos-orchestrator.md` and `kos-step.md`
 agent profiles. It refuses symlinked or wrongly typed managed destinations.
-`kos-create` is a focused pre-ID scheduler skill, not an agent profile. Slash
-commands run in the primary `build` agent under the user's main-agent permission
+Slash commands run in the primary `build` agent under the user's main-agent permission
 policy; the installed focused profile files apply only after ID-only dispatch.
 Managed profiles contain no KOS-specific permission blocks: they select a role,
 model, reasoning effort, and prompt, while tool approval remains part of the

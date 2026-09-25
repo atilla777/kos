@@ -206,6 +206,23 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     assert_equal 1, Task.where(project:, task_type:).count
   end
 
+  test "request-bound creation derives the exact canonical definition and key" do
+    project = create_project
+    BuiltInCatalog.install!
+    request = "Fix the status\r\r\nPreserve this line without a final newline"
+
+    task = @lifecycle.create_or_get_request!(project:, kind: "fix", request:, owner_id: "session")
+
+    assert_equal "Fix: Fix the status\r", task.title
+    assert_equal "# Problem\n\n#{request}\n", task.description_markdown
+    assert_equal "request:fix:sha256:#{Digest::SHA256.hexdigest(request)}", task.creation_key
+    assert_equal [ "active", "diagnose", "session", 1 ],
+      task.values_at(:status, :current_step, :owner_id, :claim_version)
+    assert_raises(TaskLifecycle::InvalidInput) do
+      @lifecycle.create_or_get_request!(project:, kind: "fix", request: " \t\n", owner_id: "other")
+    end
+  end
+
   test "one owner cannot claim two tasks" do
     project = create_project
     first = create_task(project:, title: "First")
@@ -664,22 +681,20 @@ class TaskLifecycleConcurrencyTest < ActiveSupport::TestCase
     assert_equal 1, Task.where(project:, owner_id: "session").count
   end
 
-  test "concurrent creation-key requests with different owners return one task" do
+  test "concurrent request-bound create-or-get calls with different owners return one task" do
     project = create_project
-    workflow = create_workflow
-    task_type = create_task_type(workflow:)
+    BuiltInCatalog.install!
+    task_type = TaskType.find_by!(key: "brief")
     gate = Queue.new
     results = Queue.new
-    arguments = {
-      project:, task_type:, title: "Created", description_markdown: "Description",
-      creation_key: "request:brief:sha256:concurrent"
-    }
+    request = "Create a concurrent brief"
 
     threads = 2.times.map do |index|
       Thread.new do
         ActiveRecord::Base.connection_pool.with_connection do
           gate.pop
-          result = TaskLifecycle.new.create_and_claim!(**arguments, owner_id: "session-#{index}")
+          result = TaskLifecycle.new.create_or_get_request!(project:, kind: "brief", request:,
+            owner_id: "session-#{index}")
         rescue StandardError => error
           result = error
         ensure
@@ -693,7 +708,8 @@ class TaskLifecycleConcurrencyTest < ActiveSupport::TestCase
 
     assert_empty outcomes.grep(StandardError)
     assert_equal 1, outcomes.map(&:id).uniq.size
-    assert_equal 1, Task.where(project:, task_type:, creation_key: arguments[:creation_key]).count
+    key = "request:brief:sha256:#{Digest::SHA256.hexdigest(request)}"
+    assert_equal 1, Task.where(project:, task_type:, creation_key: key).count
   end
 
   test "the same claim cannot report one transition twice concurrently" do

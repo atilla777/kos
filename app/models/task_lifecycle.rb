@@ -1,3 +1,5 @@
+require "digest"
+
 class TaskLifecycle
   UNCHANGED = Object.new.freeze
 
@@ -12,6 +14,10 @@ class TaskLifecycle
   MAX_ARTIFACT_BYTES = 1.megabyte
   MAX_CREATION_KEY_BYTES = 200
   CREATION_KEY_PATTERN = /\A[A-Za-z0-9][A-Za-z0-9._:-]*\z/
+  REQUEST_KINDS = {
+    "fix" => { title_prefix: "Fix", description_heading: "Problem" },
+    "brief" => { title_prefix: "Brief", description_heading: "Request" }
+  }.freeze
 
   def initialize(clock: -> { Time.current }, lease_duration: Rails.application.config.x.kos.lease_duration)
     raise ArgumentError, "lease_duration must be positive" unless lease_duration.positive?
@@ -86,6 +92,24 @@ class TaskLifecycle
     raise Conflict, "owner already identifies another task" if creation_key && existing.creation_key != creation_key
 
     verify_matching_definition!(existing, **attributes, conflict_identity: "owner")
+  end
+
+  def create_or_get_request!(project:, kind:, request:, owner_id:)
+    definition = REQUEST_KINDS[kind]
+    raise InvalidInput, "kind must be fix or brief" unless definition
+
+    title_line = request.split("\n", -1).map { |line| line.delete_suffix("\r") }
+      .find { |line| line.match?(/[^ \t]/) }
+    raise InvalidInput, "request must be nonblank" unless title_line
+
+    title_line = title_line.sub(/\A[ \t]+/, "").sub(/[ \t]+\z/, "")
+    title = "#{definition.fetch(:title_prefix)}: #{title_line.each_char.take(120).join}"
+    description = "# #{definition.fetch(:description_heading)}\n\n#{request}"
+    description += "\n" unless request.end_with?("\n")
+    creation_key = "request:#{kind}:sha256:#{Digest::SHA256.hexdigest(request)}"
+
+    create_and_claim!(project:, task_type: TaskType.find_by!(key: kind), title:,
+      description_markdown: description, owner_id:, creation_key:)
   end
 
   def claim_next!(project:, owner_id:, task_type: nil)

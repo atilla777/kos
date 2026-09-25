@@ -12,7 +12,6 @@ None.
 
 | ID | Task | Status | Dependencies |
 | --- | --- | --- | --- |
-| 004 | [Simplify request-bound task creation](004-simplify-task-creation/task.md) | planned | 002 |
 | 005 | [Rewrite the CLI skill](005-rewrite-cli-skill/task.md) | planned | 004 |
 | 006 | [Rewrite schedulers and commands](006-rewrite-schedulers-and-commands/task.md) | planned | 003, 005 |
 | 007 | [Simplify step agents](007-simplify-step-agents/task.md) | planned | 006 |
@@ -26,6 +25,7 @@ None.
 | 001 | [Bootstrap the file workflow](001-bootstrap-file-workflow/task.md) | done | - |
 | 002 | [Establish the server and CLI baseline](002-server-cli-baseline/task.md) | done | 001 |
 | 003 | [Remove OpenCode permission policy](003-remove-opencode-permissions/task.md) | done | 002 |
+| 004 | [Simplify request-bound task creation](004-simplify-task-creation/task.md) | done | 002 |
 
 ## Future Decisions
 

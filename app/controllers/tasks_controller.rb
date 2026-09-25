@@ -27,6 +27,17 @@ class TasksController < ApplicationController
     render json: serialize(task), status: :created
   end
 
+  def create_or_get
+    task = lifecycle.create_or_get_request!(
+      project: Project.find(required_integer(:project_id)),
+      kind: required_string(:kind),
+      request: required_text(:request),
+      owner_id: required_string(:owner_id)
+    )
+
+    render json: serialize(task), status: :ok
+  end
+
   def show
     render json: serialize(lifecycle.show!(params[:id]))
   end

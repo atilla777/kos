@@ -65,10 +65,10 @@ reading the task instead of reconstructing progress from local execution files.
   advance past publication until its child graph exists, and an existing graph
   cannot be combined with a rewind to briefing or review.
 - Incomplete blockers keep dependent tasks unavailable.
-- Request-bound brief and fix creation derives one deterministic key from the
-  exact command kind and request digest. The server returns the one exact task
-  for that key even if its owner or lifecycle state has since changed, and
-  rejects reuse with a different immutable definition.
+- Request-bound brief and fix creation sends the exact command kind and request
+  to one create-or-get operation. The server derives the deterministic key and
+  immutable task definition, and returns the one exact task even if its owner
+  or lifecycle state has since changed.
 
 # Errors
 
@@ -90,9 +90,9 @@ reading the task instead of reconstructing progress from local execution files.
 
 - After interruption or a lost response, commands observe authoritative task,
   Git, remote, or child-graph state as appropriate before retrying a mutation.
-- A lost local creation receipt cannot duplicate a request-bound task because
-  server-side scoped key uniqueness is the final creation boundary. Local
-  intents and receipts remain separate from workflow-step artifacts.
+- After a lost creation response, repeating the identical create-or-get request
+  returns the existing task because server-side scoped key uniqueness is the
+  creation boundary. Recovery requires no local protocol files.
 - SSH and HTTPS remotes that unambiguously name the same host, namespace, and
   repository resolve to the same project. A different namespace is a different
   project.

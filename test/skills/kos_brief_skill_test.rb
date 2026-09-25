@@ -21,13 +21,14 @@ class KosBriefSkillTest < ActiveSupport::TestCase
     assert_includes source, "must not publish or materialize children"
   end
 
-  test "brief delegates creation durability but has no step filesystem protocol" do
+  test "brief uses server-idempotent creation but has no step filesystem protocol" do
     source = File.read(SKILL_PATH)
     compact = source.gsub(/\s+/, " ")
 
-    assert_includes source, "load `kos-create`, and delegate"
-    assert_includes source, "Do not implement creation or inspect its intent"
-    assert_includes source, "only one confirmed positive ASCII-decimal task ID"
+    assert_includes source, "`task\ncreate-or-get`"
+    assert_includes source, "retry that identical operation once"
+    assert_includes source, "without local recovery files"
+    assert_includes source, "positive ASCII-decimal ID"
     assert_includes source, "does not\nread or validate Markdown or graph files"
     assert_includes compact, "does not read or validate Markdown or graph files, inspect Git, parse outcomes, report"
     assert_not_includes source, "brief.md"

@@ -142,6 +142,30 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     assert_response :conflict
   end
 
+  test "creates or gets a canonical request-bound task including existing keyed tasks" do
+    BuiltInCatalog.install!
+    fix_type = TaskType.find_by!(key: "fix")
+    request = "  Preserve exact whitespace  \nsecond line"
+    key = "request:fix:sha256:#{Digest::SHA256.hexdigest(request)}"
+    existing = TaskLifecycle.new.create_and_claim!(project: @project, task_type: fix_type,
+      title: "Fix: Preserve exact whitespace", description_markdown: "# Problem\n\n#{request}\n",
+      owner_id: "legacy-owner", creation_key: key)
+    before = existing.attributes
+
+    assert_no_difference -> { Task.count } do
+      post tasks_create_or_get_path,
+        params: { project_id: @project.id, kind: "fix", request:, owner_id: "new-owner" }, headers: @headers, as: :json
+    end
+
+    assert_response :success
+    assert_equal existing.id, response.parsed_body.dig("task", "id")
+    assert_equal before, existing.reload.attributes
+
+    post tasks_create_or_get_path,
+      params: { project_id: @project.id, kind: "other", request:, owner_id: "owner" }, headers: @headers, as: :json
+    assert_response :bad_request
+  end
+
   test "validates materializes and observes a brief child graph" do
     brief, claim = claimed_brief_at_publish
     children = [

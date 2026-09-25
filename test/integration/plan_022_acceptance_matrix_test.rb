@@ -109,7 +109,7 @@ class Plan022AcceptanceMatrixTest < ActiveSupport::TestCase
       kos-brief.md kos-diagnose.md kos-document.md kos-implement.md kos-plan.md kos-publish.md kos-review.md
       kos-step-advanced.md kos-step-standard.md kos-verify.md
     ], managed_names(".opencode/agents")
-    assert_equal %w[kos kos-brief kos-cli kos-create kos-git kos-step okf], managed_names("skills")
+    assert_equal %w[kos kos-brief kos-cli kos-git kos-step okf], managed_names("skills")
     assert_equal %w[brief development fix], BuiltInCatalog.definitions.keys.sort
     assert_equal %w[brief review publish verify], catalog_steps("brief")
     assert_equal %w[plan implement document review publish verify], catalog_steps("development")

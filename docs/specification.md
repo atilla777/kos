@@ -28,10 +28,9 @@ Moving an unfinished active task to another host is unsupported.
 
 Users do not manage numeric project or task-type IDs, workflow IDs, claim
 versions, leases, internal API calls, worktree paths, or workflow outcomes.
-Each command session generates its own unpredictable non-secret owner ID;
-request-bound creation persists its unique owner before task creation.
-It also derives a deterministic bounded creation key from the command kind and
-exact request digest.
+Each command session generates its own unpredictable non-secret owner ID. For
+request-bound work, the server derives a deterministic bounded creation key and
+immutable task definition from the command kind and exact request.
 Database preparation idempotently installs the `brief`, `development`, and
 `fix` task types and canonical workflows. Projects remain explicit
 installation-specific registrations; custom workflows and task types remain
@@ -43,7 +42,7 @@ KOS is responsible for:
 
 - five domain tables for projects, workflows, task types, tasks, and dependencies;
 - immutable used workflows and each task's selected workflow revision;
-- typed next-task selection, exact claims, and idempotent create-and-claim;
+- typed next-task selection, exact claims, and idempotent request create-or-get;
 - exclusive leased ownership and monotonically increasing claim-version fencing;
 - authoritative current-step context and focused accepted-artifact retrieval;
 - validation of the reported step, outcome, artifact, and pause message;
@@ -78,7 +77,7 @@ they retain only that ID. For every iteration a scheduler:
 
 The scheduler never receives or reads task Markdown, task description for
 dispatch, workflow artifacts, Git diff, status, HEAD, project checks, child
-outcome text, creation receipts, or pending submissions. It does not validate
+   outcome text, local creation state, or pending submissions. It does not validate
 artifacts, infer outcomes, report attempts, validate or materialize brief
 children, or perform Git checks.
 
@@ -91,15 +90,12 @@ invalid. It invokes `kos-git` by task ID, executes exactly one step within its
 profile, rereads context to confirm the same fence, and reports its complete
 artifact and transition itself. It never executes the next step.
 
-Creation intents, locks, and receipts are owned by the installed `kos-create`
-pre-ID procedure for request-bound `/kos-fix` and `/kos-brief` creation. It binds
-the exact request, canonical definition, unique owner, deterministic creation
-key, and SHA-256 digest in a
-private project/type/request namespace until it can return only a confirmed
-positive task ID. It uses only `kos-cli`, recovers ambiguity by exact owned-task
-observation, and durably binds the request to the confirmed ID. The scheduler
-does not receive or inspect those files, and they are never step inputs or an
-alternative source of workflow progress.
+For request-bound `/kos-fix` and `/kos-brief` work, the scheduler sends the
+project, exact kind, exact request, and its fresh owner to `task create-or-get`.
+The server derives the canonical title, description, and scoped SHA-256 creation
+key. An identical retry returns the exact existing task without changing its
+owner, status, lease, step, fence, or artifacts, so creation recovery needs no
+local files.
 
 ## Data Model
 
@@ -127,8 +123,8 @@ built-in keys are `brief`, `development`, and `fix`.
 A pending task's description and dependencies may change before first claim.
 After first claim its definition is fixed. Parents and blockers belong to the
 same project and cannot create cycles; incomplete blockers prevent claims.
-Non-null creation keys are unique by project and task type. Keyed
-create-and-claim returns an existing exact immutable definition without changing
+Non-null creation keys are unique by project and task type. Request-bound
+create-or-get and keyed create-and-claim return an existing exact immutable definition without changing
 its owner, status, lease, step, fence, or artifacts; a mismatch conflicts.
 
 `accepted_artifacts` is the authoritative last accepted artifact map by step.
@@ -279,12 +275,13 @@ before accepting `published`, and rejects `base_moved`, `graph_invalid`, or
 the ordinary task envelope.
 
 The broader CLI also exposes project create/show/update; workflow create; task
-type create/update; task create/create-and-claim/update/show/show-owned;
+type create/update; task create/create-or-get/create-and-claim/update/show/show-owned;
 claim-next, exact claim, resumable, exact resume, cancel; and brief graph
 validate/materialize/children operations. The README lists exact commands and
 API routes.
-`task create-and-claim` accepts optional `--creation-key KEY`; ordinary task
-creation does not.
+`task create-or-get` accepts a project, kind `fix` or `brief`, owner, and exact
+request file. `task create-and-claim` accepts optional `--creation-key KEY`;
+ordinary task creation does not.
 
 `kos health` calls the public `GET /up` endpoint selected by `KOS_API_URL`
 without requiring `KOS_API_TOKEN`. Every application operation requires the

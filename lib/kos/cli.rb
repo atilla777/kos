@@ -61,7 +61,7 @@ module Kos
           project create | show | update
           workflow create
           task-type create | update
-          task create | create-and-claim | update | show | context | artifact | show-owned | claim-next | claim | resumable | resume | report-attempt | cancel
+          task create | create-or-get | create-and-claim | update | show | context | artifact | show-owned | claim-next | claim | resumable | resume | report-attempt | cancel
           task validate-children | materialize-children | children
 
         Options:
@@ -85,6 +85,7 @@ module Kos
       when [ "task-type", "create" ] then task_type_create
       when [ "task-type", "update" ] then task_type_update
       when [ "task", "create" ] then task_create
+      when [ "task", "create-or-get" ] then task_create_or_get
       when [ "task", "create-and-claim" ] then task_create_and_claim
       when [ "task", "update" ] then task_update
       when [ "task", "show" ] then task_show
@@ -185,6 +186,19 @@ module Kos
       require_task_type_selector!(values)
       values[:blocker_ids] ||= []
       [ :post, "/tasks/create-and-claim", values ]
+    end
+
+    def task_create_or_get
+      values = parse_options("kos task create-or-get", {
+        "--project-id ID" => [ :project_id, Integer, "Project ID" ],
+        "--kind KIND" => [ :kind, String, "Request kind: fix or brief" ],
+        "--owner-id OWNER" => [ :owner_id, String, "Orchestrator session ID" ],
+        "--request-file FILE" => [ :request_file, String, "Exact request, or - for STDIN" ]
+      })
+      require_values!(values, :project_id, :kind, :owner_id, :request_file)
+      request_file = values.delete(:request_file)
+      values[:request] = read_file(request_file)
+      [ :post, "/tasks/create-or-get", values ]
     end
 
     def task_update
