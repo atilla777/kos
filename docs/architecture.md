@@ -29,7 +29,8 @@ These rules describe the implemented PLAN-022 state-oriented architecture.
 - Derive machine-local worktree paths; never persist them as domain state.
 - Keep external side effects outside Rails transactions and recover ambiguity by
   observing authoritative task, Git, remote, or child-graph state before retry.
-- Never create a task commit before publication; never complete at publication.
+- Never create a task commit before publication; built-in tasks complete only
+  after publication observes its required remote and graph results.
 - Store only the last accepted artifact per step, not attempts, pending reports,
   receipts, or a universal arbitrary state object.
 - Never use local artifact fallback, dual reads, or automatic import of legacy files.
@@ -40,8 +41,11 @@ These rules describe the implemented PLAN-022 state-oriented architecture.
 
 The bearer-authenticated JSON API and SQLite database own projects, workflows,
 task types, tasks, dependencies, and transitions. `GET /up` remains public.
+The shared bearer token trusts its holders for every application operation.
+Owner IDs, leases, and claim-version fences preserve concurrency consistency
+among those holders; they are not authorization or an agent security boundary.
 Rails validates workflow shape but does not select, execute, or interpret
-planning, diagnosis, checks, documentation, review, publication, verification,
+planning, diagnosis, checks, documentation, review, publication,
 or OKF. It enforces a closed required-check assertion at built-in delivery gates
 without parsing check output or Markdown.
 
@@ -62,11 +66,11 @@ action, validates a required pause message, copies and updates the accepted map,
 and performs one fenced update requiring active status, owner, claim version,
 current step, and unexpired lease. The update stores the artifact, applies the
 transition, increments `claim_version`, and sets or clears pause and answer state.
-Built-in development and fix success at implementation, review, publication,
-and verification requires accepted `passed` or `not_required` check evidence.
+Built-in development and fix success at implementation, review, and publication
+requires accepted `passed` or `not_required` check evidence.
 No accepted artifact can exist without its corresponding accepted transition.
-Built-in completion is additionally constrained to `verify`, regardless of an
-immutable snapshot's action. Brief publication takes a SQLite write lock before
+Built-in completion is additionally constrained to the `published` outcome at
+`publish`. Brief publication takes a SQLite write lock before
 observing children, so materialization and reporting serialize; `published`
 requires children, while a materialized graph forbids publication rewinds.
 
@@ -172,15 +176,15 @@ The exact built-in dispatch map is:
 | `brief` | `kos-brief` | advanced | edit authorized specification/graph work; no commit or push |
 | `review` | `kos-review` | advanced | independent and read-only |
 | `publish` | `kos-publish` | standard | sole base-update, stage, commit, push, graph-validation, and materialization authority |
-| `verify` | `kos-verify` | advanced | fresh independent read-only remote and result verification |
 
 Managed profiles intentionally contain no KOS-specific OpenCode permission
 blocks. They are role and model selection, not a security boundary; tool approval
 comes from the administrator's OpenCode configuration. Their prompts define the
 expected procedure: read-only roles preserve the worktree, publish alone performs
 Git publication and brief graph mutation, and generic custom-step roles do not
-commit or push. Server authorization and lifecycle fencing remain authoritative,
-with independent review and verification checking the resulting work.
+commit or push. The shared bearer token remains the authorization boundary;
+lifecycle fencing coordinates trusted concurrent operations, while independent
+review checks the resulting work.
 
 ## Backward Transitions
 
@@ -188,21 +192,18 @@ Focused agents validate predecessor evidence and use explicit correction routes:
 
 - Development: `plan_invalid` to `plan`, `implementation_invalid` to
   `implement`, review `changes_requested` to `implement`, `redesign_required` to
-  `plan`, publish `review_invalid` to `review`, `base_moved` to `implement`,
-  verify `publication_missing` to `publish`, and `changes_invalid` to `implement`.
+  `plan`, and publish `review_invalid` to `review` or `base_moved` to `implement`.
 - Fix adds plan `diagnosis_invalid` to `diagnose`; all later routes match
   development.
 - Brief uses review `changes_requested` to `brief`; publish `review_invalid` to
-  `review`, `base_moved` or `graph_invalid` to `brief`; and verify
-  `publication_missing` or `materialization_missing` to `publish`, and
-  `brief_invalid` to `brief` only before an incompatible graph exists.
+  `review`, and `base_moved` or `graph_invalid` to `brief`.
 
 Every built-in step also supports fenced `needs_human` and `blocked` pauses.
 Backward execution replaces only artifacts for steps actually rerun. Later
 accepted artifacts remain visible as historical last-accepted evidence, so each
 step validates the exact predecessors and current repository state it relies on.
 
-## Publication And Verification
+## Publication
 
 Publication validates accepted plan, implementation, documentation, and review
 evidence. A brief also validates its accepted specification and graph. If the
@@ -214,12 +215,10 @@ commit with one `KOS-Task: <id>` trailer, pushes without force, and reports
 reuses valid existing state rather than duplicating a commit or push. Brief
 children are atomically materialized only after remote publication is observed.
 
-`published` always transitions to `verify`. A fresh verify profile performs no
-checkout, index update, commit, push, graph mutation, or worktree edit. It fetches
-the remote independently, locates and inspects the task commit, and compares its
-paths and patch with the task and accepted evidence. Brief verification also
-compares the remote specification and server-observed graph. It does not trust
-the publish artifact or local HEAD. Only `verified` completes the task.
+`published` completes a built-in task and releases ownership. The publisher may
+report it only after observing the expected remote commit and, for a brief, the
+materialized child graph. There is no built-in verifier profile or scheduler
+dispatch.
 
 ## Recovery And Migration
 
@@ -235,16 +234,9 @@ stored against the pause's step and incremented pause version; context projects
 it only for that exact binding. The binding survives another active takeover and
 is cleared by the next accepted report.
 
-The PLAN-022 migration adds the artifact, pause, and answer columns with an empty
-artifact map. Existing unfinished tasks preserve IDs, projects, parents,
-dependencies, task types, immutable workflow snapshots, definitions, status,
-current step, ownership fields, and worktrees. A built-in snapshot without the
-verification route is blocked before publication side effects; preserve its
-work, cancel it, and recreate it from the current catalog. It is never imported,
-dual-run, or repointed. Current snapshots may rerun their current step to
-reconstruct missing evidence; legacy local files remain ignored. The isolated
-migration test migrates up, verifies preservation and empty artifacts, migrates
-down, verifies only new columns disappear, and rechecks IDs and relationships.
+This pre-release workflow change provides no legacy workflow support or data
+migration. Existing local database state will be reset separately instead of
+being translated, repointed, or dual-run. Legacy local files remain ignored.
 
 Scoped server creation keys recover request creation through an identical
 create-or-get retry. Git publication and brief materialization ambiguity are

@@ -300,31 +300,30 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     assert_nil completed.owner_id
   end
 
-  test "legacy built-in publish snapshots cannot complete without verification" do
+  test "built in tasks can complete only from the published publication outcome" do
     BuiltInCatalog.install!
 
     TaskLifecycle::BUILT_IN_TASK_KEYS.each do |key|
       task_type = TaskType.find_by!(key:)
       definition = BuiltInCatalog.definitions.fetch(key).deep_dup
-      definition["steps"].reject! { |candidate| candidate["id"] == "verify" }
-      publish = definition["steps"].find { |candidate| candidate["id"] == "publish" }
-      publish["outcomes"]["published"] = { "complete_task" => true }
-      publish["outcomes"].delete("review_invalid")
-      legacy_workflow = create_workflow(name: "Pre-PLAN-022 #{key}", definition:)
-      task_type.update!(workflow: legacy_workflow)
-      task = create_task(project: create_project, workflow: legacy_workflow, task_type:, current_step: "publish")
+      first_step = definition.fetch("steps").first
+      first_step.fetch("outcomes")["premature"] = { "complete_task" => true }
+      altered_workflow = create_workflow(name: "Invalid completion #{key}", definition:)
+      task_type.update!(workflow: altered_workflow)
+      task = create_task(project: create_project, workflow: altered_workflow, task_type:,
+        current_step: first_step.fetch("id"))
       task = @lifecycle.claim!(task_id: task.id, owner_id: "#{key}-owner")
       before = task.attributes
 
       error = assert_raises(TaskLifecycle::InvalidTransition) do
         @lifecycle.report_attempt!(task_id: task.id, owner_id: task.owner_id,
-          claim_version: task.claim_version, step: "publish", outcome: "published", artifact: "# Published")
+          claim_version: task.claim_version, step: first_step.fetch("id"), outcome: "premature",
+          artifact: "# Premature")
       end
 
-      assert_match(/complete only from verify/, error.message)
+      assert_match(/published publication outcome/, error.message)
       assert_equal before, task.reload.attributes
-      assert_equal legacy_workflow.id, task.workflow_id
-      assert_equal legacy_workflow.definition_json, task.workflow.definition_json
+      assert_equal altered_workflow.id, task.workflow_id
       assert_empty task.accepted_artifacts
     end
   end
@@ -359,9 +358,9 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     end
   end
 
-  test "built in review publication and verification require successful implementation checks" do
+  test "built in review and publication require successful implementation checks" do
     BuiltInCatalog.install!
-    gates = { "review" => "approved", "publish" => "published", "verify" => "verified" }
+    gates = { "review" => "approved", "publish" => "published" }
 
     %w[development fix].each do |key|
       gates.each do |step, outcome|
@@ -403,9 +402,7 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     definition = BuiltInCatalog.definitions.fetch("development").deep_dup
     {
       "implement" => [ "implemented", "done" ],
-      "review" => [ "approved", "accepted" ],
-      "publish" => [ "published", "released" ],
-      "verify" => [ "verified", "confirmed" ]
+      "review" => [ "approved", "accepted" ]
     }.each do |step_id, (original, replacement)|
       step = definition.fetch("steps").find { |candidate| candidate.fetch("id") == step_id }
       step.fetch("outcomes")[replacement] = step.fetch("outcomes").delete(original)
@@ -424,7 +421,7 @@ class TaskLifecycleTest < ActiveSupport::TestCase
       step: "implement", outcome: "done", artifact: "# Implementation", required_checks: "passed")
     task = @lifecycle.report_attempt!(task_id: task.id, owner_id: task.owner_id, claim_version: task.claim_version,
       step: "document", outcome: "documented", artifact: "# Documentation")
-    %w[accepted released confirmed].each do |outcome|
+    %w[accepted published].each do |outcome|
       task = @lifecycle.report_attempt!(task_id: task.id, owner_id: task.owner_id, claim_version: task.claim_version,
         step: task.current_step, outcome:, artifact: "# #{outcome.titleize}")
     end

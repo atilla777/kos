@@ -11,7 +11,7 @@ tags:
 
 KOS gives AI agents durable, authoritative task state and exclusive temporary
 ownership while focused agents clarify requirements, implement, document,
-review, publish, and verify work. A command can recover after interruption by
+review, and publish work. A command can recover after interruption by
 reading the task instead of reconstructing progress from local execution files.
 
 # Actors
@@ -25,12 +25,12 @@ reading the task instead of reconstructing progress from local execution files.
 
 - `/kos-brief <request>` creates or resumes a brief, specifies and independently
   reviews product behavior, publishes it, materializes the reviewed development
-  graph, and independently verifies the published result.
+  graph, and completes after observing the published result.
 - `/kos` resumes or claims the next available development task, then plans,
-  implements and checks, documents, reviews, publishes, and verifies it.
+  implements and checks, documents, reviews, and publishes it.
 - `/kos-fix <problem>` creates or resumes the exact reported problem, diagnoses
   it before planning, and follows the same checked, documented, reviewed,
-  published, and verified delivery path.
+  and published delivery path.
 
 # Rules
 
@@ -42,6 +42,9 @@ reading the task instead of reconstructing progress from local execution files.
   but never silently registers a repository.
 - A task remains bound to the immutable workflow revision selected when it was
   created. Only one valid owner may advance it, and stale owners are fenced out.
+- The shared bearer token authorizes every application operation and its holders
+  are trusted. Owner IDs, leases, and claim-version fences coordinate concurrent
+  trusted operations; they are not agent authorization or a security boundary.
 - The scheduler only selects, creates, claims, or resumes work; reads
   authoritative state; dispatches one fresh agent for the exact current step;
   and reads state again. The dispatched input is only the positive task ID.
@@ -52,22 +55,21 @@ reading the task instead of reconstructing progress from local execution files.
   Repeating a step replaces that step's accepted artifact; KOS does not expose
   attempt history.
 - Development and fix implementation evidence includes a closed required-check
-  result. Implementation cannot succeed, and review, publication, and
-  verification cannot approve, unless that result is `passed` or explicitly
-  `not_required`.
+  result. Implementation cannot succeed, and review or publication cannot
+  advance, unless that result is `passed` or explicitly `not_required`.
 - A paused task retains the exact human question or technical reason. A human
   answer is durably bound to that pause before the same step is retried.
 - Product behavior changes update the repository's `specs/` bundle before
   independent review. Technical-only work records why no product concept changed.
 - Work remains uncommitted through implementation, documentation, and review.
   Publication is the only step that may commit or push.
-- Publication does not complete a task. It advances to a fresh, independent,
-  read-only verification step; only successful verification completes the task.
+- Publication validates reviewed work, pushes without force, observes the
+  expected remote result, and completes the built-in task with `published`.
 - Brief publication includes remote publication followed by atomic
-  materialization of the reviewed child graph before verification.
-- The server accepts built-in completion only from verification. A brief cannot
-  advance past publication until its child graph exists, and an existing graph
-  cannot be combined with a rewind to briefing or review.
+  materialization of the reviewed child graph before reporting `published`.
+- The server accepts built-in completion only from the `published` publication
+  outcome. A brief cannot complete publication until its child graph exists,
+  and an existing graph cannot be combined with a rewind to briefing or review.
 - Incomplete blockers keep dependent tasks unavailable.
 - Request-bound brief and fix creation sends the exact command kind and request
   to one create-or-get operation. The server derives the deterministic key and
@@ -103,19 +105,16 @@ reading the task instead of reconstructing progress from local execution files.
 - Renaming or transferring a repository updates the existing project
   registration so numeric identity, tasks, relationships, workflow snapshots,
   accepted evidence, and derived worktrees remain attached to it.
-- Existing unfinished tasks upgraded to state-oriented execution retain their
-  IDs, relationships, workflow, current step, status, and worktree, but begin
-  with no accepted artifact index. If an immutable built-in snapshot predates
-  verification, preserve its work, cancel it, and recreate it from the current
-  catalog; it is not imported, dual-run, or repointed. Current snapshots may
-  rerun their step to reconstruct evidence. Old local artifacts are not read.
+- This pre-release workflow change provides no legacy workflow support or data
+  migration. Existing local database state will be reset separately; old local
+  artifacts are not read.
 - If the default branch moves before publication, implementation checks,
   documentation, and independent review repeat on the new base.
 - A corrective outcome may move a task backward. The newly accepted artifact for
   a repeated step supersedes its prior accepted artifact.
-- Brief-created children remain unavailable until their parent is verified and
-  completed. The complete child graph is materialized atomically after remote
-  publication and before verification.
+- Brief-created children remain unavailable until their parent completes at
+  publication. The complete child graph is materialized atomically after remote
+  publication and before the `published` report.
 
 # Acceptance Criteria
 
@@ -126,14 +125,13 @@ reading the task instead of reconstructing progress from local execution files.
 - Restart and lost-response recovery do not duplicate tasks, transitions, child
   graphs, commits, or pushes.
 - Completed work exposes durable accepted Markdown evidence, required checks,
-  independent review, one published commit, independent verification, completed
-  status, and released ownership.
+  independent review, one remotely observed published commit, completed status,
+  and released ownership.
 - Scheduler dispatch contains only the task ID; each fresh step agent obtains,
   validates, and reports its own authoritative state and evidence.
 - Accepted artifact and transition changes are atomic and ownership-fenced.
 - Paused questions, technical reasons, and exactly bound answers survive restart.
-- Publication advances to verification, and no other outcome completes a
-  built-in task.
+- `published` completes a built-in task, and no other outcome does.
 - Automated acceptance proves lifecycle and installed-asset contracts. Separate
   live-model release evidence is required for all three real slash-command paths
   using isolated state and repositories; this specification does not claim that

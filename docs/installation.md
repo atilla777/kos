@@ -55,14 +55,14 @@ nonstandard destination. The installer copies this exact inventory:
 
 - commands: `kos.md`, `kos-fix.md`, and `kos-brief.md`;
 - focused agents: `kos-diagnose.md`, `kos-plan.md`, `kos-implement.md`,
-  `kos-document.md`, `kos-brief.md`, `kos-review.md`, `kos-publish.md`, and
-  `kos-verify.md`;
+  `kos-document.md`, `kos-brief.md`, `kos-review.md`, and `kos-publish.md`;
 - custom-step agents: `kos-step-standard.md` and `kos-step-advanced.md`; and
 - skills: `kos`, `kos-brief`, `kos-cli`, `kos-step`, `kos-git`,
   and `okf`.
 
-The installer removes obsolete managed `kos-orchestrator.md` and `kos-step.md`
-agent profiles. It refuses symlinked or wrongly typed managed destinations.
+The installer removes obsolete managed `kos-orchestrator.md`, `kos-step.md`, and
+`kos-verify.md` agent profiles. It refuses symlinked or wrongly typed managed
+destinations.
 Slash commands run in the primary `build` agent under the user's main-agent permission
 policy; the installed focused profile files apply only after ID-only dispatch.
 Managed profiles contain no KOS-specific permission blocks: they select a role,
@@ -72,8 +72,8 @@ administrator's OpenCode configuration.
 The shipped mapping uses `openai/gpt-5.6-terra` with medium reasoning for
 standard implementation, documentation, publication, generic standard steps,
 and `/kos` or `/kos-fix` scheduling. It uses `openai/gpt-5.6-sol` with high
-reasoning for diagnosis, planning, briefing, review, verification, generic
-advanced steps, and `/kos-brief` scheduling. Administrators may substitute
+reasoning for diagnosis, planning, briefing, review, generic advanced steps,
+and `/kos-brief` scheduling. Administrators may substitute
 complete `provider/model-id` values while preserving these authority roles.
 Check availability with `opencode models openai`.
 
@@ -110,7 +110,10 @@ export KOS_CLI_PATH="$(realpath "$(command -v kos)")"
 
 `health` uses `KOS_API_URL` to call the public `GET /up` endpoint and does not
 require a token. All other CLI operations use the same `KOS_API_URL` and require
-the `KOS_API_TOKEN` configured when Rails started.
+the `KOS_API_TOKEN` configured when Rails started. This shared bearer token
+trusts its holders for every application operation. Owner IDs, leases, and
+claim-version fences coordinate concurrent trusted operations; they do not
+provide per-agent authorization.
 
 The registration identity must exactly match the canonical identity derived
 from the invoking checkout's single `origin` fetch and push URLs. Equivalent
@@ -133,37 +136,30 @@ input, and all managed profiles and skills come from the same revision.
 
 ## Upgrade
 
-Stop Rails and active schedulers, check out one new revision, rebuild and
-install the gem, reinstall OpenCode integration, migrate and seed, then restart
-Rails and OpenCode:
+This pre-release workflow change does not support existing task state. Stop
+Rails and active schedulers, remove the installation's SQLite database and task
+worktrees, then check out one new revision, rebuild and install the gem,
+reinstall OpenCode integration, prepare a fresh database, and restart Rails and
+OpenCode. Preserve repository work separately before the reset if needed.
 
 ```sh
 gem build kos.gemspec --output /tmp/kos.gem
 gem install /tmp/kos.gem
 bin/install-opencode
 bin/rails db:prepare
-bin/rails db:seed
 ```
 
-Built-in bootstrap reuses identical definitions and creates immutable workflow
-revisions when definitions change. Existing tasks retain IDs, relationships,
-workflow snapshots, lifecycle position, and derived worktrees.
+Do not run the new catalog against the old database: existing tasks retain
+immutable workflow snapshots whose verifier is no longer installed. Do not
+import or dual-run old definitions or local `tasks/<id>/<step>.md` files and
+answer sidecars.
 
-When upgrading unfinished pre-state-oriented tasks, their accepted-artifact map
-starts empty. For an unfinished built-in task whose immutable snapshot predates
-the `verify` step, first preserve all worktree changes, then cancel that task and
-recreate the work on the current built-in catalog. Do not try to publish it,
-repoint its workflow, import it, or run old and current definitions in parallel.
-For a task already on a current snapshot, rerun its authoritative current step
-to reconstruct missing accepted evidence. Do not copy or import old local
-`tasks/<id>/<step>.md` files or answer sidecars; current agents never read them.
-
-## Verify
+## Check
 
 Run `bin/check` in the release checkout; it proves automated lifecycle and
 installed-asset contracts. Separately, required deployment release evidence
 uses live models and isolated state and repositories to run real `/kos-brief`,
-`/kos`, and `/kos-fix` commands through publication and independent
-verification. Confirm completed tasks, released ownership, accepted artifacts
-in KOS, expected remote commits, and the brief child graph. Passing `bin/check`
-alone is not evidence that those live command executions occurred.
+`/kos`, and `/kos-fix` commands through terminal publication. Confirm completed
+tasks, released ownership, accepted artifacts in KOS, expected remote commits,
+and the brief child graph. Passing `bin/check` alone is not evidence that those
+live command executions occurred.

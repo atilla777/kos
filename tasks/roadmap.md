@@ -6,11 +6,16 @@ development records and are not read by the KOS server or CLI.
 
 ## Active
 
-None.
+| ID | Task | Status | Dependencies |
+| --- | --- | --- | --- |
+| 012 | [Materialize brief graphs atomically](012-atomic-brief-materialization/task.md) | active | 011 |
 
 ## Planned
 
-None.
+| ID | Task | Status | Dependencies |
+| --- | --- | --- | --- |
+| 013 | [Publish reviewed commit sequences](013-reviewed-commit-ranges/task.md) | planned | 011, 012 |
+| 014 | [Run simplified live acceptance](014-simplified-live-acceptance/task.md) | planned | 011, 012, 013 |
 
 ## Completed
 
@@ -26,12 +31,11 @@ None.
 | 008 | [Simplify Git publication](008-simplify-git-publication/task.md) | done | 007 |
 | 009 | [Run live acceptance scenarios](009-live-acceptance/task.md) | done | 008 |
 | 010 | [Prevent publication without required checks](010-enforce-check-evidence/task.md) | done | 009 |
+| 011 | [Complete built-in tasks at publication](011-terminal-publication/task.md) | done | 010 |
 
 ## Future Decisions
 
-- Reassess the server workflow and data model only after the simpler CLI and
-  agent integration have been exercised in real sessions.
-- Decide from observed failures whether publication needs a deterministic CLI
-  operation.
-- Consider merging workflow steps or profiles only with live timing and failure
-  evidence.
+- Reassess further server workflow and data-model reductions only after the
+  simplified publication flow has been exercised in real sessions.
+- Decide from observed failures whether Git publication needs a deterministic
+  CLI operation.

@@ -27,7 +27,7 @@ class Plan022AcceptanceMatrixTest < ActiveSupport::TestCase
       [ "test/integration/tasks_api_test.rb", "stale owner claim and wrong step reports atomically leave state and artifacts unchanged" ]
     ]),
     Criterion.new("bad predecessor backward allowed", [
-      [ "test/integration/acceptance_scenarios_test.rb", "built in correction outcomes route backward and verification failures do not complete" ]
+      [ "test/integration/acceptance_scenarios_test.rb", "built in correction outcomes route backward without completing" ]
     ]),
     Criterion.new("repeated replaces", [
       [ "test/models/task_lifecycle_test.rb", "accepted artifacts transition atomically and a repeated successful step replaces its record" ]
@@ -43,19 +43,19 @@ class Plan022AcceptanceMatrixTest < ActiveSupport::TestCase
     ]),
     Criterion.new("profile policy", [
       [ "test/skills/kos_skills_test.rb", "profiles preserve role and model metadata without permission policy" ],
-      [ "test/skills/kos_skills_test.rb", "review verify plan and diagnose profiles are read-only" ]
+      [ "test/skills/kos_skills_test.rb", "review plan and diagnose profiles are read-only" ]
     ]),
     Criterion.new("independent read-only review", [
       [ "test/integration/acceptance_scenarios_test.rb", "a moved base repeats checks and review before one publication commit" ]
     ]),
-    Criterion.new("publish->verify", [
-      [ "test/integration/acceptance_scenarios_test.rb", "built in development and fix lifecycles atomically progress through verification" ]
+    Criterion.new("publish completes", [
+      [ "test/integration/acceptance_scenarios_test.rb", "built in development and fix lifecycles complete at publication" ]
     ]),
-    Criterion.new("verify remote independently", [
-      [ "test/skills/kos_skills_test.rb", "verification independently observes remote publication" ]
+    Criterion.new("publish observes remote", [
+      [ "test/skills/kos_skills_test.rb", "publication observes the expected remote result" ]
     ]),
-    Criterion.new("verify failure not complete", [
-      [ "test/integration/acceptance_scenarios_test.rb", "built in correction outcomes route backward and verification failures do not complete" ]
+    Criterion.new("publication prerequisites gate completion", [
+      [ "test/models/brief_task_graph_test.rb", "rejects published before materialization without accepting an artifact" ]
     ]),
     Criterion.new("nonpublish no commit/push", [
       [ "test/skills/kos_skills_test.rb", "profiles retain operational role boundaries" ]
@@ -69,8 +69,8 @@ class Plan022AcceptanceMatrixTest < ActiveSupport::TestCase
       [ "test/integration/built_in_catalog_seed_test.rb", "a fresh prepared database receives the idempotent built-in catalog" ]
     ]),
     Criterion.new("real development/fix/brief scenarios E2E", [
-      [ "test/integration/acceptance_scenarios_test.rb", "built in development and fix lifecycles atomically progress through verification" ],
-      [ "test/integration/acceptance_scenarios_test.rb", "brief materializes its exact validated graph at publish before verification completes it" ]
+      [ "test/integration/acceptance_scenarios_test.rb", "built in development and fix lifecycles complete at publication" ],
+      [ "test/integration/acceptance_scenarios_test.rb", "brief materializes its exact validated graph before publication completes it" ]
     ]),
     Criterion.new("no local tasks/id dir", [
       [ "test/integration/acceptance_scenarios_test.rb", "task state and accepted artifact survive restart without a local task artifact directory" ]
@@ -82,8 +82,8 @@ class Plan022AcceptanceMatrixTest < ActiveSupport::TestCase
     "agent only ID/context", "context index no bodies", "separate artifact", "atomic artifact+transition",
     "crash before completion unchanged", "lost response ordinary show", "stale/wrong no write",
     "bad predecessor backward allowed", "repeated replaces", "answer stored/restart", "scheduler only ID",
-    "scheduler no Markdown/Git", "profile policy", "independent read-only review", "publish->verify",
-    "verify remote independently", "verify failure not complete", "nonpublish no commit/push",
+    "scheduler no Markdown/Git", "profile policy", "independent read-only review", "publish completes",
+    "publish observes remote", "publication prerequisites gate completion", "nonpublish no commit/push",
     "existing IDs/relationships/workflows/worktrees", "clean install assets/workflows",
     "real development/fix/brief scenarios E2E", "no local tasks/id dir", "bin/check"
   ].freeze
@@ -107,13 +107,13 @@ class Plan022AcceptanceMatrixTest < ActiveSupport::TestCase
     assert_equal %w[kos-brief.md kos-fix.md kos.md], managed_names(".opencode/commands")
     assert_equal %w[
       kos-brief.md kos-diagnose.md kos-document.md kos-implement.md kos-plan.md kos-publish.md kos-review.md
-      kos-step-advanced.md kos-step-standard.md kos-verify.md
+      kos-step-advanced.md kos-step-standard.md
     ], managed_names(".opencode/agents")
     assert_equal %w[kos kos-brief kos-cli kos-git kos-step okf], managed_names("skills")
     assert_equal %w[brief development fix], BuiltInCatalog.definitions.keys.sort
-    assert_equal %w[brief review publish verify], catalog_steps("brief")
-    assert_equal %w[plan implement document review publish verify], catalog_steps("development")
-    assert_equal %w[diagnose plan implement document review publish verify], catalog_steps("fix")
+    assert_equal %w[brief review publish], catalog_steps("brief")
+    assert_equal %w[plan implement document review publish], catalog_steps("development")
+    assert_equal %w[diagnose plan implement document review publish], catalog_steps("fix")
   end
 
   test "deterministic scenarios do not claim live model release evidence" do

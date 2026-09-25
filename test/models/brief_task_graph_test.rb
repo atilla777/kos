@@ -65,10 +65,8 @@ class BriefTaskGraphTest < ActiveSupport::TestCase
     cli_entry = observed[:children].find { |entry| entry[:task] == cli }
     assert_equal [ api.id ], cli_entry[:sibling_blocker_ids]
 
-    verification = lifecycle.report_attempt!(task_id: @brief.id, owner_id: "brief-owner",
-      claim_version: claim.claim_version, step: "publish", outcome: "published", artifact: "# Publish")
     completed = lifecycle.report_attempt!(task_id: @brief.id, owner_id: "brief-owner",
-      claim_version: verification.claim_version, step: "verify", outcome: "verified", artifact: "# Verify")
+      claim_version: claim.claim_version, step: "publish", outcome: "published", artifact: "# Publish")
     assert_equal "completed", completed.status
     assert_equal api, lifecycle.claim_next!(project: @project, task_type: @development_type, owner_id: "worker")
   end
@@ -105,19 +103,16 @@ class BriefTaskGraphTest < ActiveSupport::TestCase
     end
   end
 
-  test "accepts materialization followed by published and verification" do
+  test "accepts materialization followed by terminal publication" do
     claim = advance_brief_to_publish
     validation = @graph.validate!(parent: @brief, children: @definitions)
     @graph.materialize!(parent_id: @brief.id, owner_id: "brief-owner", claim_version: claim.claim_version,
       expected_digest: validation[:digest], children: @definitions)
 
-    published = TaskLifecycle.new.report_attempt!(task_id: @brief.id, owner_id: "brief-owner",
+    completed = TaskLifecycle.new.report_attempt!(task_id: @brief.id, owner_id: "brief-owner",
       claim_version: claim.claim_version, step: "publish", outcome: "published", artifact: "# Publish")
-    verified = TaskLifecycle.new.report_attempt!(task_id: @brief.id, owner_id: "brief-owner",
-      claim_version: published.claim_version, step: "verify", outcome: "verified", artifact: "# Verify")
 
-    assert_equal [ "active", "verify" ], published.values_at(:status, :current_step)
-    assert_equal "completed", verified.status
+    assert_equal [ "completed", "publish", nil ], completed.values_at(:status, :current_step, :owner_id)
   end
 
   test "digest claim and repeated materialization conflicts roll back without partial children" do

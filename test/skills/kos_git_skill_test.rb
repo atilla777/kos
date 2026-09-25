@@ -21,7 +21,7 @@ class KosGitSkillTest < ActiveSupport::TestCase
     source = File.read(SKILL_PATH)
 
     [
-      "Repository Discovery", "Authoritative Context", "Step Policy", "Publication", "Independent Verification"
+      "Repository Discovery", "Authoritative Context", "Step Policy", "Publication"
     ].each { |heading| assert_match(/^## #{Regexp.escape(heading)}$/, source) }
 
     assert_includes source, "Accept only a positive task ID"
@@ -40,12 +40,7 @@ class KosGitSkillTest < ActiveSupport::TestCase
     refute_includes source, "git commit -F"
     refute_includes source, "HEAD:refs/heads/<validated-default-branch>"
     assert_includes source, "`implement` and `document` may mutate"
-    assert_includes source, "`diagnose`, `plan`, `review`, and `verify` are read-only"
-    assert_includes source, "At `verify`, perform no mutation"
-    assert_includes source, "Independently fetch the remote branch"
-    assert_includes source, "`KOS-Task: <task-id>` trailer"
-    assert_includes source, "changed paths and patch"
-    assert_includes source, "`materialization_missing`"
+    assert_includes source, "one exact trailer"
     assert_includes source, "never reports a KOS\nattempt"
     assert_includes source, "exactly one configured fetch URL"
     assert_includes source, "exactly one configured push URL"

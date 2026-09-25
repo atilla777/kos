@@ -70,12 +70,12 @@ remotes.each_with_index do |remote, index|
     "VALUES (#{11 + index}, 'Project #{index}', #{connection.quote(remote)}, 'main', '2026-09-01 00:00:00', '2026-09-01 00:00:00')")
 end
 connection.execute("INSERT INTO workflows (id, name, definition_json, created_at) " \
-  "VALUES (7, 'Snapshot', '{\"steps\":[{\"id\":\"plan\"}]}', '2026-09-01 00:00:00')")
+  "VALUES (7, 'Snapshot', '{\"steps\":[{\"id\":\"plan\"},{\"id\":\"review\"},{\"id\":\"publish\"}]}', '2026-09-01 00:00:00')")
 connection.execute("INSERT INTO task_types (id, key, name, workflow_id, created_at, updated_at) " \
   "VALUES (5, 'development', 'Development', 7, '2026-09-01 00:00:00', '2026-09-01 00:00:00')")
 connection.execute("INSERT INTO tasks (id, project_id, task_type_id, workflow_id, title, description_markdown, status, " \
   "current_step, claim_version, accepted_artifacts, created_at, updated_at) VALUES " \
-  "(22, 11, 5, 7, 'Parent', 'Parent description', 'completed', 'verify', 3, '{}', '2026-09-01 00:00:00', '2026-09-01 00:00:00')")
+  "(22, 11, 5, 7, 'Parent', 'Parent description', 'completed', 'publish', 3, '{}', '2026-09-01 00:00:00', '2026-09-01 00:00:00')")
 connection.execute("INSERT INTO tasks (id, project_id, task_type_id, workflow_id, parent_id, title, description_markdown, " \
   "status, current_step, owner_id, claim_version, lease_expires_at, accepted_artifacts, pause_message, pause_step, " \
   "pause_claim_version, human_answer, human_answer_step, human_answer_claim_version, created_at, updated_at) VALUES " \

@@ -1,6 +1,6 @@
 ---
 name: kos-git
-description: Use for KOS task worktree derivation, centralized Git policy, publication, and independent remote verification from one task ID.
+description: Use for KOS task worktree derivation, centralized Git policy, and publication from one task ID.
 ---
 
 # KOS Git Protocol
@@ -51,7 +51,7 @@ unexpected path, or discard changes.
 
 The exact authoritative current step controls Git authority:
 
-- `diagnose`, `plan`, `review`, and `verify` are read-only. HEAD and complete
+- `diagnose`, `plan`, and `review` are read-only. HEAD and complete
   status must remain byte-for-byte unchanged.
 - `implement` and `document` may mutate the task worktree but must not commit or
   push. HEAD must remain unchanged.
@@ -94,24 +94,6 @@ before mutation and reuse an already published candidate. If an unpublished
 candidate's parent is an ancestor of a newly advanced remote, preserve its tree
 as uncommitted task work on the new detached base and return `base_moved`.
 Never duplicate a confirmed commit or push.
-
-## Independent Verification
-
-At `verify`, perform no mutation: no checkout, index change, commit, push,
-materialization, or worktree edit. Independently fetch the remote branch, locate
-the published commit, require exactly one `KOS-Task: <task-id>` trailer, inspect
-its changed paths and patch, and compare the remote result with the task and
-accepted artifacts. Do not trust the publish artifact or local HEAD as proof.
-
-Return `publication_missing` when no valid task commit is remotely observable.
-Return `changes_invalid` for a development or fix result that does not satisfy
-the accepted task evidence. For brief tasks, verify both remote specification
-publication and the server-observed child graph. Return
-`materialization_missing` only when publication is valid but the exact accepted
-graph is absent. Return `brief_invalid` only when correction can safely restart
-briefing before any child graph exists; if children already exist, use
-`blocked` rather than redefining them. Only complete remote and result evidence
-permits `verified`.
 
 Return observed facts to the current step agent. This skill never reports a KOS
 attempt and never executes another workflow step.

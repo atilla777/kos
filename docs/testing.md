@@ -42,9 +42,9 @@ The acceptance matrix preserves these exact 23 user-required criteria in order:
 12. Scheduler no Markdown/Git.
 13. Profile policy.
 14. Independent read-only review.
-15. Publish->verify.
-16. Verify remote independently.
-17. Verify failure not complete.
+15. Publish completes.
+16. Publish observes remote.
+17. Publication prerequisites gate completion.
 18. Nonpublish no commit/push.
 19. Existing IDs/relationships/workflows/worktrees.
 20. Clean install assets/workflows.
@@ -60,30 +60,31 @@ release evidence remains an explicit separate requirement.
 ## Scenario Coverage
 
 Deterministic development E2E follows `plan`, `implement`, `document`, `review`,
-`publish`, and `verify`. It proves required checks occur in implementation, no
+and `publish`. It proves required checks occur in implementation, no
 built-in `check` step exists, ordinary changes return to implementation, design
 failures return to planning, invalid predecessor outcomes route precisely, and
-only verification completes. A custom workflow step named `check` remains valid.
+only `published` completes. A custom workflow step named `check` remains valid.
 
 Deterministic fix E2E creates and claims by the stable `fix` key, performs
 read-only evidenced diagnosis, requires a regression check that would fail for
 the reproduced defect, covers `diagnosis_invalid`, and then proves all
-development delivery and verification guarantees. Ambiguous behavior or a
+development delivery and publication guarantees. Ambiguous behavior or a
 non-reproducible report pauses with one question; infrastructure obstruction
 pauses as blocked.
 
 Development and fix acceptance rejects `implemented` when structured required
-checks are absent, missing, blocked, or failed, and proves that review,
-publication, and verification cannot positively advance legacy unfinished state
-without successful accepted check evidence. Successful scenarios retain and
-expose `passed` or `not_required` alongside the implementation Markdown.
+checks are absent, missing, blocked, or failed, and proves that review and
+publication cannot positively advance without successful accepted check
+evidence. Successful scenarios retain and expose `passed` or `not_required`
+alongside the implementation Markdown.
 
 Deterministic brief E2E runs briefing in a fresh `kos-brief` agent, verifies OKF
 conformance, independently reviews specification and exact graph, validates
-before publication, publishes before materialization, and independently verifies
-remote specification plus observed graph. One-child and acyclic multi-child
-graphs, sibling blockers, parent availability, every backward outcome, repeated
-materialization, digest mismatch, and post-publication graph conflict are covered.
+before publication, observes remote publication before materialization, and
+completes only after observing the materialized graph. One-child and acyclic
+multi-child graphs, sibling blockers, parent availability, every backward
+outcome, repeated materialization, digest mismatch, and post-publication graph
+conflict are covered.
 
 State recovery tests restart the server after accepted reports and between
 question, answer, resume, and next report. They drop responses before and after
@@ -109,7 +110,7 @@ Required live release acceptance invokes `/kos-brief`, `/kos`, and `/kos-fix` ag
 isolated Rails database, KOS data home, fixture repository, task worktrees, and
 bare remote. It proves ID-only scheduling, fresh focused agents, mandatory
 checks, read-only authorities, accepted evidence, one publication commit per
-task, post-publication verification, completed state, ownership release, and the
+task, remote publication observation, completed state, ownership release, and the
 brief child graph. The automated suite proves lifecycle and installed-asset
 contracts only. Live model execution remains separate release evidence rather
 than a credential-dependent ordinary test, and this document does not claim

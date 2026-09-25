@@ -6,7 +6,7 @@ class KosSkillsTest < ActiveSupport::TestCase
   ORCHESTRATOR_PATH = Rails.root.join("skills/kos/SKILL.md")
   STEP_PATH = Rails.root.join("skills/kos-step/SKILL.md")
   CLI_PATH = Rails.root.join("skills/kos-cli/SKILL.md")
-  BUILT_IN_PROFILES = %w[diagnose plan implement document brief review publish verify].freeze
+  BUILT_IN_PROFILES = %w[diagnose plan implement document brief review publish].freeze
   AGENT_PATHS = (BUILT_IN_PROFILES + %w[step-standard step-advanced]).to_h do |name|
     [ "kos-#{name}", Rails.root.join(".opencode/agents/kos-#{name}.md") ]
   end.freeze
@@ -98,7 +98,6 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_not_includes source, "<step-id>.md"
     assert_not_includes source, '"outcome"'
     assert_not_includes source, "git status"
-    assert_not_includes source, "immutable pre-verification snapshot"
   end
 
   test "step guidance keeps the lifecycle concise and leaves validation to the server" do
@@ -159,16 +158,14 @@ class KosSkillsTest < ActiveSupport::TestCase
 
   test "profiles retain operational role boundaries" do
     assert_includes File.read(AGENT_PATHS.fetch("kos-publish")), "This profile alone may"
-    assert_includes File.read(AGENT_PATHS.fetch("kos-publish")), "immutable pre-verification built-in snapshot"
     implement = File.read(AGENT_PATHS.fetch("kos-implement"))
     assert_includes implement.gsub(/\s+/, " "), "Run every required test, lint, formatting, build, and type check"
     assert_includes implement, "structured required-check result"
     assert_includes implement, "Keep all changes uncommitted"
     assert_includes File.read(AGENT_PATHS.fetch("kos-review")), "required-check evidence"
     publish = File.read(AGENT_PATHS.fetch("kos-publish"))
-    assert_includes publish, "required-check evidence"
+    assert_includes publish.gsub(/\s+/, " "), "required-check evidence"
     assert_includes publish.gsub(/\s+/, " "), "validate its exact graph before commit or push"
-    assert_includes File.read(AGENT_PATHS.fetch("kos-verify")), "required-check evidence"
     assert_includes File.read(AGENT_PATHS.fetch("kos-document")).gsub(/\s+/, " "), "Do not commit or push"
     assert_includes File.read(AGENT_PATHS.fetch("kos-brief")).gsub(/\s+/, " "), "Do not commit, push"
     assert_includes File.read(AGENT_PATHS.fetch("kos-step-standard")), "without commit or push"
@@ -179,23 +176,20 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_includes diagnose, "no ambient secrets"
   end
 
-  test "review verify plan and diagnose profiles are read-only" do
-    %w[kos-diagnose kos-plan kos-review kos-verify].each do |name|
+  test "review plan and diagnose profiles are read-only" do
+    %w[kos-diagnose kos-plan kos-review].each do |name|
       source = File.read(AGENT_PATHS.fetch(name))
 
       assert_match(/unchanged|without changing|without changing the repository/, source, name)
     end
-    verify = File.read(AGENT_PATHS.fetch("kos-verify"))
-    assert_includes verify.gsub(/\s+/, " "), "Only `verified` may complete"
   end
 
-  test "verification independently observes remote publication" do
-    source = File.read(AGENT_PATHS.fetch("kos-verify"))
+  test "publication observes the expected remote result" do
+    source = File.read(AGENT_PATHS.fetch("kos-publish"))
 
-    assert_includes source, "Independently verify"
-    assert_includes source, "remote"
-    assert_includes source, "without changing\nthe repository"
-    assert_includes source, "without changing\nthe repository or trusting publication prose"
+    assert_includes source, "expected remote result"
+    assert_includes source, "every side effect"
+    assert_includes source, "Report\n`published` only"
   end
 
   private

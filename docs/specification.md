@@ -17,9 +17,9 @@ Rails never starts OpenCode, Git, project checks, or agent processes.
 The implemented built-in scenarios are:
 
 ```text
-/kos-brief <request> -> brief -> review -> publish -> verify -> completed
-/kos                 -> plan -> implement/check -> document -> review -> publish -> verify -> completed
-/kos-fix <problem>   -> diagnose -> plan -> implement/check -> document -> review -> publish -> verify -> completed
+/kos-brief <request> -> brief -> review -> publish -> completed
+/kos                 -> plan -> implement/check -> document -> review -> publish -> completed
+/kos-fix <problem>   -> diagnose -> plan -> implement/check -> document -> review -> publish -> completed
 ```
 
 The first version runs on one host with Rails, SQLite, the installed CLI,
@@ -31,6 +31,9 @@ versions, leases, internal API calls, worktree paths, or workflow outcomes.
 Each command session generates its own unpredictable non-secret owner ID. For
 request-bound work, the server derives a deterministic bounded creation key and
 immutable task definition from the command kind and exact request.
+The shared bearer token authorizes every application operation and all token
+holders are trusted. Owner IDs, leases, and claim-version fences provide
+concurrency consistency among trusted holders, not per-agent authorization.
 Database preparation idempotently installs the `brief`, `development`, and
 `fix` task types and canonical workflows. Projects remain explicit
 installation-specific registrations; custom workflows and task types remain
@@ -58,7 +61,7 @@ store Git SHAs. It has no universal arbitrary task-state blob, checkpoint,
 attempt log, artifact graph, evaluation gate, or dual artifact source.
 
 Agents and skills clarify tasks, execute steps, select and run project checks,
-manage task worktrees, review independently, publish through Git, verify remote
+manage task worktrees, review independently, publish through Git, observe remote
 results, and choose one allowed outcome from observed evidence.
 
 ## State-Oriented Execution
@@ -158,8 +161,7 @@ are:
 | `implement` | `implemented` -> `document`; `plan_invalid` -> `plan` |
 | `document` | `documented` -> `review`; `implementation_invalid` -> `implement` |
 | `review` | `approved` -> `publish`; `changes_requested` -> `implement`; `redesign_required` -> `plan` |
-| `publish` | `published` -> `verify`; `review_invalid` -> `review`; `base_moved` -> `implement` |
-| `verify` | `verified` -> complete; `publication_missing` -> `publish`; `changes_invalid` -> `implement` |
+| `publish` | `published` -> complete; `review_invalid` -> `review`; `base_moved` -> `implement` |
 
 ### Fix
 
@@ -170,8 +172,7 @@ are:
 | `implement` | `implemented` -> `document`; `plan_invalid` -> `plan` |
 | `document` | `documented` -> `review`; `implementation_invalid` -> `implement` |
 | `review` | `approved` -> `publish`; `changes_requested` -> `implement`; `redesign_required` -> `plan` |
-| `publish` | `published` -> `verify`; `review_invalid` -> `review`; `base_moved` -> `implement` |
-| `verify` | `verified` -> complete; `publication_missing` -> `publish`; `changes_invalid` -> `implement` |
+| `publish` | `published` -> complete; `review_invalid` -> `review`; `base_moved` -> `implement` |
 
 ### Brief
 
@@ -179,10 +180,9 @@ are:
 | --- | --- |
 | `brief` | `specified` -> `review` |
 | `review` | `approved` -> `publish`; `changes_requested` -> `brief` |
-| `publish` | `published` -> `verify`; `review_invalid` -> `review`; `base_moved` -> `brief`; `graph_invalid` -> `brief` |
-| `verify` | `verified` -> complete; `publication_missing` -> `publish`; `materialization_missing` -> `publish`; `brief_invalid` -> `brief` |
+| `publish` | `published` -> complete; `review_invalid` -> `review`; `base_moved` -> `brief`; `graph_invalid` -> `brief` |
 
-Diagnosis, planning, review, and verification are advanced and read-only.
+Diagnosis, planning, and review are advanced and read-only.
 Briefing is advanced and may change only authorized specification and graph
 work. Implementation and documentation are standard, may change the worktree,
 and may not commit or push. Implementation owns all required tests, lint,
@@ -196,8 +196,8 @@ It updates OKF behavior and proposes a minimal acyclic graph. Review independent
 checks both. Publication validates the accepted graph, publishes the reviewed
 specification, observes remote success, and then atomically materializes the
 exact graph. Children are development tasks with the brief as parent and
-blocker, plus declared sibling blockers. Verification independently compares
-the remote specification and server-observed graph with accepted evidence.
+blocker, plus declared sibling blockers. Only then does the publisher report
+`published`, completing the brief.
 
 ## Ownership, Pauses, And Reporting
 
@@ -271,11 +271,11 @@ checks active owner, unexpired lease, version, and current step, stores the last
 accepted artifact, applies the transition, increments the fence, and clears or
 sets pause/answer state. For built-in development and fix work,
 `required_checks` is allowed only at implementation; `implemented` requires
-`passed` or `not_required`. Positive review, publication, and verification also
+`passed` or `not_required`. Positive review and publication also
 require that assertion in accepted implementation evidence. Rails does not
 select, run, or parse checks or their Markdown output. A built-in `complete_task`
-action is rejected unless the
-reported step is `verify`, including immutable legacy snapshots. For a brief at
+action is rejected unless the reported step and outcome are `publish` and
+`published`. For a brief at
 `publish`, the transaction serializes with materialization, requires children
 before accepting `published`, and rejects `base_moved`, `graph_invalid`, or
 `review_invalid` after children exist. Rejection stores no artifact. It returns
@@ -293,7 +293,9 @@ ordinary task creation does not.
 
 `kos health` calls the public `GET /up` endpoint selected by `KOS_API_URL`
 without requiring `KOS_API_TOKEN`. Every application operation requires the
-configured token.
+configured shared token. Its holders are trusted for all such operations;
+ownership and fencing coordinate their concurrent writes but do not authorize
+them separately.
 
 ## Recovery And Upgrade
 
@@ -309,18 +311,9 @@ deletion, rename/fsync requirement, attempt marker, step receipt, or dual-read
 fallback. Old local task artifacts are not read, imported, or considered
 evidence.
 
-The execution-context migration adds accepted artifacts, pause bindings, and
-answer bindings with an empty accepted-artifact map. Existing unfinished tasks
-keep project and task IDs, parent and blocker relationships, task type and
-immutable workflow snapshot, title and description, status, current step,
-ownership data, and derived worktree. If that built-in snapshot predates
-verification, the server and skills block publication: the operator preserves
-work, cancels the unfinished task, and recreates it from the current catalog.
-There is no automatic dual support, import, or workflow repoint. Current
-snapshots may rerun their authoritative current step to reconstruct missing
-accepted evidence. Rollback removes only the new execution-context columns and
-preserves the pre-upgrade IDs and relationships; the migration test proves both
-directions against an isolated database.
+This pre-release workflow change provides no legacy workflow support or data
+migration. Existing local database state will be reset separately rather than
+translated or dual-run.
 
 Git recovery remains observation-oriented. Publication observes the base,
 candidate, and remote before retrying, never force-pushes, and never duplicates
@@ -328,7 +321,7 @@ a confirmed commit. A moved base returns to implementation or briefing as the
 workflow specifies. Brief graph creation recovers by comparing the complete
 observed graph and digest.
 
-## Publication And Verification
+## Publication
 
 All task changes remain uncommitted until `publish`. The publisher validates
 accepted predecessor evidence and current work, including successful structured
@@ -342,13 +335,10 @@ server will not accept `published` until those children exist, and after they
 exist it permits a technical `blocked` pause but no publication outcome that
 rewinds to briefing or review.
 
-`published` advances to `verify`; it never completes the task. A fresh advanced
-verification agent is read-only and independently fetches and inspects the
-remote commit, trailer, changed paths, patch, expected result, and accepted
-evidence without trusting publication prose or local HEAD. For a brief it also
-checks the server-observed child graph. Only `verified` completes and releases
-ownership; precise correction outcomes route incomplete or invalid results
-backward.
+The publisher reports `published` only after observing the expected candidate in
+remote history and, for a brief, after the exact child graph exists. The server
+then completes the task and releases ownership. Review and publication remain
+separate steps; there is no built-in verifier step.
 
 ## Product Specifications
 

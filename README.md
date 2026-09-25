@@ -12,8 +12,9 @@ Development and fix implementation artifacts also retain a closed required-check
 result.
 A scheduler dispatches only a task ID; each fresh step agent reads its own
 authoritative context and predecessor evidence, performs one step, and atomically
-reports its artifact and transition. Publication advances to fresh independent
-verification, and only verification completes a built-in task.
+reports its artifact and transition. Independent review precedes publication;
+publication observes the expected remote result and completes a built-in task
+with `published`.
 
 ## Prerequisites
 
@@ -29,7 +30,10 @@ export KOS_API_TOKEN="$(openssl rand -hex 32)"
 ```
 
 Keep the token secret. Application endpoints require `Authorization: Bearer
-<token>`; `GET /up` is public.
+<token>`; `GET /up` is public. This shared bearer token trusts its holders for
+every application operation. Owner IDs, leases, and claim-version fences
+coordinate concurrent trusted operations; they are not authorization or an
+agent security boundary.
 
 Development and production databases default to `$XDG_DATA_HOME/kos`, or
 `~/.local/share/kos`. `KOS_DATA_HOME` may override it with an absolute local
@@ -86,7 +90,7 @@ There are no `KOS_PROJECT_*` environment variables.
 
 - commands `kos.md`, `kos-fix.md`, and `kos-brief.md`;
 - focused agents `kos-diagnose`, `kos-plan`, `kos-implement`, `kos-document`,
-  `kos-brief`, `kos-review`, `kos-publish`, and `kos-verify`;
+  `kos-brief`, `kos-review`, and `kos-publish`;
 - custom-step agents `kos-step-standard` and `kos-step-advanced`; and
 - skills `kos`, `kos-brief`, `kos-cli`, `kos-step`, `kos-git`, and
   `okf`.
@@ -193,8 +197,8 @@ UTF-8 and at most 1 MiB. A pause requires a nonblank message. One transaction
 checks the active unexpired fence and allowed action, replaces that step's
 accepted artifact, increments the version, applies the transition, and updates
 pause/answer state. A stale or invalid report changes nothing. The server also
-refuses every built-in completion outside `verify`. Built-in development and fix
-work cannot report `implemented`, `approved`, `published`, or `verified` without
+  refuses every built-in completion outside the `published` publication outcome.
+  Built-in development and fix work cannot report `implemented`, `approved`, or `published` without
 accepted `passed` or `not_required` required-check evidence. Rails never parses
 the Markdown or check output. A brief `published` report
 requires an already materialized child graph under the same serialized
@@ -253,26 +257,24 @@ The exact built-in profile mapping is:
 | `brief` | `kos-brief` | advanced, authorized specification and graph edits, no commit |
 | `review` | `kos-review` | advanced, independent read-only review |
 | `publish` | `kos-publish` | standard, only commit/push and graph mutation authority |
-| `verify` | `kos-verify` | advanced, fresh independent read-only verification |
 
 Development routes invalid plans back to `plan`, invalid implementation evidence
 to `implement`, review changes to `implement`, redesign to `plan`, invalid review
-to `review`, moved base to `implement`, missing publication to `publish`, and
-invalid published changes to `implement`. Fix additionally routes invalid
-diagnosis back to `diagnose`. Brief routes requested changes, moved base, or
-invalid graph to `brief`; invalid review to `review`; missing publication or
-materialization to `publish`; and safely correctable invalid briefing to `brief`.
+to `review`, and a moved base to `implement`. Fix additionally routes invalid
+diagnosis back to `diagnose`. Brief routes requested changes, a moved base, or
+an invalid graph to `brief`; invalid review returns to `review`, and missing
+materialization prevents `published` from being reported.
 
-Every built-in step supports `needs_human` and `blocked`. `published` always
-advances to `verify`; only `verified` completes. The verifier independently
-reads remote Git and accepted evidence and does not trust publisher prose or
-local HEAD.
+Every built-in step supports `needs_human` and `blocked`. `published` completes
+the built-in task and releases ownership after the publisher has observed the
+expected remote result and, for a brief, the materialized child graph.
 
 Managed profiles select the role, model, reasoning effort, and focused prompt.
 They contain no KOS-specific OpenCode permission policy and are not a security
 boundary. Tool approval follows the administrator's OpenCode configuration;
-server authorization and fencing remain the authoritative state boundary, while
-review and verification detect violations of role-specific procedure.
+the shared bearer token is the authorization boundary. Ownership and fencing
+provide concurrency consistency rather than agent authorization, while review
+detects violations of role-specific procedure.
 
 ## Recovery And Upgrade
 
@@ -287,14 +289,10 @@ A changed fence and expected accepted entry prove success; an unchanged matching
 fence permits one controlled retry; contradiction blocks. The scheduler does not
 retain report bytes.
 
-Upgraded unfinished tasks preserve IDs, relationships, selected workflow,
-current lifecycle position, ownership, and worktree. Their accepted-artifact map
-starts empty. An unfinished built-in task on a pre-verification workflow
-snapshot cannot be advanced safely: preserve its work, cancel it, and recreate
-it from the current built-in catalog. KOS does not import, dual-run, or repoint
-that immutable snapshot. A current workflow snapshot may rerun its authoritative
-current step to reconstruct missing accepted evidence. Old local artifacts are
-never imported or read automatically.
+This pre-release workflow change provides no legacy workflow support or data
+migration. Existing local database state will be reset separately rather than
+translated, repointed, or dual-run. Old local artifacts are never imported or
+read automatically.
 
 Git worktrees are derived as:
 

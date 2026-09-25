@@ -14,7 +14,9 @@ configured executable is unavailable or incompatible.
 
 `KOS_API_URL` selects the server and otherwise defaults to the CLI's local URL.
 `KOS_API_TOKEN` is required except for `health`. Never print the token, put it in
-process arguments, or embed it in a URL.
+process arguments, or embed it in a URL. It is a shared bearer credential whose
+holders are fully trusted for every application operation; owner IDs, leases,
+and claim-version fences provide concurrency consistency, not authorization.
 
 ## Discover And Invoke
 
@@ -65,5 +67,6 @@ success or a safe retry cannot be established, stop as `blocked`.
 Do not expose administrative project/workflow/task-type operations, task
 creation, claim, takeover, resume, cancellation, graph mutation, or arbitrary
 CLI execution to a step profile unless that profile's explicit authority
-requires the exact focused operation. Server authorization and fencing remain
-the final enforcement boundary.
+requires the exact focused operation. The shared bearer token is the
+authorization boundary; owner and fence checks prevent conflicting trusted
+operations but do not authorize agents independently.

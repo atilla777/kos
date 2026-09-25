@@ -204,7 +204,7 @@ class TaskLifecycle
       action = task.workflow.action_for(step, outcome)
       raise InvalidTransition, "outcome is not allowed for the reported step" unless action
       validate_pause_message!(message) if action["pause"]
-      reject_invalid_builtin_completion!(task, step, action)
+      reject_invalid_builtin_completion!(task, step, outcome, action)
       validate_required_checks!(task, step, action, required_checks)
       validate_brief_publication_order!(task, step, outcome, owner_id:, claim_version:)
 
@@ -354,10 +354,11 @@ class TaskLifecycle
     changes
   end
 
-  def reject_invalid_builtin_completion!(task, step, action)
-    return unless BUILT_IN_TASK_KEYS.include?(task.task_type.key) && action["complete_task"] && step != "verify"
+  def reject_invalid_builtin_completion!(task, step, outcome, action)
+    return unless BUILT_IN_TASK_KEYS.include?(task.task_type.key) && action["complete_task"] &&
+      [ step, outcome ] != %w[publish published]
 
-    raise InvalidTransition, "built-in tasks can complete only from verify; cancel and recreate this legacy task"
+    raise InvalidTransition, "built-in tasks can complete only from the published publication outcome"
   end
 
   def validate_required_checks!(task, step, action, required_checks)
@@ -383,7 +384,7 @@ class TaskLifecycle
   end
 
   def check_gated_transition?(workflow, step, action)
-    %w[review publish verify].include?(step) &&
+    %w[review publish].include?(step) &&
       (action["complete_task"] || forward_transition?(workflow, step, action))
   end
 

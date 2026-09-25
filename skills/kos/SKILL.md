@@ -51,7 +51,6 @@ Built-in exact-step dispatch:
 | `brief` | `kos-brief` |
 | `review` | `kos-review` |
 | `publish` | `kos-publish` |
-| `verify` | `kos-verify` |
 
 Built-in steps always use this exact map. Route an unknown custom step only to
 `kos-step-standard` or `kos-step-advanced` according to its authoritative tier.

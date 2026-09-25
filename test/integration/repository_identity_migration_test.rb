@@ -14,7 +14,8 @@ class RepositoryIdentityMigrationTest < ActiveSupport::TestCase
     assert_equal %w[github.com/acme/kos github.com/acme/other], result.fetch("identities")
     assert_equal expected_task, result.fetch("task")
     assert_equal [ [ 21, 22 ] ], result.fetch("dependencies")
-    assert_equal [ 7, "Snapshot", "{\"steps\":[{\"id\":\"plan\"}]}", "2026-09-01 00:00:00" ],
+    definition = "{\"steps\":[{\"id\":\"plan\"},{\"id\":\"review\"},{\"id\":\"publish\"}]}"
+    assert_equal [ 7, "Snapshot", definition, "2026-09-01 00:00:00" ],
       result.fetch("workflow")
     assert_not_includes result.fetch("down_columns"), "repository_identity"
     assert_equal expected_task, result.fetch("task_after_down")

@@ -97,7 +97,7 @@ class GemPackageTest < ActiveSupport::TestCase
 
         {
           "plan" => "planned", "implement" => "implemented", "document" => "documented",
-          "review" => "approved", "publish" => "published", "verify" => "verified"
+          "review" => "approved", "publish" => "published"
         }.each do |step, outcome|
           check_options = step == "implement" ? [ "--required-checks", "passed" ] : []
           task = run_installed_json(cli, authenticated, root, "task", "report-attempt", task.fetch("id").to_s,
@@ -106,9 +106,9 @@ class GemPackageTest < ActiveSupport::TestCase
         end
 
         context = run_installed_json(cli, authenticated, root, "task", "context", task.fetch("id").to_s)
-        assert_equal [ "completed", "verify", nil, nil ],
+        assert_equal [ "completed", "publish", nil, nil ],
           context.fetch("task").values_at("status", "current_step", "owner_id", "lease_expires_at")
-        assert_equal %w[plan implement document review publish verify],
+        assert_equal %w[plan implement document review publish],
           context.fetch("artifacts").map { |entry| entry.fetch("step") }
         assert_equal "passed", context.fetch("artifacts").find { |entry| entry.fetch("step") == "implement" }
           .fetch("required_checks")
@@ -124,12 +124,14 @@ class GemPackageTest < ActiveSupport::TestCase
       config_home = root.join("config/opencode")
       stale_agent = config_home.join("agents/kos-step.md")
       stale_orchestrator = config_home.join("agents/kos-orchestrator.md")
+      stale_verifier = config_home.join("agents/kos-verify.md")
       stale_skill = config_home.join("skills/kos/obsolete.md")
       obsolete_create_skill = config_home.join("skills/kos-create/SKILL.md")
       FileUtils.mkdir_p(stale_agent.dirname)
       FileUtils.mkdir_p(stale_skill.dirname)
       stale_agent.write("stale\n")
       stale_orchestrator.write("stale\n")
+      stale_verifier.write("stale\n")
       stale_skill.write("stale\n")
       FileUtils.mkdir_p(obsolete_create_skill.dirname)
       obsolete_create_skill.write("obsolete\n")
@@ -144,12 +146,13 @@ class GemPackageTest < ActiveSupport::TestCase
       assert_equal %w[kos-brief.md kos-fix.md kos.md], installed_names(config_home.join("commands"))
       assert_equal %w[
         kos-brief.md kos-diagnose.md kos-document.md kos-implement.md kos-plan.md kos-publish.md kos-review.md
-        kos-step-advanced.md kos-step-standard.md kos-verify.md
+        kos-step-advanced.md kos-step-standard.md
       ], installed_names(config_home.join("agents"))
       assert_equal %w[kos kos-brief kos-cli kos-git kos-step okf],
         installed_names(config_home.join("skills"))
       refute_predicate stale_agent, :exist?
       refute_predicate stale_orchestrator, :exist?
+      refute_predicate stale_verifier, :exist?
       refute_predicate stale_skill, :exist?
       refute_predicate obsolete_create_skill.dirname, :exist?
 

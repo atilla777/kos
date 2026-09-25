@@ -9,13 +9,13 @@ require "timeout"
 class AcceptanceScenariosTest < ActiveSupport::TestCase
   include GitRepositoryHelpers
 
-  test "built in development and fix lifecycles atomically progress through verification" do
+  test "built in development and fix lifecycles complete at publication" do
     BuiltInCatalog.install!
     lifecycle = TaskLifecycle.new
 
     {
-      "development" => %w[plan implement document review publish verify],
-      "fix" => %w[diagnose plan implement document review publish verify]
+      "development" => %w[plan implement document review publish],
+      "fix" => %w[diagnose plan implement document review publish]
     }.each do |type_key, expected_steps|
       project = create_project(name: type_key)
       task = lifecycle.create!(project:, task_type: TaskType.find_by!(key: type_key), title: type_key.titleize,
@@ -37,40 +37,32 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
         assert_equal previous.fetch("claim_version"),
           task.accepted_artifacts.dig(step, "accepted_claim_version")
         assert_equal previous.fetch("claim_version") + 1, task.claim_version
-        if step == "publish"
-          assert_equal [ "active", "verify", "#{type_key}-owner" ],
-            task.values_at(:status, :current_step, :owner_id)
-        end
       end
 
       assert_equal expected_steps, observed_steps
       assert_equal expected_steps, task.accepted_artifacts.keys
-      assert_equal [ "completed", "verify", nil, nil ],
+      assert_equal [ "completed", "publish", nil, nil ],
         task.values_at(:status, :current_step, :owner_id, :lease_expires_at)
     end
   end
 
-  test "built in correction outcomes route backward and verification failures do not complete" do
+  test "built in correction outcomes route backward without completing" do
     BuiltInCatalog.install!
     routes = {
       "development" => [
         %w[implement plan_invalid plan], %w[document implementation_invalid implement],
         %w[review changes_requested implement], %w[review redesign_required plan],
-        %w[publish review_invalid review], %w[publish base_moved implement],
-        %w[verify publication_missing publish], %w[verify changes_invalid implement]
+        %w[publish review_invalid review], %w[publish base_moved implement]
       ],
       "fix" => [
         %w[plan diagnosis_invalid diagnose], %w[implement plan_invalid plan],
         %w[document implementation_invalid implement], %w[review changes_requested implement],
         %w[review redesign_required plan], %w[publish review_invalid review],
-        %w[publish base_moved implement], %w[verify publication_missing publish],
-        %w[verify changes_invalid implement]
+        %w[publish base_moved implement]
       ],
       "brief" => [
         %w[review changes_requested brief], %w[publish review_invalid review],
-        %w[publish base_moved brief], %w[publish graph_invalid brief],
-        %w[verify publication_missing publish], %w[verify materialization_missing publish],
-        %w[verify brief_invalid brief]
+        %w[publish base_moved brief], %w[publish graph_invalid brief]
       ]
     }
 
@@ -116,7 +108,7 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
       task = lifecycle.report_attempt!(task_id: task.id, owner_id: task.owner_id,
         claim_version: task.claim_version, step: "implement", outcome: "implemented",
         artifact: "# Implementation\n\nRequired checks passed.\n", required_checks: "passed")
-      %w[document review publish verify].each do |step|
+      %w[document review publish].each do |step|
         task = lifecycle.report_attempt!(task_id: task.id, owner_id: task.owner_id,
           claim_version: task.claim_version, step:, outcome: successful_outcome(type_key, step),
           artifact: "# #{step.titleize}\n")
@@ -127,7 +119,7 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
     end
   end
 
-  test "brief materializes its exact validated graph at publish before verification completes it" do
+  test "brief materializes its exact validated graph before publication completes it" do
     BuiltInCatalog.install!
     lifecycle = TaskLifecycle.new
     project = create_project(name: "brief-lifecycle")
@@ -164,15 +156,12 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
     assert_equal [ "publish", publish_fence ], brief.reload.values_at(:current_step, :claim_version)
     assert_equal validation.fetch(:digest), graph.observe(parent: brief).fetch(:digest)
 
-    published = lifecycle.report_attempt!(task_id: brief.id, owner_id: brief.owner_id,
+    completed = lifecycle.report_attempt!(task_id: brief.id, owner_id: brief.owner_id,
       claim_version: publish_fence, step: "publish", outcome: "published", artifact: "# Publication\n")
-    assert_equal [ "active", "verify", publish_fence + 1 ],
-      published.values_at(:status, :current_step, :claim_version)
-    completed = lifecycle.report_attempt!(task_id: brief.id, owner_id: published.owner_id,
-      claim_version: published.claim_version, step: "verify", outcome: "verified", artifact: "# Verification\n")
 
-    assert_equal [ "completed", "verify", nil ], completed.values_at(:status, :current_step, :owner_id)
-    assert_equal %w[brief review publish verify], completed.accepted_artifacts.keys
+    assert_equal [ "completed", "publish", nil, publish_fence + 1 ],
+      completed.values_at(:status, :current_step, :owner_id, :claim_version)
+    assert_equal %w[brief review publish], completed.accepted_artifacts.keys
     assert completed.children.all? { |child| child.parent_id == completed.id && child.blocker_ids.include?(completed.id) }
   end
 
@@ -224,7 +213,6 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
       candidate = git("rev-parse", "HEAD", chdir: worktree).strip
       git("push", "origin", "#{candidate}:refs/heads/main", chdir: worktree)
       task = report(lifecycle, task, "publish", "published")
-      task = report(lifecycle, task, "verify", "verified")
 
       assert_equal "completed", task.status
       assert_equal candidate, git("--git-dir", repository[:remote].to_s, "rev-parse", "refs/heads/main").strip
@@ -337,13 +325,11 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
 
   def successful_outcome(type_key, step)
     {
-      "brief" => { "brief" => "specified", "review" => "approved", "publish" => "published",
-        "verify" => "verified" },
+      "brief" => { "brief" => "specified", "review" => "approved", "publish" => "published" },
       "development" => { "plan" => "planned", "implement" => "implemented", "document" => "documented",
-        "review" => "approved", "publish" => "published", "verify" => "verified" },
+        "review" => "approved", "publish" => "published" },
       "fix" => { "diagnose" => "diagnosed", "plan" => "planned", "implement" => "implemented",
-        "document" => "documented", "review" => "approved", "publish" => "published",
-        "verify" => "verified" }
+        "document" => "documented", "review" => "approved", "publish" => "published" }
     }.fetch(type_key).fetch(step)
   end
 
