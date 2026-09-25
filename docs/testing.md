@@ -13,7 +13,7 @@
 - Gem tests build and install the CLI into an isolated gem home, then use that
   executable against an isolated prepared Rails server for a core lifecycle smoke test.
 - Skill and profile contract tests verify scheduler boundaries, ID-only dispatch,
-  focused operations, permission deny-lists, and step-owned reporting.
+  focused operations, profile inventory and metadata, and step-owned reporting.
 - Git tests use temporary source repositories, task worktrees, and bare remotes.
 - Migration and recovery tests use isolated persistent SQLite databases, data
   homes, subprocesses, repositories, remotes, and OpenCode configuration homes.

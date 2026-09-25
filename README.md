@@ -304,13 +304,11 @@ advances to `verify`; only `verified` completes. The verifier independently
 reads remote Git and accepted evidence and does not trust publisher prose or
 local HEAD.
 
-Profile permissions are defense in depth, not a complete process sandbox.
-OpenCode applies ordered command-string patterns with the last match winning.
-Profiles default unmatched shell commands to an explicit permission prompt,
-deny recognizable direct KOS/HTTP/database/Rails and unauthorized Git mutation
-forms, and place focused installed-CLI allowances last. Publish alone has
-explicit commit and push allowances; server authorization, fencing, operating
-system permissions, and review remain final controls.
+Managed profiles select the role, model, reasoning effort, and focused prompt.
+They contain no KOS-specific OpenCode permission policy and are not a security
+boundary. Tool approval follows the administrator's OpenCode configuration;
+server authorization and fencing remain the authoritative state boundary, while
+review and verification detect violations of role-specific procedure.
 
 ## Recovery And Upgrade
 

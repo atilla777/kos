@@ -66,6 +66,9 @@ agent profiles. It refuses symlinked or wrongly typed managed destinations.
 `kos-create` is a focused pre-ID scheduler skill, not an agent profile. Slash
 commands run in the primary `build` agent under the user's main-agent permission
 policy; the installed focused profile files apply only after ID-only dispatch.
+Managed profiles contain no KOS-specific permission blocks: they select a role,
+model, reasoning effort, and prompt, while tool approval remains part of the
+administrator's OpenCode configuration.
 
 The shipped mapping uses `openai/gpt-5.6-terra` with medium reasoning for
 standard implementation, documentation, publication, generic standard steps,

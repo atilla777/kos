@@ -19,8 +19,8 @@ expose a credential-bearing URL.
 
 Run exactly one CLI process in each shell tool call. Never combine validation or
 operations with `&&`, `;`, a pipeline, command substitution, a shell wrapper, or
-another command. Focused profile permissions intentionally match each absolute
-CLI invocation separately and reject composite command strings.
+another command. Separate invocations keep arguments and ambiguous-operation
+recovery observable without relying on shell composition.
 
 Require the installed CLI to provide selection and creation operations needed
 by slash commands, plus these focused step operations:

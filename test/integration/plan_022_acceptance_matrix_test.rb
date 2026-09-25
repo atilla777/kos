@@ -42,7 +42,7 @@ class Plan022AcceptanceMatrixTest < ActiveSupport::TestCase
       [ "test/skills/kos_skills_test.rb", "scheduler has no step artifact Git or result-parsing policy" ]
     ]),
     Criterion.new("profile policy", [
-      [ "test/skills/kos_skills_test.rb", "profiles enforce exact authority and publish alone can commit or push" ],
+      [ "test/skills/kos_skills_test.rb", "profiles preserve role and model metadata without permission policy" ],
       [ "test/skills/kos_skills_test.rb", "review verify plan and diagnose profiles are read-only" ]
     ]),
     Criterion.new("independent read-only review", [
@@ -58,7 +58,7 @@ class Plan022AcceptanceMatrixTest < ActiveSupport::TestCase
       [ "test/integration/acceptance_scenarios_test.rb", "built in correction outcomes route backward and verification failures do not complete" ]
     ]),
     Criterion.new("nonpublish no commit/push", [
-      [ "test/skills/kos_skills_test.rb", "profiles enforce exact authority and publish alone can commit or push" ]
+      [ "test/skills/kos_skills_test.rb", "profiles retain operational role boundaries" ]
     ]),
     Criterion.new("existing IDs/relationships/workflows/worktrees", [
       [ "test/integration/repository_identity_migration_test.rb", "backfill and reversal preserve IDs relationships workflow snapshots and execution state" ],
