@@ -96,9 +96,10 @@ state.
 
 ### Schedulers
 
-`skills/kos` schedules development and fix tasks; `skills/kos-brief` schedules
-brief tasks. They may discover a project, offer resumable tasks, request a safe
-claim or resume, and display persisted pause information.
+`skills/kos` contains the shared scheduler for development, fix, and brief
+tasks; `skills/kos-brief` is the brief command's thin entry adapter. The shared
+scheduler may discover a project, offer resumable tasks, request a safe claim or
+resume, and display persisted pause information.
 Each command session generates a fresh unpredictable owner for claim or resume;
 `KOS_OWNER_ID` is not configuration. Request-bound creation uses that owner in
 the focused server-idempotent `task create-or-get` operation.

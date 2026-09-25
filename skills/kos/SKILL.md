@@ -1,70 +1,44 @@
 ---
 name: kos
-description: Use when the user invokes /kos or /kos-fix as the scheduler for one built-in KOS task driven by authoritative server state.
+description: Shared scheduler for /kos, /kos-fix, and /kos-brief, driven by authoritative server state.
 ---
 
 # KOS Scheduler
 
-Act only as the user-facing scheduler. Load `kos-cli` for every CLI operation.
-Do not access Rails, SQLite, the REST API, task worktrees, Git, or task Markdown.
+Schedule one task in `development`, `fix`, or `brief` mode. Load `kos-git` for
+repository discovery and `kos-cli` for every public KOS operation. Do not access
+Rails, SQLite, the REST API, a task worktree, or task Markdown.
 
-At command start, generate one cryptographically unpredictable owner ID such as
-`kos-session-` followed by 32 lowercase hexadecimal digits. Keep it only in the
-current scheduler session and pass it as one argument to exact claim or resume
-operations. Never read `KOS_OWNER_ID`, derive an owner from a PID, task, request,
-timestamp, or project, or reuse an owner from another command. A request-bound
-fix uses this same owner for `task create-or-get`.
+Generate a fresh unpredictable `kos-session-<32 lowercase hex digits>` owner for
+this command. Never read `KOS_OWNER_ID` or reuse or derive an owner.
 
-## Select Or Create
+## Select
 
-For `/kos`, reject nonblank arguments before any KOS call. Discover the project
-through `kos-cli`, offer resumable `development` tasks by title, status, and
-current step, or claim the next available development task with the generated
-owner. Never create one.
+Discover the invoking repository's canonical identity through `kos-git`, then
+require its exact registered project through `kos-cli`.
 
-For `/kos-fix`, require a nonblank UTF-8 problem, discover the exact project,
-and invoke `task create-or-get` once with that project, kind `fix`, the generated
-owner, and the complete exact request through standard input. If the transport
-response is ambiguous, retry that identical operation once: the server-derived
-creation key makes the retry safe without local recovery files. Require one
-complete task response and retain only its positive ASCII-decimal ID.
+- `development`: offer matching resumable work; otherwise use `task claim-next`
+  for the `development` type. Never create a task.
+- `fix` or `brief`: use `task create-or-get` with the mode, project, owner, and
+  complete exact request through standard input.
 
-Read authoritative context before dispatch. A newly created active task already
-has this scheduler's owner. For an active task owned by an earlier invocation,
-first require confirmation that its prior command process stopped, then exact
-resume with the fresh owner and `--takeover-confirmed`. For `blocked`, show the
-persisted reason and treat explicit reinvocation of the same request as
-confirmation to recheck it, then exactly resume. For `needs_human`, show the
-question and stop; never use the repeated problem text as its answer.
-
-Before claiming new work, offer matching resumable work without exposing an
-internal ID as a user choice. Repeat a persisted `needs_human` question before
-resume. Show a persisted `blocked` reason and resume only after it is resolved.
-Require confirmation before taking over an active task whose prior process has
-stopped. Use `kos-cli` observation rules for every ambiguous selection, claim,
-or resume response. `create-or-get` alone permits one direct identical retry
-after a transport failure because it is server-idempotent by the exact request.
+Read authoritative context. Keep a completed task terminal; otherwise use the
+public claim or resume operations when needed to make the chosen task active for
+this owner. Present persisted pause information and require the corresponding
+human answer, confirmed resolution, or confirmed stopped-owner takeover before
+resuming. Follow `kos-cli` whenever a mutation's result is ambiguous. Retain
+only the resulting positive decimal task ID.
 
 ## Schedule
 
-Once selection, creation, or resume yields a positive ASCII-decimal task ID,
-discard all dispatch context except that ID. Repeat this loop:
+Repeat:
 
-1. Read authoritative task context through `kos-cli`.
-2. If server status is `completed`, stop successfully.
-3. If server status is `needs_human`, show the persisted server question and
-   stop for the user's answer.
-4. If server status is `blocked`, show the persisted server reason and stop.
-5. Require server status `active`, then choose the profile from the exact
-   `current_step` map below.
-6. At `publish`, treat a built-in context without the current `review_invalid`
-   outcome as an immutable pre-verification snapshot. Dispatch `kos-publish`
-   only so it can persist the required migration block; never treat it as
-   publication-capable.
-7. Launch exactly one fresh foreground child. Its complete prompt is the task
-   ID's decimal digits and nothing else.
-8. Await the child, ignore all textual output and claimed outcome, then return
-   to step 1 and reread authoritative state.
+1. Read `task context` for the task ID.
+2. Stop successfully on `completed`. On `needs_human` or `blocked`, show the
+   persisted question or reason and stop.
+3. Require `active`, map the exact current step to the profile below, and launch
+   one fresh foreground child whose complete prompt is only the task ID.
+4. Ignore the child's text and claimed result, then reread context.
 
 Built-in exact-step dispatch:
 
@@ -79,13 +53,9 @@ Built-in exact-step dispatch:
 | `publish` | `kos-publish` |
 | `verify` | `kos-verify` |
 
-An exact built-in step always uses its exact profile regardless of model tier.
-An unknown custom step may use `kos-step-standard` or `kos-step-advanced` only
-according to the authoritative tier. Never route an unknown step by guessing.
+Built-in steps always use this exact map. Route an unknown custom step only to
+`kos-step-standard` or `kos-step-advanced` according to its authoritative tier.
 
-The child prompt must not contain a description, workflow, outcome names, model
-tier, path, project ID, diff, Git fact, artifact, question, answer, owner, or
-claim version. Do not read or validate Markdown, inspect Git, parse child
-results, infer an outcome, call `report-attempt`, or maintain step receipts,
-pending submissions, manifests, or files under `tasks/<id>/`. Server state is
-the only scheduler result.
+Never add task context to the child prompt, inspect task artifacts or Git,
+interpret child output, report a step, mutate a brief graph, or keep local
+recovery state. Authoritative server state is the scheduler result.

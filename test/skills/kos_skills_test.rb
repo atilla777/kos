@@ -20,38 +20,43 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_equal [ "./skills" ], config.dig("skills", "paths")
   end
 
-  test "request creation uses one server-idempotent CLI operation without local state" do
+  test "request creation uses the focused idempotent CLI operation" do
     scheduler = File.read(ORCHESTRATOR_PATH)
     brief_scheduler = File.read(Rails.root.join("skills/kos-brief/SKILL.md"))
+    compact = scheduler.gsub(/\s+/, " ")
+
+    assert_includes scheduler, "`fix` or `brief`: use `task create-or-get`"
+    assert_includes scheduler, "complete exact request through standard input"
+    assert_includes compact, "Follow `kos-cli` whenever a mutation's result is ambiguous"
+    assert_includes brief_scheduler, "Load the `kos` scheduler"
+    assert_includes brief_scheduler, "`brief` mode"
 
     [ scheduler, brief_scheduler ].each do |source|
-      assert_match(/`task\s+create-or-get`/, source)
-      assert_includes source, "complete exact request through standard input"
-      assert_includes source, "retry that identical operation once"
-      assert_match(/server-derived\s+creation key/, source)
-      assert_not_includes source, "intent.json"
-      assert_not_includes source, "task.json"
-      assert_not_includes source, "create.lock"
-      assert_not_includes source, "fsync"
-      assert_not_includes source, "inode"
+      %w[intent.json task.json create.lock fsync inode].each { |detail| assert_not_includes source, detail }
     end
-    assert_includes scheduler, "never use the repeated problem text as its answer"
-    assert_includes scheduler, "`--takeover-confirmed`"
-    assert_includes brief_scheduler, "`--takeover-confirmed`"
   end
 
-  test "slash commands retain input safety and delegate only to schedulers" do
-    command = File.read(Rails.root.join(".opencode/commands/kos.md"))
-    fix = File.read(Rails.root.join(".opencode/commands/kos-fix.md"))
-    brief = File.read(Rails.root.join(".opencode/commands/kos-brief.md"))
+  test "slash commands contain only argument handling model choice and skill entry" do
+    commands = {
+      "kos" => [ "openai/gpt-5.6-terra", "`kos` scheduler skill", "`development` mode" ],
+      "kos-fix" => [ "openai/gpt-5.6-terra", "`kos` scheduler skill", "`fix` mode" ],
+      "kos-brief" => [ "openai/gpt-5.6-sol", "`kos-brief` scheduler skill", "unmodified arguments" ]
+    }
 
-    assert_includes command, "`kos` scheduler skill"
-    assert_includes command, "accepts no arguments"
-    assert_includes command, "stop without reading or mutating KOS state"
-    assert_includes fix, "`kos` scheduler skill"
-    assert_includes fix, "If it is blank"
-    assert_includes brief, "`kos-brief` scheduler skill"
-    assert_includes brief, "If it is blank"
+    commands.each do |name, (model, skill_entry, mode)|
+      path = Rails.root.join(".opencode/commands/#{name}.md")
+      source = File.read(path)
+      metadata = frontmatter(path)
+      body = source.sub(/\A---\n.*?\n---\n/m, "")
+
+      assert_equal "build", metadata.fetch("agent")
+      assert_equal model, metadata.fetch("model")
+      assert_includes source, skill_entry
+      assert_includes source, mode
+      assert_includes source, "$ARGUMENTS"
+      refute_match(/task (?:context|claim|resume|create-or-get)|owner|profile|outcome/i, body)
+      assert_operator body.lines.length, :<=, 8
+    end
   end
 
   test "scheduler dispatches built-ins by exact step with an ID-only prompt" do
@@ -61,18 +66,12 @@ class KosSkillsTest < ActiveSupport::TestCase
     BUILT_IN_PROFILES.each do |step|
       assert_match(/^\| `#{step}` \| `kos-#{step}` \|$/, source)
     end
-    assert_includes source, "complete prompt is the task\n   ID's decimal digits and nothing else"
-    assert_includes source, "discard all dispatch context except that ID"
-    assert_includes source, "ignore all textual output and claimed outcome"
-    assert_includes source, "reread authoritative state"
-    assert_includes source, "persisted server question"
-    assert_includes source, "persisted server reason"
-    assert_includes source, "immutable pre-verification snapshot"
-    assert_includes source, "never treat it as\n   publication-capable"
-
-    %w[description workflow outcome model tier path project ID diff Git fact artifact].each do |forbidden|
-      assert_match(/must not contain .*#{forbidden}/, compact)
-    end
+    assert_includes compact, "one fresh foreground child whose complete prompt is only the task ID"
+    assert_includes compact, "Ignore the child's text and claimed result, then reread context"
+    assert_includes source, "Stop successfully on `completed`"
+    assert_includes source, "On `needs_human` or `blocked`"
+    assert_includes source, "unknown custom step"
+    assert_includes source, "authoritative tier"
   end
 
   test "schedulers generate private command owners instead of requiring environment configuration" do
@@ -80,24 +79,26 @@ class KosSkillsTest < ActiveSupport::TestCase
     brief_scheduler = File.read(Rails.root.join("skills/kos-brief/SKILL.md"))
 
     [ scheduler, brief_scheduler ].each do |source|
-      assert_includes source, "cryptographically unpredictable owner ID"
-      assert_includes source, "Never read `KOS_OWNER_ID`"
+      assert_not_includes source, "PID"
     end
-    assert_includes scheduler, "claim the next available development task with the generated\nowner"
-    assert_includes brief_scheduler, "uses this same owner for `task\ncreate-or-get`"
+    assert_includes scheduler, "fresh unpredictable `kos-session-<32 lowercase hex digits>` owner"
+    assert_includes scheduler, "Never read `KOS_OWNER_ID`"
+    assert_includes scheduler, "Do not access\nRails, SQLite, the REST API"
+    assert_operator brief_scheduler.lines.length, :<=, 12
   end
 
   test "scheduler has no step artifact Git or result-parsing policy" do
     source = File.read(ORCHESTRATOR_PATH)
 
-    assert_includes source, "Do not read or validate Markdown"
-    assert_includes source, "inspect Git"
-    assert_includes source, "parse child\nresults"
-    assert_includes source, "call `report-attempt`"
-    assert_includes source, "pending submissions"
+    assert_includes source, "Never add task context to the child prompt"
+    assert_includes source, "inspect task artifacts or Git"
+    assert_includes source, "interpret child output"
+    assert_includes source, "report a step"
+    assert_includes source, "keep local\nrecovery state"
     assert_not_includes source, "<step-id>.md"
     assert_not_includes source, '"outcome"'
     assert_not_includes source, "git status"
+    assert_not_includes source, "immutable pre-verification snapshot"
   end
 
   test "step executor derives context and atomically reports Markdown itself" do

@@ -12,7 +12,6 @@ None.
 
 | ID | Task | Status | Dependencies |
 | --- | --- | --- | --- |
-| 006 | [Rewrite schedulers and commands](006-rewrite-schedulers-and-commands/task.md) | planned | 003, 005 |
 | 007 | [Simplify step agents](007-simplify-step-agents/task.md) | planned | 006 |
 | 008 | [Simplify Git publication](008-simplify-git-publication/task.md) | planned | 007 |
 | 009 | [Run live acceptance scenarios](009-live-acceptance/task.md) | planned | 008 |
@@ -26,6 +25,7 @@ None.
 | 003 | [Remove OpenCode permission policy](003-remove-opencode-permissions/task.md) | done | 002 |
 | 004 | [Simplify request-bound task creation](004-simplify-task-creation/task.md) | done | 002 |
 | 005 | [Rewrite the CLI skill](005-rewrite-cli-skill/task.md) | done | 004 |
+| 006 | [Rewrite schedulers and commands](006-rewrite-schedulers-and-commands/task.md) | done | 003, 005 |
 
 ## Future Decisions
 

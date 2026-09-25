@@ -4,9 +4,9 @@ agent: build
 model: openai/gpt-5.6-sol
 ---
 
-Load the `kos-brief` scheduler skill and follow it exactly.
-Treat the complete text below as the product request. If it is blank, stop
-without reading or mutating KOS state and ask for a concrete request.
+Require the arguments below to be nonblank; otherwise ask for a concrete product
+request and stop. Then load the `kos-brief` scheduler skill with the exact,
+unmodified arguments.
 
 <kos-brief-arguments>
 $ARGUMENTS

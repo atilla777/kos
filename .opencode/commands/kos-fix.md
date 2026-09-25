@@ -4,9 +4,9 @@ agent: build
 model: openai/gpt-5.6-terra
 ---
 
-Load the `kos` scheduler skill and follow its `/kos-fix` path exactly. Treat the complete
-text below as the problem description. If it is blank, stop without reading or
-mutating KOS state and ask for a concrete problem description.
+Require the arguments below to be nonblank; otherwise ask for a concrete problem
+description and stop. Then load the `kos` scheduler skill in `fix` mode with the
+exact, unmodified arguments.
 
 <kos-fix-arguments>
 $ARGUMENTS
