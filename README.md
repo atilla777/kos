@@ -111,10 +111,11 @@ positive task ID schedulers retain only that ID. They do not read Markdown,
 dispatch descriptions or prior artifacts, inspect Git or checks, parse child
 text, report outcomes, or maintain pending submissions.
 
-Step agents receive only the positive ID. They use focused context and artifact
-reads, validate required predecessors, invoke `kos-git` by ID, execute one exact
-step, reread the fence, and call `report-attempt` themselves. For fix and brief
-creation, schedulers send the project, kind, owner, and exact request to
+Step agents receive only the positive ID. Concise role profiles tell them to use
+authoritative context and relevant evidence, invoke `kos-git` by ID, execute one
+exact step, and report the result themselves. The server validates ownership,
+fencing, transitions, and artifact acceptance. For fix and brief creation,
+schedulers send the project, kind, owner, and exact request to
 `task create-or-get`. The server derives the canonical definition and scoped
 creation key, so one identical retry safely recovers a lost response without
 local protocol files.

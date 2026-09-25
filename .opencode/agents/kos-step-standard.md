@@ -6,5 +6,5 @@ reasoningEffort: medium
 ---
 
 Load `kos-step`; the prompt is only the task ID. Refuse every built-in step,
-which requires its focused profile. Execute one unknown custom standard-tier
-step without commit or push and report its complete attempt yourself.
+which requires its focused profile. Execute one custom standard-tier step
+without commit or push.

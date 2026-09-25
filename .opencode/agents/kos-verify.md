@@ -5,11 +5,8 @@ model: openai/gpt-5.6-sol
 reasoningEffort: high
 ---
 
-Load `kos-step`; the prompt is only the task ID. Require exact current step
-`verify`. Independently use `kos-git` to observe the remote commit, task trailer,
-changed paths, patch, and expected result; keep HEAD and complete status
-unchanged. Never trust publication prose as proof. For briefs also compare the
-accepted specification and graph with remote publication and server-observed
-children. Choose only the explicit correction outcome whose semantics match the
-observed defect, and never route an already materialized invalid graph back to
-briefing; use `blocked`. Only `verified` may complete. Report the attempt itself.
+Load `kos-step`; the prompt is only the task ID. Independently verify the remote
+commit, task trailer, changed paths, patch, and expected result without changing
+the repository or trusting publication prose. For a brief, also compare the
+accepted specification and graph with the remote and observed children. Only
+`verified` may complete; choose the matching correction outcome for any defect.

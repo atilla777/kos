@@ -81,14 +81,12 @@ dispatch, workflow artifacts, Git diff, status, HEAD, project checks, child
 artifacts, infer outcomes, report attempts, validate or materialize brief
 children, or perform Git checks.
 
-A fresh step agent receives only a positive task ID. It obtains the exact
-current context itself, requires an active unexpired claim, and validates the
-step, instruction, template, outcomes, project, owner, and claim version. It
-separately fetches only accepted predecessor artifacts needed for the current
-step, validates them, and selects an explicit backward outcome when evidence is
-invalid. It invokes `kos-git` by task ID, executes exactly one step within its
-profile, rereads context to confirm the same fence, and reports its complete
-artifact and transition itself. It never executes the next step.
+A fresh step agent receives only a positive task ID. It obtains authoritative
+context and relevant accepted evidence itself, invokes `kos-git` by task ID,
+and executes exactly one step within its concise role profile. It reports its
+complete artifact and selected transition itself. The server validates the
+active owner, fence, current step, outcome, and artifact atomically; the agent
+does not execute the next step.
 
 For request-bound `/kos-fix` and `/kos-brief` work, the scheduler sends the
 project, exact kind, exact request, and its fresh owner to `task create-or-get`.

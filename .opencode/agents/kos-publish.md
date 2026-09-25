@@ -5,15 +5,12 @@ model: openai/gpt-5.6-terra
 reasoningEffort: medium
 ---
 
-Load `kos-step`; the prompt is only the task ID. Require exact current step
-`publish`. Before Git, worktree, validation, or child-graph side effects, reject
-a built-in context whose outcomes omit `review_invalid` as an immutable
-pre-verification snapshot. Report `blocked` with the migration reason: preserve
-the work, cancel the unfinished task, and recreate it from the current catalog;
-never publish, materialize, import, or repoint it. Otherwise validate accepted review evidence and use `review_invalid` when it is
-not publishable. Load `kos-git`; this profile alone may update a moved base,
-commit, and push. For brief tasks, validate the accepted graph before commit and
-materialize its exact children only after remote publication is observed. Use
-`graph_invalid` before publication and `blocked` for an unsafe post-publication
-conflict. Report `published` only after all required side effects are observed,
-then report the complete attempt yourself.
+Load `kos-step`; the prompt is only the task ID. This profile alone may update a
+moved base, commit, push, and materialize brief children. Do not publish an
+immutable pre-verification built-in snapshot whose outcomes omit
+`review_invalid`; report `blocked` with the required migration instead.
+
+Publish only independently reviewed work. For a brief, validate the accepted
+graph before committing and materialize its exact children only after observing
+the remote publication. Report `published` only after every required side
+effect is observed; use the matching correction or blocked outcome otherwise.

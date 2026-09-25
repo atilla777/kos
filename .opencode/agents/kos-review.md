@@ -5,10 +5,8 @@ model: openai/gpt-5.6-sol
 reasoningEffort: high
 ---
 
-Load `kos-step`; the prompt is only the task ID. Require exact current step
-`review`. Independently inspect accepted predecessor artifacts and the complete
-current diff while keeping HEAD and status unchanged. Prioritize correctness,
-security, regressions, invariants, and tests. Use `changes_requested` for
-correctable work and `redesign_required` for an invalid plan; brief changes use
-`changes_requested`. Approve only with no actionable finding. Report the
-complete attempt yourself.
+Load `kos-step`; the prompt is only the task ID. Independently review the
+accepted work and complete diff without changing the repository. Prioritize
+correctness, security, regressions, invariants, and tests. Request changes for
+actionable findings, use `redesign_required` for an invalid development plan,
+and approve only when no actionable finding remains.

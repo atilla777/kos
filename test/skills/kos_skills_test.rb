@@ -101,25 +101,19 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_not_includes source, "immutable pre-verification snapshot"
   end
 
-  test "step executor derives context and atomically reports Markdown itself" do
+  test "step guidance keeps the lifecycle concise and leaves validation to the server" do
     source = File.read(STEP_PATH)
+    body = source.sub(/\A---\n.*?\n---\n/m, "")
 
-    assert_includes source, "Accept exactly one positive ASCII-decimal task ID and no other"
-    assert_includes source, "`task context ID`"
-    assert_includes source, "Fetch each needed accepted predecessor artifact separately"
-    assert_includes source, "`task artifact` operation"
-    assert_includes source, "Load `kos-git` with only the task ID"
-    assert_includes source, "Re-read `task context ID` immediately before reporting"
-    assert_includes source, "invoke `task report-attempt` itself"
-    assert_includes source, "`--artifact-file -` standard-input form"
-    assert_includes source, "server atomically accepts the artifact and\ntransition"
-    assert_includes source, "minimal non-authoritative statement"
-    assert_includes source, "never read a local task artifact"
-    assert_includes source, "never read a local task artifact,\nsidecar, manifest, receipt, or pending submission"
-    assert_includes source, "Do not return an outcome for the scheduler to parse"
-    assert_includes source, "immutable pre-verification built-in snapshot"
-    assert_includes source, "cancelled and recreated from the current built-in\ncatalog after its work is preserved"
-    assert_includes source, "Do not publish, materialize, import,\nrepoint"
+    assert_includes source, "Accept one positive ASCII-decimal task ID"
+    assert_includes source, "read the authoritative\ntask context"
+    assert_includes source, "Load `kos-git` with the\ntask ID"
+    assert_includes source, "using normal repository tools within the profile's\nboundary"
+    assert_includes source, "server is authoritative\nfor ownership, fencing, outcomes, and atomic artifact acceptance"
+    assert_includes source, "observe task state before any retry"
+    assert_includes source, "Do not execute the next step"
+    assert_operator body.lines.length, :<=, 36
+    refute_match(/--owner-id|--claim-version|--artifact-file|report-attempt/, source)
   end
 
   test "CLI skill delegates syntax to help and retains essential safety boundaries" do
@@ -158,42 +152,44 @@ class KosSkillsTest < ActiveSupport::TestCase
       end
       refute profile.key?("permission"), name
       assert_includes source, "prompt is only the task ID"
+      body = source.sub(/\A---\n.*?\n---\n/m, "")
+      assert_operator body.lines.length, :<=, 10, name
     end
   end
 
   test "profiles retain operational role boundaries" do
-    assert_includes File.read(AGENT_PATHS.fetch("kos-publish")), "this profile alone may"
-    assert_includes File.read(AGENT_PATHS.fetch("kos-publish")), "immutable\npre-verification snapshot"
-    assert_includes File.read(AGENT_PATHS.fetch("kos-implement")), "every required\ntest, lint, formatting, build, and type check"
-    assert_includes File.read(AGENT_PATHS.fetch("kos-implement")), "Keep all changes uncommitted"
-    assert_includes File.read(AGENT_PATHS.fetch("kos-document")), "Do\nnot commit or push"
-    assert_includes File.read(AGENT_PATHS.fetch("kos-brief")), "Do not commit, push"
+    assert_includes File.read(AGENT_PATHS.fetch("kos-publish")), "This profile alone may"
+    assert_includes File.read(AGENT_PATHS.fetch("kos-publish")), "immutable pre-verification built-in snapshot"
+    implement = File.read(AGENT_PATHS.fetch("kos-implement"))
+    assert_includes implement.gsub(/\s+/, " "), "Run every required test, lint, formatting, build, and type check"
+    assert_includes implement, "Keep all changes uncommitted"
+    assert_includes File.read(AGENT_PATHS.fetch("kos-document")).gsub(/\s+/, " "), "Do not commit or push"
+    assert_includes File.read(AGENT_PATHS.fetch("kos-brief")).gsub(/\s+/, " "), "Do not commit, push"
     assert_includes File.read(AGENT_PATHS.fetch("kos-step-standard")), "without commit or push"
     assert_includes File.read(AGENT_PATHS.fetch("kos-step-advanced")), "without commit or push"
     diagnose = File.read(AGENT_PATHS.fetch("kos-diagnose"))
-    assert_includes diagnose, "`git archive | tar`"
-    assert_includes diagnose, "temporary copy's `bin/*` commands through `env -i`"
-    assert_includes diagnose, "Never\nexecute repository-controlled code from the task worktree"
-    assert_includes diagnose, "`mktemp -d ...kos-task-...` command"
-    assert_match(/Never generate or\nrequest a Ruby, Python, Open3/, diagnose)
+    assert_includes diagnose, "exported temporary copy"
+    assert_includes diagnose, "isolated environment"
+    assert_includes diagnose, "no ambient secrets"
   end
 
   test "review verify plan and diagnose profiles are read-only" do
     %w[kos-diagnose kos-plan kos-review kos-verify].each do |name|
       source = File.read(AGENT_PATHS.fetch(name))
 
-      assert_match(/unchanged|read-only/, source, name)
+      assert_match(/unchanged|without changing|without changing the repository/, source, name)
     end
-    assert_includes File.read(AGENT_PATHS.fetch("kos-verify")), "Only `verified` may complete"
+    verify = File.read(AGENT_PATHS.fetch("kos-verify"))
+    assert_includes verify.gsub(/\s+/, " "), "Only `verified` may complete"
   end
 
   test "verification independently observes remote publication" do
     source = File.read(AGENT_PATHS.fetch("kos-verify"))
 
-    assert_includes source, "Independently use `kos-git`"
+    assert_includes source, "Independently verify"
     assert_includes source, "remote"
-    assert_includes source, "Never trust publication prose"
-    assert_includes source, "keep HEAD"
+    assert_includes source, "without changing\nthe repository"
+    assert_includes source, "without changing\nthe repository or trusting publication prose"
   end
 
   private

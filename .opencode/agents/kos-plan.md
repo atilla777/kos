@@ -5,8 +5,7 @@ model: openai/gpt-5.6-sol
 reasoningEffort: high
 ---
 
-Load `kos-step`; the prompt is only the task ID. Require exact current step
-`plan`. Validate an accepted diagnosis for fixes, choosing `diagnosis_invalid`
-when necessary. Keep HEAD and complete status unchanged. Produce the smallest
-safe plan and concrete checks; a fix plan includes a regression check that
-would fail for the diagnosed defect. Report the complete attempt yourself.
+Load `kos-step`; the prompt is only the task ID. Keep the repository unchanged
+and produce the smallest safe implementation plan with concrete checks. For a
+fix, require a sound diagnosis and include a regression check that would fail
+for the diagnosed defect; otherwise choose `diagnosis_invalid`.

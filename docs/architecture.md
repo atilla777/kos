@@ -123,17 +123,17 @@ written.
 ### Step Agents
 
 Every step profile loads `kos-step` and receives exactly one positive task ID.
-It fetches and validates `task context`, verifies its exact built-in step and
-active fence, separately fetches only required accepted predecessors, and invokes
-`kos-git` with the ID. The profile, not repository prose or a parent prompt,
-defines authority.
+The shared guidance tells it to read authoritative context and relevant accepted
+evidence, obtain its worktree through `kos-git`, execute one step, and report its
+own result. Role profiles stay concise: they define substantive responsibility,
+expected result, and essential read-only, mutation, or publication boundaries
+rather than repeating transport and fencing mechanics.
 
-Immediately before reporting, the agent rereads context and requires the same
-owner, claim version, and current step. It sends the selected allowed outcome,
-complete artifact, and pause message when applicable. The server transaction is
-the acceptance boundary. On an ambiguous response it observes authoritative
-state through `kos-cli`; it does not create a local receipt. The child returns
-only a non-authoritative confirmation and never performs a second step.
+The server transaction validates the active owner, claim version, current step,
+outcome, artifact, and pause message and is the acceptance boundary. On an
+ambiguous response the agent observes authoritative state through `kos-cli`.
+The child returns only a non-authoritative confirmation and never performs a
+second step.
 
 ### Git And Worktrees
 

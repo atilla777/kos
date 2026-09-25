@@ -5,7 +5,7 @@ class Plan022AcceptanceMatrixTest < ActiveSupport::TestCase
 
   COVERAGE = [
     Criterion.new("agent only ID/context", [
-      [ "test/skills/kos_skills_test.rb", "step executor derives context and atomically reports Markdown itself" ]
+      [ "test/skills/kos_skills_test.rb", "step guidance keeps the lifecycle concise and leaves validation to the server" ]
     ]),
     Criterion.new("context index no bodies", [
       [ "test/integration/tasks_api_test.rb", "context returns the bounded agent projection and artifact bodies are read separately" ]
