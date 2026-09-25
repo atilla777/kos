@@ -8,12 +8,14 @@
   persistence effects, and transaction rollback.
 - Concurrency tests cover selection, ownership and request-creation uniqueness,
   leases, claim fencing, report fencing, dependencies, and graph materialization.
-- CLI tests execute the packaged public command and validate exact options,
-  health, standard-input artifact handling, output preservation, and exit statuses.
+- CLI tests execute the packaged public command and validate help discoverability,
+  argument-to-request mapping, health, standard-input handling, output
+  preservation, and exit statuses.
 - Gem tests build and install the CLI into an isolated gem home, then use that
   executable against an isolated prepared Rails server for a core lifecycle smoke test.
-- Skill and profile contract tests verify scheduler boundaries, ID-only dispatch,
-  focused operations, profile inventory and metadata, and step-owned reporting.
+- Skill and profile contract tests verify durable safety and authority boundaries,
+  ID-only dispatch, focused operations, profile inventory and metadata, and
+  step-owned reporting without locking incidental prose.
 - Git tests use temporary source repositories, task worktrees, and bare remotes.
 - Migration and recovery tests use isolated persistent SQLite databases, data
   homes, subprocesses, repositories, remotes, and OpenCode configuration homes.

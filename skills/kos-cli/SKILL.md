@@ -1,95 +1,66 @@
 ---
 name: kos-cli
-description: Use for focused KOS CLI discovery, compatibility checks, safe invocation, projection validation, and ambiguous-operation recovery.
+description: Use for discovering and safely invoking the public KOS CLI, interpreting its results, and recovering ambiguous operations.
 ---
 
-# KOS CLI Protocol
+# KOS CLI
 
-## Discover
+## Role And Configuration
 
-Use only the absolute administrator-configured `KOS_CLI_PATH`; never use an
-ambient `kos`, a repository executable, the REST API, Rails, or SQLite. Require
-an executable regular file. Check it only with a separate shell builtin `test`
-using `KOS_CLI_PATH` (`-n`, absolute-path shape, `-f`, and `-x`); do not use
-Python, Ruby, command substitution, or another wrapper for this validation.
-Validate `--version` and top-level `--help`, then
-validate `--help` for each operation before its first use. Pass every value as a
-distinct process argument. Never print `KOS_API_TOKEN`, put it in arguments, or
-expose a credential-bearing URL.
+Use only the executable at the absolute administrator-configured
+`KOS_CLI_PATH`. Do not substitute an ambient `kos`, repository executable,
+direct HTTP request, Rails command, or SQLite access. Stop as `blocked` when the
+configured executable is unavailable or incompatible.
 
-Run exactly one CLI process in each shell tool call. Never combine validation or
-operations with `&&`, `;`, a pipeline, command substitution, a shell wrapper, or
-another command. Separate invocations keep arguments and ambiguous-operation
-recovery observable without relying on shell composition.
+`KOS_API_URL` selects the server and otherwise defaults to the CLI's local URL.
+`KOS_API_TOKEN` is required except for `health`. Never print the token, put it in
+process arguments, or embed it in a URL.
 
-Require the installed CLI to provide selection and creation operations needed
-by slash commands, plus these focused step operations:
+## Discover And Invoke
 
-- `task context ID`: authoritative task, workflow, current step, execution
-  identity, accepted-artifact index, registered project, pause message and
-  answer, and status;
-- `task artifact ID --step STEP`: one accepted Markdown artifact for that task
-  and step, or an explicit absent result;
-- `task report-attempt ID --owner-id OWNER --claim-version VERSION --step STEP
-  --outcome OUTCOME --artifact-file FILE [--message MESSAGE]`: one atomically
-  stored Markdown artifact and workflow transition. `FILE` may be `-` for
-  standard input; `MESSAGE` is required by procedure for a pause.
+Run `--version` and top-level `--help` to identify the installed CLI. Before an
+operation's first use, read its `--help`. The executable's help is the
+authoritative command and option reference; do not reconstruct syntax from this
+skill. A required operation missing from help is incompatible and `blocked`,
+not permission to emulate it through another interface.
 
-Missing operations or incompatible options are `blocked` before mutation. Do
-not emulate them with old `task show`, local artifact paths, direct HTTP, or
-database access.
+Pass every value as a distinct process argument. Never interpolate task text,
+Markdown, JSON, paths, identifiers, or credentials into shell syntax. Where
+help permits `-` as a file value, prefer standard input for exact structured
+content. Never use a repository-local task artifact, sidecar, or receipt as KOS
+protocol state.
 
 ## Project Discovery
 
-For repository-based project discovery, cooperate with `kos-git`: accept only
-the canonical identity it derives from the invoking checkout's single `origin`
-fetch URL and single `origin` push URL. Validate `project show
---repository-identity IDENTITY` before first use, invoke that exact lookup, and
-require the returned complete project projection's `repository_identity` to
-equal `IDENTITY` byte-for-byte. Do not normalize the lookup value in the CLI,
-search by remote URL, accept a near match, or infer a numeric project ID.
+Accept only the canonical repository identity derived by `kos-git`. Use the
+public project lookup operation and require its returned identity to equal that
+value exactly. Missing or mismatched registration stops before mutation. Never
+normalize the lookup value again, accept a near match, infer a project ID, or
+create a registration as recovery.
 
-An absent registration, malformed projection, mismatched identity, unavailable
-lookup, or ambiguous Git origin stops before every task mutation and before
-answer, artifact, or worktree recovery mutation. A not-found
-response is an explicit missing registration, not permission to create one;
-project creation and in-place update remain administrative operations.
+## Results
 
-## Validate Projections
+- Exit `0` means the HTTP operation succeeded. The unchanged server body is on
+  standard output and may be empty for a no-content response.
+- Exit `1` means an HTTP failure. Preserve the unchanged server body from
+  standard output.
+- Exit `2` means a usage, configuration, or local-input failure. Read the JSON
+  error from standard error.
+- Exit `3` means a transport failure. Read the JSON error from standard error.
 
-Accept successful output only as complete valid UTF-8 JSON matching the exact
-operation projection. Reject unknown or missing required fields, wrong scalar
-types, nonpositive IDs, unsafe step IDs, duplicate workflow steps, a current
-step absent from the snapshotted workflow, unsupported model tiers, malformed
-outcome actions, project mismatches, expired claims, or contradictory status,
-owner, question, reason, artifact, and action data. Preserve stable server
-errors without reinterpretation.
+For a successful JSON operation, parse the complete response and require the
+fields needed for the current decision. Malformed, missing, or contradictory
+required state is `blocked`; do not invent defaults. Preserve server and CLI
+errors without reinterpreting them as workflow outcomes.
 
-`context` is authoritative for dispatch and reporting. Its artifact index names
-only accepted step, outcome, claim version, and reconstruction state; fetch
-Markdown separately. `artifact` returns the requested accepted outcome,
-Markdown, claim version, and reconstruction state; HTTP absence is not an empty
-artifact. `report-attempt` returns the ordinary resulting task envelope. Require
-exactly one claim-version increment and the expected status, step, and ownership
-for the selected action, then use `context` for accepted-artifact observation.
+## Ambiguous Operations
 
-## Invoke Safely
-
-Use standard input for secret-free structured Markdown whenever supported. If a
-file is required, create a mode-0600 regular file in a private temporary
-directory outside every repository, write exact bytes without interpolation,
-pass its path as one argument, and remove it after an unambiguous response.
-Never use local task artifact directories.
-
-Read operations may be retried after validating that they have no mutation.
-Never blindly retry a mutation. The one exception is `task create-or-get`,
-which may be retried once with the identical project, kind, owner, and exact
-request because the server derives and enforces its creation key. After an
-ambiguous claim, create-and-claim, resume, materialization, or report, invoke the
-operation-specific read projection and
-compare exact authoritative state. Retry once only when that observation proves
-the mutation did not occur and the same fenced input remains valid. An observed
-transition is success; unavailable or contradictory state is `blocked`.
+Reads may be repeated. Never infer that a mutation failed only because its
+response was lost. Observe authoritative state before retrying. Retry a mutation
+only when help or the server contract makes it idempotent, or observation proves
+it did not occur and the same fenced input remains valid. `task create-or-get`
+allows one identical retry because the server enforces request identity. If
+success or a safe retry cannot be established, stop as `blocked`.
 
 Do not expose administrative project/workflow/task-type operations, task
 creation, claim, takeover, resume, cancellation, graph mutation, or arbitrary

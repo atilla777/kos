@@ -14,7 +14,7 @@ class KosSkillsTest < ActiveSupport::TestCase
   test "defines discoverable scheduler step and CLI skills" do
     assert_skill ORCHESTRATOR_PATH, "kos", /scheduler/
     assert_skill STEP_PATH, "kos-step", /positive task ID/
-    assert_skill CLI_PATH, "kos-cli", /CLI discovery/
+    assert_skill CLI_PATH, "kos-cli", /public KOS CLI/
 
     config = JSON.parse(File.read(Rails.root.join("opencode.json")))
     assert_equal [ "./skills" ], config.dig("skills", "paths")
@@ -121,27 +121,22 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_includes source, "Do not publish, materialize, import,\nrepoint"
   end
 
-  test "focused CLI skill validates context artifact and report operations" do
+  test "CLI skill delegates syntax to help and retains essential safety boundaries" do
     source = File.read(CLI_PATH)
-    compact = source.gsub(/\s+/, " ")
 
-    assert_includes source, "absolute administrator-configured `KOS_CLI_PATH`"
-    assert_includes source, "Check it only with a separate shell builtin `test`"
-    assert_includes source, "do not use\nPython, Ruby, command substitution"
-    assert_includes source, "exactly one CLI process in each shell tool call"
-    assert_includes source, "Never combine validation or\noperations with `&&`"
-    assert_includes source, "`task context ID`"
-    assert_includes source, "`task artifact ID --step STEP`"
-    assert_includes source, "`task report-attempt ID --owner-id OWNER --claim-version VERSION --step STEP"
-    assert_includes compact, "atomically stored Markdown"
-    assert_includes source, "Never blindly retry a mutation"
-    assert_includes source, "Server authorization and fencing remain"
-    assert_includes compact, "Do not emulate them with old `task show`, local artifact paths"
-    assert_match(/^## Project Discovery$/, source)
-    assert_includes source, "single `origin`\nfetch URL and single `origin` push URL"
-    assert_includes source, "`project show\n--repository-identity IDENTITY`"
-    assert_includes source, "equal `IDENTITY` byte-for-byte"
-    assert_includes source, "stops before every task mutation"
+    %w[KOS_CLI_PATH KOS_API_URL KOS_API_TOKEN --version --help].each do |contract|
+      assert_includes source, contract
+    end
+    assert_match(/help/i, source)
+    assert_match(/standard input|stdin/i, source)
+    assert_match(/repository identity/i, source)
+    assert_match(/retry/i, source)
+    assert_match(/authorization|fencing/i, source)
+    (0..3).each { |status| assert_match(/Exit `#{status}`/, source) }
+
+    refute_match(/task context ID/, source)
+    refute_match(/task artifact ID --step/, source)
+    refute_match(/task report-attempt ID --owner-id/, source)
   end
 
   test "profiles preserve role and model metadata without permission policy" do

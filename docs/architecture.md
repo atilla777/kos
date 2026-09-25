@@ -72,24 +72,27 @@ meaning. Repeating a step replaces that key; no attempt history is retained.
 ### CLI Transport
 
 The packaged `kos` executable is stateless and preserves server response bodies.
-Agents use only the administrator-configured absolute `KOS_CLI_PATH`. The shared
-`kos-cli` skill discovers command compatibility, supplies each value as a
-separate argument, validates complete JSON projections, protects credentials,
-and applies operation-specific observation-before-retry rules.
+Agents use only the administrator-configured absolute `KOS_CLI_PATH`. Top-level
+and per-command help are the authoritative syntax reference. The shared
+`kos-cli` skill protects credentials, supplies each value as a separate
+argument, checks only response fields needed for the current decision, and
+observes authoritative state before retrying an ambiguous mutation. Rails owns
+response projections and lifecycle invariants; the CLI validates local options,
+configuration, and input, then preserves server bodies.
 
-The focused step interface is:
+The focused step operations are:
 
-- `task context ID`, containing task execution identity, registered project,
+- `task context`, containing task execution identity, registered project,
   exact current step, artifact index, pause/answer projection, and status;
-- `task artifact ID --step STEP`, containing one accepted artifact; and
-- `task report-attempt ID ... --artifact-file FILE`, atomically accepting one
+- `task artifact`, containing one accepted artifact; and
+- `task report-attempt`, atomically accepting one
   artifact and transition.
 
 `context` deliberately omits accepted Markdown from its artifact index. A step
 agent separately requests only the artifacts it needs. Standard input is the
-preferred report-artifact source; a compatibility temporary file must be mode
-0600 in a private directory outside repositories and removed after an
-unambiguous response.
+preferred source for structured content wherever command help supports it; task
+content is never interpolated into shell syntax or stored as local protocol
+state.
 
 ### Schedulers
 

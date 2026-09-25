@@ -36,14 +36,33 @@ class GemPackageTest < ActiveSupport::TestCase
 
       output, error, status = Open3.capture3(environment, bin_dir.join("kos").to_s, "--help", chdir: directory)
       assert_predicate status, :success?, error
-      [
-        "health",
-        "project create | show | update",
-        "workflow create",
-        "task-type create | update",
-        "task create | create-or-get | create-and-claim | update | show | context | artifact | show-owned | claim-next | claim | resumable | resume | report-attempt | cancel",
-        "task validate-children | materialize-children | children"
-      ].each { |inventory| assert_includes output, inventory }
+      assert_match(/^\s*health\s*$/, output)
+      {
+        "project" => %w[create show update],
+        "workflow" => %w[create],
+        "task-type" => %w[create update],
+        "task" => %w[
+          create create-or-get create-and-claim update show context artifact show-owned claim-next claim resumable resume
+          report-attempt cancel validate-children materialize-children children
+        ]
+      }.each do |resource, actions|
+        inventory = output.lines.grep(/^\s*#{Regexp.escape(resource)}\s+/).join
+        assert_not_empty inventory
+        actions.each { |action| assert_match(/\b#{Regexp.escape(action)}\b/, inventory) }
+      end
+
+      {
+        %w[task context] => [],
+        %w[task artifact] => %w[--step],
+        %w[task report-attempt] => %w[--claim-version --artifact-file]
+      }.each do |command, options|
+        command_output, command_error, command_status = Open3.capture3(
+          environment, bin_dir.join("kos").to_s, *command, "--help", chdir: directory
+        )
+        assert_predicate command_status, :success?, command_error
+        assert_match(/Usage: kos #{Regexp.escape(command.join(" "))}/, command_output)
+        options.each { |option| assert_includes command_output, option }
+      end
     end
   end
 

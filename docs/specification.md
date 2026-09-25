@@ -230,18 +230,17 @@ state.
 
 ## Context, Artifact, And Report Protocol
 
-The focused public operations are:
+The focused public API routes are:
 
 ```text
 GET  /tasks/:id/context
 GET  /tasks/:id/artifact?step=STEP
 POST /tasks/:id/report-attempt
-
-kos task context ID
-kos task artifact ID --step STEP
-kos task report-attempt ID --owner-id OWNER --claim-version VERSION \
-  --step STEP --outcome OUTCOME --artifact-file FILE [--message MESSAGE]
 ```
+
+The CLI exposes these as `task context`, `task artifact`, and
+`task report-attempt`. Installed per-command help is authoritative for invocation
+syntax and options.
 
 `context` returns exactly these projections:
 
@@ -277,8 +276,9 @@ the ordinary task envelope.
 The broader CLI also exposes project create/show/update; workflow create; task
 type create/update; task create/create-or-get/create-and-claim/update/show/show-owned;
 claim-next, exact claim, resumable, exact resume, cancel; and brief graph
-validate/materialize/children operations. The README lists exact commands and
-API routes.
+validate/materialize/children operations. The installed CLI help lists exact
+commands and options; the README summarizes the API routes and operational
+setup.
 `task create-or-get` accepts a project, kind `fix` or `brief`, owner, and exact
 request file. `task create-and-claim` accepts optional `--creation-key KEY`;
 ordinary task creation does not.

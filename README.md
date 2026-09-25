@@ -211,65 +211,20 @@ export KOS_API_TOKEN="your-server-token"
 export KOS_CLI_PATH="$(realpath "$(command -v kos)")"
 ```
 
-The installed executable exposes every API operation:
-
-```text
-kos health
-kos project create
-kos project show
-kos project update ID
-kos workflow create
-kos task-type create
-kos task-type update ID
-kos task create
-kos task create-or-get
-kos task create-and-claim [--creation-key KEY]
-kos task update ID
-kos task show ID
-kos task context ID
-kos task artifact ID --step STEP
-kos task show-owned
-kos task claim-next
-kos task claim ID
-kos task resumable
-kos task resume ID
-kos task report-attempt ID
-kos task cancel ID
-kos task validate-children ID
-kos task materialize-children ID
-kos task children ID
-```
-
-Use command help for all options. Important exact forms are:
+The installed executable exposes every public API operation. Its top-level and
+per-command help are the authoritative command and option reference:
 
 ```sh
-kos task resume ID \
-  --owner-id OWNER \
-  --claim-version VERSION \
-  --step STEP \
-  [--answer-file FILE] \
-  [--takeover-confirmed]
-
-kos task report-attempt ID \
-  --owner-id OWNER \
-  --claim-version VERSION \
-  --step STEP \
-  --outcome OUTCOME \
-  --artifact-file FILE \
-  [--message MESSAGE]
+"$KOS_CLI_PATH" --help
+"$KOS_CLI_PATH" task report-attempt --help
 ```
 
-Resume always supplies the exact persisted claim version and current step.
-`--answer-file` is required only for `needs_human`; it may be `-` for standard
-input. The answer is stored against that exact pause's step and version. Report
-artifact input may also be `-`; Markdown is never interpolated into shell syntax.
-
-Task creation accepts exactly one of `--task-type-key` or `--task-type-id`.
-User commands use stable built-in keys. Workflow and child definitions use
-`--definition-file`; descriptions use `--description-file`; each accepts `-`
-where command help permits. Brief validation returns a canonical digest;
-materialization requires that digest and the current fence, and `children`
-returns the complete observed graph for recovery.
+Use stable built-in task-type keys in user commands. Resume and mutation
+operations supply the exact persisted fence required by command help. Prefer
+standard input for exact request, answer, artifact, description, workflow, and
+child-graph content wherever help permits `-`; never interpolate structured
+content into shell syntax. Brief validation returns a canonical digest, and
+materialization uses that digest and the current fence.
 
 Server bodies are written unchanged to stdout. HTTP errors exit 1; local usage,
 configuration, and input errors are JSON on stderr and exit 2; transport errors

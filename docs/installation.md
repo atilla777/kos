@@ -119,10 +119,17 @@ ambiguous, malformed, or mismatched origin blocks before task or worktree
 mutation. There are no `KOS_PROJECT_*` environment variables.
 
 After restarting OpenCode, verify discovery of `/kos-brief`, `/kos`, and
-`/kos-fix`. Verify that the installed CLI help includes `task context`, `task
-artifact`, and `task report-attempt` with `--artifact-file`. The installation is
-not ready until those focused operations and all managed profiles and skills
-come from the same revision.
+`/kos-fix`. CLI help is the authoritative command syntax reference. Verify the
+installed focused operations directly:
+
+```sh
+"$KOS_CLI_PATH" task context --help
+"$KOS_CLI_PATH" task artifact --help
+"$KOS_CLI_PATH" task report-attempt --help
+```
+
+The installation is not ready until those operations, including report artifact
+input, and all managed profiles and skills come from the same revision.
 
 ## Upgrade
 

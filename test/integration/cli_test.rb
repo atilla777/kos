@@ -11,20 +11,37 @@ class CliTest < ActiveSupport::TestCase
 
     assert_predicate status, :success?
     assert_includes output, "Usage: kos <resource> <action> [options]"
-    assert_includes output, "  health\n"
-    assert_includes output, "  project create | show | update\n"
-    assert_includes output, "  workflow create\n"
-    assert_includes output, "  task-type create | update\n"
-    assert_includes output, "  task create | create-or-get | create-and-claim | update | show | context | artifact | show-owned | claim-next | claim | resumable | resume | report-attempt | cancel\n"
-    assert_includes output, "  task validate-children | materialize-children | children\n"
+    assert_match(/^\s*health\s*$/, output)
+    {
+      "project" => %w[create show update],
+      "workflow" => %w[create],
+      "task-type" => %w[create update],
+      "task" => %w[
+        create create-or-get create-and-claim update show context artifact show-owned claim-next claim resumable resume
+        report-attempt cancel validate-children materialize-children children
+      ]
+    }.each do |resource, actions|
+      inventory = output.lines.grep(/^\s*#{Regexp.escape(resource)}\s+/).join
+      assert_not_empty inventory
+      actions.each { |action| assert_match(/\b#{Regexp.escape(action)}\b/, inventory) }
+    end
     assert_empty error
 
-    output, error, status = run_cli("task", "report-attempt", "--help", environment: {})
+    {
+      %w[project show] => %w[--repository-identity],
+      %w[task create-or-get] => %w[--project-id --kind --owner-id --request-file],
+      %w[task context] => [],
+      %w[task artifact] => %w[--step],
+      %w[task resume] => %w[--owner-id --claim-version --step --answer-file],
+      %w[task report-attempt] => %w[--owner-id --claim-version --step --outcome --artifact-file]
+    }.each do |command, options|
+      command_output, command_error, command_status = run_cli(*command, "--help", environment: {})
 
-    assert_predicate status, :success?
-    assert_includes output, "--claim-version VERSION"
-    assert_includes output, "--artifact-file FILE"
-    assert_empty error
+      assert_predicate command_status, :success?, command.join(" ")
+      assert_match(/Usage: kos #{Regexp.escape(command.join(" "))}/, command_output)
+      options.each { |option| assert_includes command_output, option }
+      assert_empty command_error
+    end
   end
 
   test "checks public server health without a token" do
