@@ -83,6 +83,12 @@ reading the task instead of reconstructing progress from local execution files.
   to one create-or-get operation. The server derives the deterministic key and
   immutable task definition, and returns the one exact task even if its owner
   or lifecycle state has since changed.
+- Request data is the exact byte sequence in OpenCode's `$ARGUMENTS` expansion.
+  Interactive slash payloads and separate `opencode run --command ...` argv
+  words are supported exact paths. OpenCode 1.18.26 display-serializes one argv
+  containing spaces with wrapper quotes and escaped literal quotes before
+  expansion. KOS does not infer argv, strip wrappers, or unescape; it preserves
+  the expansion through scheduling, transport, hashing, and persistence.
 
 # Errors
 

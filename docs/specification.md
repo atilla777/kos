@@ -95,6 +95,13 @@ does not execute the next step.
 
 For request-bound `/kos-fix` and `/kos-brief` work, the scheduler sends the
 project, exact kind, exact request, and its fresh owner to `task create-or-get`.
+The exact request is the byte sequence in OpenCode's `$ARGUMENTS` expansion.
+Interactive slash-command payloads and `opencode run --command ...` requests
+passed as separate argv words provide supported exact paths. OpenCode 1.18.26
+display-serializes one argv containing spaces with wrapper quotes and escapes
+literal quotes before expansion. KOS does not infer the originating argv or
+guess, strip, or unescape that representation. The command, scheduler, CLI, and
+server preserve the expansion through transport, hashing, and persistence.
 The server derives the canonical title, description, and scoped SHA-256 creation
 key. An identical retry returns the exact existing task without changing its
 owner, status, lease, step, fence, or artifacts, so creation recovery needs no

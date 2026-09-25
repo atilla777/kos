@@ -66,6 +66,17 @@ class CliTest < ActiveSupport::TestCase
     assert_empty error
   end
 
+  test "create-or-get sends exact post-expansion quoting and escaping" do
+    request = '"display literal \"ready\" 015"'
+    output, error, status, sent = run_cli_with_server("task", "create-or-get", "--project-id", "1", "--kind",
+      "brief", "--owner-id", "session", "--request-file", "-", stdin_data: request)
+
+    assert_predicate status, :success?
+    assert_equal "{\"task\":{\"id\":9}}", output
+    assert_empty error
+    assert_equal request.b, sent.fetch(:body).fetch("request").b
+  end
+
   test "requires a task type key" do
     _output, error, status = run_cli("task-type", "create", "--name", "Feature", "--workflow-id", "4",
       environment: {})

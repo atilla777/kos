@@ -130,7 +130,13 @@ canonical title and description plus a scoped key from the request's SHA-256
 digest, then uses the database unique index as the duplicate boundary. An
 identical retry returns the existing task in any lifecycle state and never
 reclaims or mutates it. No intent, lock, receipt, or legacy namespace is read or
-written.
+written. The scheduler pipes the exact OpenCode `$ARGUMENTS` expansion to CLI
+standard input without trimming or quote interpretation; the CLI and server
+preserve those bytes through hashing and persistence. OpenCode 1.18.26
+display-serializes one argv containing spaces with wrapper quotes and escaped
+literal quotes before this boundary. KOS intentionally does not infer argv or
+reverse that external representation. Interactive slash payloads and separate
+`opencode run --command ...` argv words are the supported exact invocation paths.
 
 ### Step Agents
 

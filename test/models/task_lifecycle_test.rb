@@ -223,6 +223,34 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     end
   end
 
+  test "request-bound creation preserves post-expansion bytes keys and idempotence" do
+    project = create_project
+    BuiltInCatalog.install!
+    cases = [
+      [ "fix", '"ORDINARY MULTIWORD 015"',
+        "request:fix:sha256:7a41176a1495af8b69226d93393c24567c250ad7772a2e925681a9e8724971fa" ],
+      [ "brief", "ORDINARY MULTIWORD 015",
+        "request:brief:sha256:64edabdfb7b92d3aea3c36a643d50b4a358c9594975975f041b3a95c6d2258dc" ],
+      [ "fix", '"display literal \"ready\" 015"',
+        "request:fix:sha256:9ae544702eef4696dd74f3341c547cff574d2b933bbfdd13d10780c807e7963f" ],
+      [ "brief", "\"\n BOUNDARY_WHITESPACE_015 \n\"",
+        "request:brief:sha256:1c0cc34baf2e9ffeee149ab61376bd07c1dc8d8e4aa8e1bf67a8bdf5fe6f59ed" ]
+    ]
+
+    cases.each do |kind, request, expected_key|
+      task = @lifecycle.create_or_get_request!(project:, kind:, request:, owner_id: "first-#{kind}")
+      task.update_columns(status: "completed", owner_id: nil, lease_expires_at: nil)
+      before_repeat = task.reload.attributes
+      repeated = @lifecycle.create_or_get_request!(project:, kind:, request:, owner_id: "retry-#{kind}")
+
+      assert_equal before_repeat, repeated.attributes
+      assert_equal expected_key, repeated.creation_key
+      heading = kind == "fix" ? "Problem" : "Request"
+      assert_equal "# #{heading}\n\n#{request}\n", repeated.description_markdown
+    end
+    assert_equal cases.length, project.tasks.count
+  end
+
   test "one owner cannot claim two tasks" do
     project = create_project
     first = create_task(project:, title: "First")

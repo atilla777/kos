@@ -20,7 +20,8 @@ require its exact registered project through `kos-cli`.
 - `development`: offer matching resumable work; otherwise use `task claim-next`
   for the `development` type. Never create a task.
 - `fix` or `brief`: use `task create-or-get` with the mode, project, owner, and
-  complete exact request through standard input.
+  complete exact `$ARGUMENTS` expansion through standard input. Preserve every
+  request byte; do not trim, infer argv, or interpret or unescape delimiters.
 
 Read authoritative context. Keep a completed task terminal; otherwise use the
 public claim or resume operations when needed to make the chosen task active for

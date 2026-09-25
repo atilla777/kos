@@ -22,12 +22,7 @@ development records and are not read by the KOS server or CLI.
 | 012 | [Materialize brief graphs atomically](012-atomic-brief-materialization/task.md) | done | 011 |
 | 013 | [Publish reviewed commit sequences](013-reviewed-commit-ranges/task.md) | done | 011, 012 |
 | 014 | [Run simplified live acceptance](014-simplified-live-acceptance/task.md) | done | 011, 012, 013 |
-
-## Planned
-
-| ID | Task | Status | Dependencies |
-| --- | --- | --- | --- |
-| 015 | [Preserve exact slash-command arguments](015-preserve-slash-command-arguments/task.md) | planned | 014 |
+| 015 | [Preserve exact slash-command arguments](015-preserve-slash-command-arguments/task.md) | done | 014 |
 
 ## Future Decisions
 

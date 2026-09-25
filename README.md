@@ -110,6 +110,31 @@ full readiness procedure.
 - `/kos-brief <request>` recovers or creates and claims the exact `brief`
   request. Briefing itself runs in a fresh focused agent, not the main scheduler.
 
+KOS preserves the exact bytes produced by OpenCode's `$ARGUMENTS` expansion.
+Interactive slash-command payloads are supported directly. For non-interactive
+use, pass an ordinary multiword request as separate argv words:
+
+```sh
+/kos-fix status is wrong
+opencode run --command kos-fix status is wrong
+opencode run --command kos-brief display the literal word '"ready"'
+```
+
+Those paths expand to the plain requests `status is wrong` and `display the
+literal word "ready"` respectively. OpenCode 1.18.26 has a CLI serialization
+limitation: if the request is passed as one shell-quoted argv containing spaces,
+for example `opencode run --command kos-fix "status is wrong"`, OpenCode expands
+it as `"status is wrong"`. Literal quotes inside that argv are additionally
+backslash-escaped. These display-serialization bytes exist before KOS receives
+the expansion. KOS intentionally does not guess, strip wrappers, or unescape;
+it preserves those bytes through scheduling, CLI transport, server hashing, and
+persistence.
+
+Repository tests deterministically cover post-expansion command framing, the
+scheduler's exact stdin handoff to a fake CLI, the packaged CLI, and server
+creation-key/idempotence boundaries. They do not execute OpenCode internals;
+live OpenCode 1.18.26 expansion evidence covers that external boundary.
+
 Schedulers may select, create, claim, resume, read state, dispatch one current
 step, and reread state. Each command session generates a fresh unpredictable
 non-secret owner ID; there is no `KOS_OWNER_ID` configuration. After obtaining a

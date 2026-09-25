@@ -11,6 +11,13 @@
 - CLI tests execute the packaged public command and validate help discoverability,
   argument-to-request mapping, health, standard-input handling, output
   preservation, and exit statuses.
+- Deterministic repository tests substitute already-expanded byte sentinels into
+  the checked-in command templates and execute the scheduler's documented CLI
+  argv/stdin handoff against a fake CLI. Packaged CLI tests preserve those stdin
+  bytes, while server tests cover exact persistence, creation keys, and
+  idempotence. These tests start after expansion and do not simulate OpenCode's
+  argv serializer. Isolated live OpenCode 1.18.26 evidence distinguishes argv
+  from expansion bytes, including its quoted-multiword limitation.
 - Gem tests build and install the CLI into an isolated gem home, then use that
   executable against an isolated prepared Rails server for a core lifecycle smoke test.
 - Skill and profile contract tests verify durable safety and authority boundaries,

@@ -2,8 +2,8 @@
 
 ## Goal
 
-Ensure request-bound slash commands preserve the user's exact argument bytes
-across independent OpenCode runs.
+Ensure request-bound slash commands preserve the exact OpenCode `$ARGUMENTS`
+expansion bytes across independent runs.
 
 ## Scope
 
@@ -12,18 +12,20 @@ across independent OpenCode runs.
   same UTF-8 bytes surrounded by literal `0x22` characters.
 - Identify whether command expansion, scheduler interpretation, or request input
   introduces or removes quote bytes.
+- Record the accepted OpenCode 1.18.26 limitation: one argv containing spaces is
+  display-serialized with wrapper quotes and escaped literal quotes, while
+  interactive payloads and separate CLI argv words are supported exact paths.
 - Make repeated `/kos-brief` and `/kos-fix` requests produce identical server
   request bytes and creation keys.
 - Add deterministic regression coverage for exact argument preservation.
 
 ## Acceptance Criteria
 
-- Independent runs of the same slash command submit byte-identical requests.
-- Quotes explicitly typed inside the slash-command payload remain data.
-  Syntactic quotes used by a caller or runner only to delimit the command
-  argument are not included in the request bytes.
-- Regression tests compare the exact expected and submitted byte strings and
-  their derived creation keys at the command-to-scheduler and scheduler-to-CLI
-  boundaries.
+- Independent runs of the same invocation produce byte-identical expansions.
+- KOS preserves every expansion byte and does not guess or reverse OpenCode's
+  wrapper quoting or backslash escaping.
+- Regression tests compare exact post-expansion and submitted byte strings and
+  their derived creation keys at the command-to-scheduler, scheduler-to-CLI,
+  packaged CLI, and server boundaries.
 - Exact request repeats return the existing task without focused-agent launches.
 - `bin/check` passes.

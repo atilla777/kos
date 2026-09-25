@@ -11,8 +11,8 @@ class KosBriefSkillTest < ActiveSupport::TestCase
     assert_equal "kos-brief", metadata.fetch("name")
     assert_includes source, "Load the `kos` scheduler"
     assert_includes source, "`brief` mode"
-    assert_includes source, "request unchanged"
-    assert_includes source, "Do not execute a workflow\nstep in this agent"
+    assert_includes source, "without adding, removing, interpreting, or unescaping any"
+    assert_includes source, "Do not execute a workflow step in this agent"
     assert_includes source, "fresh `kos-brief` profile"
     assert_operator source.lines.length, :<=, 12
   end

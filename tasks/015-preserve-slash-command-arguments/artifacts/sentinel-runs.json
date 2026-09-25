@@ -1,0 +1,95 @@
+{
+  "opencode_version": "1.18.26",
+  "template_file": "argument-sentinel.md",
+  "template_sha256": "d2fef602583739d3b99b1169feb965cf28c8cc7b229287353dbc365bcfb7a169",
+  "cases": [
+    {
+      "name": "quoted-multiword-argv",
+      "shell_command": "opencode run --format json --command argument-sentinel \"ORDINARY MULTIWORD 015\"",
+      "argv": ["opencode", "run", "--format", "json", "--command", "argument-sentinel", "ORDINARY MULTIWORD 015"],
+      "message_argv_hex": ["4f5244494e415259204d554c5449574f524420303135"],
+      "expansion_relation": "display-serialized-single-argv",
+      "expected_expanded_hex": "224f5244494e415259204d554c5449574f52442030313522",
+      "runs": [
+        {
+          "run": 1,
+          "expanded_hex": "224f5244494e415259204d554c5449574f52442030313522",
+          "bytes": 24,
+          "sha256": "7a41176a1495af8b69226d93393c24567c250ad7772a2e925681a9e8724971fa"
+        },
+        {
+          "run": 2,
+          "expanded_hex": "224f5244494e415259204d554c5449574f52442030313522",
+          "bytes": 24,
+          "sha256": "7a41176a1495af8b69226d93393c24567c250ad7772a2e925681a9e8724971fa"
+        }
+      ]
+    },
+    {
+      "name": "separate-multiword-argv",
+      "shell_command": "opencode run --format json --command argument-sentinel ORDINARY MULTIWORD 015",
+      "argv": ["opencode", "run", "--format", "json", "--command", "argument-sentinel", "ORDINARY", "MULTIWORD", "015"],
+      "message_argv_hex": ["4f5244494e415259", "4d554c5449574f5244", "303135"],
+      "expansion_relation": "plain-space-joined-argv",
+      "expected_expanded_hex": "4f5244494e415259204d554c5449574f524420303135",
+      "runs": [
+        {
+          "run": 1,
+          "expanded_hex": "4f5244494e415259204d554c5449574f524420303135",
+          "bytes": 22,
+          "sha256": "64edabdfb7b92d3aea3c36a643d50b4a358c9594975975f041b3a95c6d2258dc"
+        },
+        {
+          "run": 2,
+          "expanded_hex": "4f5244494e415259204d554c5449574f524420303135",
+          "bytes": 22,
+          "sha256": "64edabdfb7b92d3aea3c36a643d50b4a358c9594975975f041b3a95c6d2258dc"
+        }
+      ]
+    },
+    {
+      "name": "literal-quotes-in-quoted-argv",
+      "shell_command": "opencode run --format json --command argument-sentinel 'display literal \"ready\" 015'",
+      "argv": ["opencode", "run", "--format", "json", "--command", "argument-sentinel", "display literal \"ready\" 015"],
+      "message_argv_hex": ["646973706c6179206c69746572616c202272656164792220303135"],
+      "expansion_relation": "display-serialized-single-argv-with-escaped-quotes",
+      "expected_expanded_hex": "22646973706c6179206c69746572616c205c2272656164795c222030313522",
+      "runs": [
+        {
+          "run": 1,
+          "expanded_hex": "22646973706c6179206c69746572616c205c2272656164795c222030313522",
+          "bytes": 31,
+          "sha256": "9ae544702eef4696dd74f3341c547cff574d2b933bbfdd13d10780c807e7963f"
+        },
+        {
+          "run": 2,
+          "expanded_hex": "22646973706c6179206c69746572616c205c2272656164795c222030313522",
+          "bytes": 31,
+          "sha256": "9ae544702eef4696dd74f3341c547cff574d2b933bbfdd13d10780c807e7963f"
+        }
+      ]
+    },
+    {
+      "name": "boundary-whitespace-newlines",
+      "shell_command": "opencode run --format json --command argument-sentinel $'\\n BOUNDARY_WHITESPACE_015 \\n'",
+      "argv": ["opencode", "run", "--format", "json", "--command", "argument-sentinel", "\n BOUNDARY_WHITESPACE_015 \n"],
+      "message_argv_hex": ["0a20424f554e444152595f574849544553504143455f303135200a"],
+      "expansion_relation": "display-serialized-single-argv",
+      "expected_expanded_hex": "220a20424f554e444152595f574849544553504143455f303135200a22",
+      "runs": [
+        {
+          "run": 1,
+          "expanded_hex": "220a20424f554e444152595f574849544553504143455f303135200a22",
+          "bytes": 29,
+          "sha256": "1c0cc34baf2e9ffeee149ab61376bd07c1dc8d8e4aa8e1bf67a8bdf5fe6f59ed"
+        },
+        {
+          "run": 2,
+          "expanded_hex": "220a20424f554e444152595f574849544553504143455f303135200a22",
+          "bytes": 29,
+          "sha256": "1c0cc34baf2e9ffeee149ab61376bd07c1dc8d8e4aa8e1bf67a8bdf5fe6f59ed"
+        }
+      ]
+    }
+  ]
+}

@@ -1,5 +1,8 @@
 require "test_helper"
+require "digest"
 require "json"
+require "open3"
+require "rbconfig"
 require "yaml"
 
 class KosSkillsTest < ActiveSupport::TestCase
@@ -26,7 +29,7 @@ class KosSkillsTest < ActiveSupport::TestCase
     compact = scheduler.gsub(/\s+/, " ")
 
     assert_includes scheduler, "`fix` or `brief`: use `task create-or-get`"
-    assert_includes scheduler, "complete exact request through standard input"
+    assert_includes scheduler, "complete exact `$ARGUMENTS` expansion through standard input"
     assert_includes compact, "Follow `kos-cli` whenever a mutation's result is ambiguous"
     assert_includes brief_scheduler, "Load the `kos` scheduler"
     assert_includes brief_scheduler, "`brief` mode"
@@ -39,8 +42,8 @@ class KosSkillsTest < ActiveSupport::TestCase
   test "slash commands contain only argument handling model choice and skill entry" do
     commands = {
       "kos" => [ "openai/gpt-5.6-terra", "`kos` scheduler skill", "`development` mode" ],
-      "kos-fix" => [ "openai/gpt-5.6-terra", "`kos` scheduler skill", "`fix` mode" ],
-      "kos-brief" => [ "openai/gpt-5.6-sol", "`kos-brief` scheduler skill", "unmodified arguments" ]
+      "kos-fix" => [ "openai/gpt-5.6-terra", "`kos` scheduler skill", "exactly that expansion" ],
+      "kos-brief" => [ "openai/gpt-5.6-sol", "`kos-brief` scheduler skill", "exactly that expansion" ]
     }
 
     commands.each do |name, (model, skill_entry, mode)|
@@ -54,9 +57,58 @@ class KosSkillsTest < ActiveSupport::TestCase
       assert_includes source, skill_entry
       assert_includes source, mode
       assert_includes source, "$ARGUMENTS"
+      assert_equal 1, source.scan("$ARGUMENTS").length
+      if name != "kos"
+        assert_includes source, "exactly one framing newline"
+        assert_includes source, "are not request data"
+        assert_includes source, "Never infer or unescape the originating argv"
+      end
       refute_match(/task (?:context|claim|resume|create-or-get)|owner|profile|outcome/i, body)
       assert_operator body.lines.length, :<=, 8
     end
+  end
+
+  test "post-expansion command framing and scheduler stdin preserve exact bytes" do
+    cases = [
+      [ "kos-fix", "kos-fix", '"ORDINARY MULTIWORD 015"',
+        "request:fix:sha256:7a41176a1495af8b69226d93393c24567c250ad7772a2e925681a9e8724971fa" ],
+      [ "kos-brief", "kos-brief", "ORDINARY MULTIWORD 015",
+        "request:brief:sha256:64edabdfb7b92d3aea3c36a643d50b4a358c9594975975f041b3a95c6d2258dc" ],
+      [ "kos-fix", "kos-fix", '"display literal \"ready\" 015"',
+        "request:fix:sha256:9ae544702eef4696dd74f3341c547cff574d2b933bbfdd13d10780c807e7963f" ],
+      [ "kos-brief", "kos-brief", "\"\n BOUNDARY_WHITESPACE_015 \n\"",
+        "request:brief:sha256:1c0cc34baf2e9ffeee149ab61376bd07c1dc8d8e4aa8e1bf67a8bdf5fe6f59ed" ]
+    ]
+
+    cases.each do |command, tag, expected_request, expected_key|
+      template = File.read(Rails.root.join(".opencode/commands/#{command}.md"))
+      expanded = template.sub("$ARGUMENTS", expected_request)
+      opening = "<#{tag}-arguments>\n"
+      closing = "\n</#{tag}-arguments>"
+      argument_start = expanded.index(opening) + opening.bytesize
+      argument_end = expanded.index(closing, argument_start)
+      scheduler_request = expanded.byteslice(argument_start...argument_end)
+      cli_arguments = [ "task", "create-or-get", "--project-id", "1", "--kind", command.delete_prefix("kos-"),
+        "--owner-id", "session", "--request-file", "-" ]
+      output, error, status = Open3.capture3({ "RUBYOPT" => nil, "RUBYLIB" => nil }, RbConfig.ruby, "--disable-gems",
+        Rails.root.join("test/support/capture_cli_stdin.rb").to_s, *cli_arguments, stdin_data: scheduler_request)
+      captured = JSON.parse(output)
+
+      assert_predicate status, :success?
+      assert_empty error
+      assert_equal cli_arguments, captured.fetch("arguments")
+      assert_equal expected_request.b, [ captured.fetch("stdin_hex") ].pack("H*").b
+      kind = command.delete_prefix("kos-")
+      assert_equal expected_key, "request:#{kind}:sha256:#{Digest::SHA256.hexdigest(scheduler_request)}"
+    end
+  end
+
+  test "documents the OpenCode 1.18.26 argv serialization boundary" do
+    readme = File.read(Rails.root.join("README.md"))
+
+    assert_includes readme, "OpenCode 1.18.26 has a CLI serialization\nlimitation"
+    assert_includes readme, "opencode run --command kos-fix status is wrong"
+    assert_includes readme, "KOS intentionally does not guess, strip wrappers, or unescape"
   end
 
   test "scheduler dispatches built-ins by exact step with an ID-only prompt" do
