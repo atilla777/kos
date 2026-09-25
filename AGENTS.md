@@ -1,26 +1,31 @@
 # Agent Rules
 
-## Task Continuity
+## Development Tasks
 
-After the user approves a task's scope and acceptance criteria, continue the
-task autonomously through implementation, verification, commit, push, remote
-verification, and task-state updates.
+KOS is developed through the repository files under `tasks/`, not through a
+running KOS task. Do not invoke `/kos`, `/kos-fix`, or `/kos-brief` to coordinate
+changes to this repository.
 
-Do not stop merely because implementation or checks are complete. A normal KOS
-task stops only when one of these conditions is true:
+`tasks/roadmap.md` is the authoritative ordered task list. When asked to do the
+next task, select the first `planned` task whose dependencies are `done`. Work on
+only one active task at a time.
 
-- publication has been observed successfully;
-- a concrete product or implementation decision requires the user;
-- a technical blocker prevents safe progress.
+Each task directory contains:
 
-Commit and push are part of completing an approved KOS task and do not require
-a second confirmation. Never force-push. If publication has an ambiguous
-result, observe local and remote Git state before retrying or reporting a
-blocker.
+- `task.md` for the stable goal, scope, and acceptance criteria;
+- `plan.md` for the current implementation plan;
+- `status.md` for progress, checks, blockers, and the next action; and
+- an optional `artifacts/` directory for useful evidence.
 
-Before `PLAN-012`, maintain task state in the project's Obsidian bootstrap
-documents and do not use `/kos`. During `PLAN-012`, use `/kos` only for the
-planned end-to-end verification.
+The files are lightweight development records, not a strict schema and not KOS
+runtime state. Keep them concise. Update `status.md` as work progresses and keep
+the summary state in `tasks/roadmap.md` consistent with it.
+
+After a task's scope is approved, continue autonomously through implementation,
+verification, task-file updates, commit, push without force, and independent
+remote observation. Stop only when publication is observed successfully, a
+product decision requires the user, or a technical blocker prevents safe
+progress.
 
 ## Project Contracts
 
@@ -32,5 +37,7 @@ Read these documents before changing behavior or architecture:
 - `docs/testing.md`
 - `CONTRIBUTING.md`
 
-Work on only the agreed active task and do not implement later roadmap items
-opportunistically. Run `bin/check` before publication.
+Work only on the active task. Do not implement later roadmap items
+opportunistically. Make the smallest coherent change that satisfies its
+acceptance criteria, update relevant tests and documentation, and run
+`bin/check` before publication.
