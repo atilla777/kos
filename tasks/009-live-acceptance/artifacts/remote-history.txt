@@ -1,0 +1,8 @@
+514665b6664037b4bdefcc47ad45b8ac3a4e1786	KOS task 3: Fix The documented farewell behavior is broken ruby test farewell_test rb fails because Farewell for Ada returns Goodbye	3
+
+015b8709465ba02012406793989f1b1e684ed3d6	Add reproducible farewell defect fixture
+acffeb96437d59732ff1d854be509827327f6122	KOS task 2: Implement optional --shout greeting mode	2
+
+c1733b810fdf08080dac9957831a2909f9fd8a28	KOS task 1: Brief Add an optional --shout flag to bin/greet. Without the flag, preserve the existing greeting text. With --shout, print t	1
+
+70d3d824a84b6a7ce92b9d09c35dba972cd11434	Initial greeting fixture

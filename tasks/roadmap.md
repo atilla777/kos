@@ -12,7 +12,7 @@ None.
 
 | ID | Task | Status | Dependencies |
 | --- | --- | --- | --- |
-| 009 | [Run live acceptance scenarios](009-live-acceptance/task.md) | planned | 008 |
+| 010 | [Prevent publication without required checks](010-enforce-check-evidence/task.md) | planned | 009 |
 
 ## Completed
 
@@ -26,6 +26,7 @@ None.
 | 006 | [Rewrite schedulers and commands](006-rewrite-schedulers-and-commands/task.md) | done | 003, 005 |
 | 007 | [Simplify step agents](007-simplify-step-agents/task.md) | done | 006 |
 | 008 | [Simplify Git publication](008-simplify-git-publication/task.md) | done | 007 |
+| 009 | [Run live acceptance scenarios](009-live-acceptance/task.md) | done | 008 |
 
 ## Future Decisions
 
