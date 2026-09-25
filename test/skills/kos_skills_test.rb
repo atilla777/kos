@@ -162,7 +162,13 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_includes File.read(AGENT_PATHS.fetch("kos-publish")), "immutable pre-verification built-in snapshot"
     implement = File.read(AGENT_PATHS.fetch("kos-implement"))
     assert_includes implement.gsub(/\s+/, " "), "Run every required test, lint, formatting, build, and type check"
+    assert_includes implement, "structured required-check result"
     assert_includes implement, "Keep all changes uncommitted"
+    assert_includes File.read(AGENT_PATHS.fetch("kos-review")), "required-check evidence"
+    publish = File.read(AGENT_PATHS.fetch("kos-publish"))
+    assert_includes publish, "required-check evidence"
+    assert_includes publish.gsub(/\s+/, " "), "validate its exact graph before commit or push"
+    assert_includes File.read(AGENT_PATHS.fetch("kos-verify")), "required-check evidence"
     assert_includes File.read(AGENT_PATHS.fetch("kos-document")).gsub(/\s+/, " "), "Do not commit or push"
     assert_includes File.read(AGENT_PATHS.fetch("kos-brief")).gsub(/\s+/, " "), "Do not commit, push"
     assert_includes File.read(AGENT_PATHS.fetch("kos-step-standard")), "without commit or push"

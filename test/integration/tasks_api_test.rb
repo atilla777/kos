@@ -381,6 +381,34 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     assert_equal "cancelled", cancellable.reload.status
   end
 
+  test "reports and returns structured required check evidence for built in implementation" do
+    BuiltInCatalog.install!
+    task_type = TaskType.find_by!(key: "development")
+    lifecycle = TaskLifecycle.new
+    task = create_task(project: @project, workflow: task_type.workflow, task_type:, current_step: "implement")
+    task = lifecycle.claim!(task_id: task.id, owner_id: "checks-owner")
+
+    post report_attempt_task_path(task), params: {
+      owner_id: task.owner_id, claim_version: task.claim_version, step: "implement", outcome: "implemented",
+      artifact: "# Implementation", required_checks: "failed"
+    }, headers: @headers, as: :json
+    assert_response :unprocessable_entity
+    assert_empty task.reload.accepted_artifacts
+
+    post report_attempt_task_path(task), params: {
+      owner_id: task.owner_id, claim_version: task.claim_version, step: "implement", outcome: "implemented",
+      artifact: "# Implementation", required_checks: "passed"
+    }, headers: @headers, as: :json
+    assert_response :success
+
+    get artifact_task_path(task), params: { step: "implement" }, headers: @headers
+    assert_response :success
+    assert_equal "passed", response.parsed_body.fetch("required_checks")
+
+    get context_task_path(task), headers: @headers, as: :json
+    assert_equal "passed", response.parsed_body.fetch("artifacts").first.fetch("required_checks")
+  end
+
   test "returns no content when no task can be claimed" do
     post tasks_claim_next_path, params: { project_id: @project.id, owner_id: "session" },
       headers: @headers, as: :json

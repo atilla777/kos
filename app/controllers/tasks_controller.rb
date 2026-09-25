@@ -61,7 +61,7 @@ class TasksController < ApplicationController
     accepted = task.accepted_artifacts[required_query_string(:step)]
     raise ActiveRecord::RecordNotFound unless accepted
 
-    render json: accepted.slice("outcome", "markdown", "accepted_claim_version", "reconstructed")
+    render json: accepted.slice("outcome", "markdown", "required_checks", "accepted_claim_version", "reconstructed")
   end
 
   def update
@@ -129,7 +129,8 @@ class TasksController < ApplicationController
       step: required_string(:step),
       outcome: required_string(:outcome),
       artifact: required_text(:artifact),
-      message: optional_string(:message)
+      message: optional_string(:message),
+      required_checks: optional_string(:required_checks)
     )
     render json: serialize(task)
   end
@@ -178,7 +179,7 @@ class TasksController < ApplicationController
 
   def artifact_index(task)
     task.accepted_artifacts.map do |step, artifact|
-      artifact.slice("outcome", "accepted_claim_version", "reconstructed").merge("step" => step)
+      artifact.slice("outcome", "required_checks", "accepted_claim_version", "reconstructed").merge("step" => step)
     end
   end
 

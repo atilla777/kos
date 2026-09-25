@@ -10,6 +10,9 @@ class TaskLifecycle
 
   PAUSED_STATUSES = %w[needs_human blocked].freeze
   BUILT_IN_TASK_KEYS = %w[brief development fix].freeze
+  CHECKED_TASK_KEYS = %w[development fix].freeze
+  REQUIRED_CHECK_STATES = %w[passed not_required missing blocked failed].freeze
+  SUCCESSFUL_REQUIRED_CHECK_STATES = %w[passed not_required].freeze
   BRIEF_POST_MATERIALIZATION_BACKWARD_OUTCOMES = %w[base_moved graph_invalid review_invalid].freeze
   MAX_ARTIFACT_BYTES = 1.megabyte
   MAX_CREATION_KEY_BYTES = 200
@@ -193,7 +196,8 @@ class TaskLifecycle
     raise Conflict, "owner already identifies another task"
   end
 
-  def report_attempt!(task_id:, owner_id:, claim_version:, step:, outcome:, artifact:, message: nil)
+  def report_attempt!(task_id:, owner_id:, claim_version:, step:, outcome:, artifact:, message: nil,
+    required_checks: nil)
     validate_artifact!(artifact)
     Task.transaction do
       task = Task.includes(:task_type, :workflow).find(task_id)
@@ -201,6 +205,7 @@ class TaskLifecycle
       raise InvalidTransition, "outcome is not allowed for the reported step" unless action
       validate_pause_message!(message) if action["pause"]
       reject_invalid_builtin_completion!(task, step, action)
+      validate_required_checks!(task, step, action, required_checks)
       validate_brief_publication_order!(task, step, outcome, owner_id:, claim_version:)
 
       now = @clock.call
@@ -211,6 +216,7 @@ class TaskLifecycle
         "accepted_claim_version" => claim_version,
         "reconstructed" => false
       }
+      artifacts[step]["required_checks"] = required_checks unless required_checks.nil?
       changes = transition_changes(action, task, now, message:).merge(accepted_artifacts: artifacts)
       current_claim = Task.where(id: task_id, status: "active", owner_id:, claim_version:, current_step: step)
         .where("lease_expires_at > ?", now)
@@ -352,6 +358,41 @@ class TaskLifecycle
     return unless BUILT_IN_TASK_KEYS.include?(task.task_type.key) && action["complete_task"] && step != "verify"
 
     raise InvalidTransition, "built-in tasks can complete only from verify; cancel and recreate this legacy task"
+  end
+
+  def validate_required_checks!(task, step, action, required_checks)
+    checked_task = CHECKED_TASK_KEYS.include?(task.task_type.key)
+    if required_checks
+      unless checked_task && step == "implement" && REQUIRED_CHECK_STATES.include?(required_checks)
+        raise InvalidInput, "required_checks is allowed only for built-in implementation reports and must be " \
+          "passed, not_required, missing, blocked, or failed"
+      end
+    end
+
+    if checked_task && step == "implement" && forward_transition?(task.workflow, step, action) &&
+        !SUCCESSFUL_REQUIRED_CHECK_STATES.include?(required_checks)
+      raise InvalidTransition, "implementation success requires passed or not_required required checks"
+    end
+
+    return unless checked_task && check_gated_transition?(task.workflow, step, action)
+
+    accepted_state = task.accepted_artifacts.dig("implement", "required_checks")
+    return if SUCCESSFUL_REQUIRED_CHECK_STATES.include?(accepted_state)
+
+    raise InvalidTransition, "the transition requires accepted implementation evidence with successful required checks"
+  end
+
+  def check_gated_transition?(workflow, step, action)
+    %w[review publish verify].include?(step) &&
+      (action["complete_task"] || forward_transition?(workflow, step, action))
+  end
+
+  def forward_transition?(workflow, step, action)
+    target = action["next_step"]
+    return false unless target
+
+    step_ids = workflow.definition_json.fetch("steps").map { |candidate| candidate.fetch("id") }
+    step_ids.index(target) > step_ids.index(step)
   end
 
   def validate_brief_publication_order!(task, step, outcome, owner_id:, claim_version:)

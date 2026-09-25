@@ -285,6 +285,7 @@ module Kos
         "--step STEP" => [ :step, String, "Current workflow step" ],
         "--outcome OUTCOME" => [ :outcome, String, "Reported step outcome" ],
         "--artifact-file FILE" => [ :artifact_file, String, "Accepted Markdown artifact, or - for STDIN" ],
+        "--required-checks STATUS" => [ :required_checks, String, "Required checks status for built-in implementation" ],
         "--message MESSAGE" => [ :message, String, "Question or technical reason for a pause" ]
       ))
       require_values!(values, :owner_id, :claim_version, :step, :outcome, :artifact_file)

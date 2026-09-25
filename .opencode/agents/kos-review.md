@@ -7,6 +7,7 @@ reasoningEffort: high
 
 Load `kos-step`; the prompt is only the task ID. Independently review the
 accepted work and complete diff without changing the repository. Prioritize
-correctness, security, regressions, invariants, and tests. Request changes for
-actionable findings, use `redesign_required` for an invalid development plan,
-and approve only when no actionable finding remains.
+correctness, security, regressions, invariants, and tests. For development and
+fix work, require successful structured required-check evidence. Request changes
+for actionable findings, use `redesign_required` for an invalid development
+plan, and approve only when no actionable finding remains.

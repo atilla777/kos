@@ -72,6 +72,12 @@ development delivery and verification guarantees. Ambiguous behavior or a
 non-reproducible report pauses with one question; infrastructure obstruction
 pauses as blocked.
 
+Development and fix acceptance rejects `implemented` when structured required
+checks are absent, missing, blocked, or failed, and proves that review,
+publication, and verification cannot positively advance legacy unfinished state
+without successful accepted check evidence. Successful scenarios retain and
+expose `passed` or `not_required` alongside the implementation Markdown.
+
 Deterministic brief E2E runs briefing in a fresh `kos-brief` agent, verifies OKF
 conformance, independently reviews specification and exact graph, validates
 before publication, publishes before materialization, and independently verifies
@@ -107,7 +113,10 @@ task, post-publication verification, completed state, ownership release, and the
 brief child graph. The automated suite proves lifecycle and installed-asset
 contracts only. Live model execution remains separate release evidence rather
 than a credential-dependent ordinary test, and this document does not claim
-that evidence has already been produced.
+that evidence has already been produced. Live check-gate regression evidence
+additionally preserves the exact accepted implementation artifact and proves no
+development or fix publication occurs while required checks are unavailable or
+failing.
 
 ## Commands
 

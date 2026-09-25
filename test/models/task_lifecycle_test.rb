@@ -329,6 +329,127 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     end
   end
 
+  test "built in implementation requires successful structured required check evidence" do
+    BuiltInCatalog.install!
+
+    %w[development fix].each do |key|
+      [ nil, "missing", "blocked", "failed" ].each do |required_checks|
+        task = checked_task_at_implementation(key, owner_id: "#{key}-#{required_checks || "absent"}")
+        before = task.attributes
+
+        error = assert_raises(TaskLifecycle::InvalidTransition) do
+          @lifecycle.report_attempt!(task_id: task.id, owner_id: task.owner_id,
+            claim_version: task.claim_version, step: "implement", outcome: "implemented",
+            artifact: "# Implementation", required_checks:)
+        end
+
+        assert_match(/requires passed or not_required/, error.message)
+        assert_equal before, task.reload.attributes
+      end
+
+      %w[passed not_required].each do |required_checks|
+        task = checked_task_at_implementation(key, owner_id: "#{key}-#{required_checks}")
+        task = @lifecycle.report_attempt!(task_id: task.id, owner_id: task.owner_id,
+          claim_version: task.claim_version, step: "implement", outcome: "implemented",
+          artifact: "# Implementation", required_checks:)
+
+        assert_equal "document", task.current_step
+        assert_equal required_checks, task.accepted_artifacts.dig("implement", "required_checks")
+      end
+    end
+  end
+
+  test "built in review publication and verification require successful implementation checks" do
+    BuiltInCatalog.install!
+    gates = { "review" => "approved", "publish" => "published", "verify" => "verified" }
+
+    %w[development fix].each do |key|
+      gates.each do |step, outcome|
+        [ nil, "failed" ].each do |required_checks|
+          task_type = TaskType.find_by!(key:)
+          task = create_task(project: create_project, workflow: task_type.workflow, task_type:, current_step: step)
+          implementation = {
+            "outcome" => "implemented", "markdown" => "# Implementation",
+            "accepted_claim_version" => 2, "reconstructed" => false
+          }
+          implementation["required_checks"] = required_checks if required_checks
+          task.update_column(:accepted_artifacts, { "implement" => implementation })
+          task = @lifecycle.claim!(task_id: task.id, owner_id: "#{key}-#{step}-#{required_checks || "absent"}")
+          before = task.attributes
+
+          assert_raises(TaskLifecycle::InvalidTransition) do
+            @lifecycle.report_attempt!(task_id: task.id, owner_id: task.owner_id,
+              claim_version: task.claim_version, step:, outcome:, artifact: "# #{step.titleize}")
+          end
+          assert_equal before, task.reload.attributes
+        end
+      end
+    end
+  end
+
+  test "required check assertions are rejected outside built in implementation" do
+    task = claim_task(owner_id: "session")
+    before = task.attributes
+
+    assert_raises(TaskLifecycle::InvalidInput) do
+      @lifecycle.report_attempt!(task_id: task.id, owner_id: "session", claim_version: 1,
+        step: "develop", outcome: "ready", artifact: "# Develop", required_checks: "passed")
+    end
+    assert_equal before, task.reload.attributes
+  end
+
+  test "built in check gates follow transition semantics rather than outcome names" do
+    BuiltInCatalog.install!
+    definition = BuiltInCatalog.definitions.fetch("development").deep_dup
+    {
+      "implement" => [ "implemented", "done" ],
+      "review" => [ "approved", "accepted" ],
+      "publish" => [ "published", "released" ],
+      "verify" => [ "verified", "confirmed" ]
+    }.each do |step_id, (original, replacement)|
+      step = definition.fetch("steps").find { |candidate| candidate.fetch("id") == step_id }
+      step.fetch("outcomes")[replacement] = step.fetch("outcomes").delete(original)
+    end
+    workflow = create_workflow(name: "Renamed outcomes", definition:)
+    task_type = TaskType.find_by!(key: "development")
+    task_type.update!(workflow:)
+    task = create_task(project: create_project, workflow:, task_type:, current_step: "implement")
+    task = @lifecycle.claim!(task_id: task.id, owner_id: "renamed")
+
+    assert_raises(TaskLifecycle::InvalidTransition) do
+      @lifecycle.report_attempt!(task_id: task.id, owner_id: task.owner_id, claim_version: task.claim_version,
+        step: "implement", outcome: "done", artifact: "# Implementation")
+    end
+    task = @lifecycle.report_attempt!(task_id: task.id, owner_id: task.owner_id, claim_version: task.claim_version,
+      step: "implement", outcome: "done", artifact: "# Implementation", required_checks: "passed")
+    task = @lifecycle.report_attempt!(task_id: task.id, owner_id: task.owner_id, claim_version: task.claim_version,
+      step: "document", outcome: "documented", artifact: "# Documentation")
+    %w[accepted released confirmed].each do |outcome|
+      task = @lifecycle.report_attempt!(task_id: task.id, owner_id: task.owner_id, claim_version: task.claim_version,
+        step: task.current_step, outcome:, artifact: "# #{outcome.titleize}")
+    end
+
+    assert_equal "completed", task.status
+  end
+
+  test "built in implementation permits noncanonical backward recovery without successful checks" do
+    BuiltInCatalog.install!
+    definition = BuiltInCatalog.definitions.fetch("fix").deep_dup
+    implementation = definition.fetch("steps").find { |step| step.fetch("id") == "implement" }
+    implementation.fetch("outcomes")["rediagnose"] = { "next_step" => "diagnose" }
+    workflow = create_workflow(name: "Fix with rediagnosis", definition:)
+    task_type = TaskType.find_by!(key: "fix")
+    task_type.update!(workflow:)
+    task = create_task(project: create_project, workflow:, task_type:, current_step: "implement")
+    task = @lifecycle.claim!(task_id: task.id, owner_id: "rediagnose")
+
+    task = @lifecycle.report_attempt!(task_id: task.id, owner_id: task.owner_id,
+      claim_version: task.claim_version, step: "implement", outcome: "rediagnose", artifact: "# Rediagnose")
+
+    assert_equal "diagnose", task.current_step
+    assert_nil task.accepted_artifacts.dig("implement", "required_checks")
+  end
+
   test "rejects stale identity expired leases wrong steps and unknown outcomes without mutation" do
     task = claim_task(owner_id: "session")
     original = task.attributes
@@ -499,6 +620,13 @@ class TaskLifecycleTest < ActiveSupport::TestCase
   end
 
   private
+
+  def checked_task_at_implementation(key, owner_id:)
+    task_type = TaskType.find_by!(key:)
+    task = create_task(project: create_project, workflow: task_type.workflow, task_type:,
+      current_step: "implement")
+    @lifecycle.claim!(task_id: task.id, owner_id:)
+  end
 
   def claim_task(owner_id:)
     project = create_project

@@ -8,4 +8,6 @@ reasoningEffort: medium
 Load `kos-step`; the prompt is only the task ID. Implement the smallest sound
 change, or choose `plan_invalid` if the accepted plan is unsafe. Run every
 required test, lint, formatting, build, and type check, fixing ordinary failures
-before success. Keep all changes uncommitted.
+before success. For built-in work, report the structured required-check result;
+never report `implemented` unless it is `passed` or `not_required`.
+Keep all changes uncommitted.

@@ -8,6 +8,8 @@ worktrees, and distributable OpenCode commands, focused agents, and skills.
 
 PLAN-022 uses state-oriented execution. KOS stores the last accepted Markdown
 artifact for each reported step together with pause and human-answer bindings.
+Development and fix implementation artifacts also retain a closed required-check
+result.
 A scheduler dispatches only a task ID; each fresh step agent reads its own
 authoritative context and predecessor evidence, performs one step, and atomically
 reports its artifact and transition. Publication advances to fresh independent
@@ -136,7 +138,8 @@ Tasks preserve their selected workflow revision. Pending unclaimed definitions
 may be edited; claimed task definitions are fixed. KOS has no universal
 arbitrary task-state field, checkpoint, attempt history, SHA fields, or artifact
 graph. The accepted-artifact map stores only the latest accepted outcome,
-Markdown, accepted claim version, and reconstruction flag for each step.
+Markdown, accepted claim version, reconstruction flag, and applicable
+required-check assertion for each step.
 
 ## API
 
@@ -175,20 +178,25 @@ GET   /tasks/:id/children
 - `project`: `id`, `name`, `repository_identity`, `remote_url`, `default_branch`;
 - `step`: `id`, `name`, `instruction`, `artifact_template`, `model_tier`,
   `allowed_outcomes`;
-- `artifacts`: entries with `step`, `outcome`, `accepted_claim_version`, and
-  `reconstructed`, without Markdown; and
+- `artifacts`: entries with `step`, `outcome`, applicable `required_checks`,
+  `accepted_claim_version`, and `reconstructed`, without Markdown; and
 - `pause`: null or `step`, `claim_version`, `message`, and exactly bound `answer`.
 
-`artifact` returns exactly `outcome`, `markdown`, `accepted_claim_version`, and
-`reconstructed` for one accepted step. Absence is an error, not empty evidence.
+`artifact` returns `outcome`, `markdown`, applicable `required_checks`,
+`accepted_claim_version`, and `reconstructed` for one accepted step. Absence is
+an error, not empty evidence.
 
 `report-attempt` accepts top-level `owner_id`, `claim_version`, `step`, `outcome`,
-`artifact`, and optional `message`. Artifact Markdown must be nonempty valid
+`artifact`, optional `message`, and optional `required_checks`. Artifact Markdown
+must be nonempty valid
 UTF-8 and at most 1 MiB. A pause requires a nonblank message. One transaction
 checks the active unexpired fence and allowed action, replaces that step's
 accepted artifact, increments the version, applies the transition, and updates
 pause/answer state. A stale or invalid report changes nothing. The server also
-refuses every built-in completion outside `verify`. A brief `published` report
+refuses every built-in completion outside `verify`. Built-in development and fix
+work cannot report `implemented`, `approved`, `published`, or `verified` without
+accepted `passed` or `not_required` required-check evidence. Rails never parses
+the Markdown or check output. A brief `published` report
 requires an already materialized child graph under the same serialized
 transaction boundary, and a materialized graph cannot coexist with a
 publication rewind.

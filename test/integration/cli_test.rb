@@ -33,7 +33,7 @@ class CliTest < ActiveSupport::TestCase
       %w[task context] => [],
       %w[task artifact] => %w[--step],
       %w[task resume] => %w[--owner-id --claim-version --step --answer-file],
-      %w[task report-attempt] => %w[--owner-id --claim-version --step --outcome --artifact-file]
+      %w[task report-attempt] => %w[--owner-id --claim-version --step --outcome --artifact-file --required-checks]
     }.each do |command, options|
       command_output, command_error, command_status = run_cli(*command, "--help", environment: {})
 
@@ -144,9 +144,11 @@ class CliTest < ActiveSupport::TestCase
             "POST", "/tasks/9/resume", { "owner_id" => "session-2", "claim_version" => 5, "step" => "develop",
               "answer" => "# Task\n\nMultiline description.\n", "takeover_confirmed" => false } ],
           [ [ "task", "report-attempt", "9", "--owner-id", "session-2", "--claim-version", "6",
-            "--step", "develop", "--outcome", "ready", "--artifact-file", description_file.path ],
+            "--step", "develop", "--outcome", "ready", "--artifact-file", description_file.path,
+            "--required-checks", "passed" ],
             "POST", "/tasks/9/report-attempt", { "owner_id" => "session-2", "claim_version" => 6,
-              "step" => "develop", "outcome" => "ready", "artifact" => "# Task\n\nMultiline description.\n" } ],
+              "step" => "develop", "outcome" => "ready", "required_checks" => "passed",
+              "artifact" => "# Task\n\nMultiline description.\n" } ],
             [ [ "task", "cancel", "9" ], "POST", "/tasks/9/cancel", {} ],
             [ [ "task", "validate-children", "9", "--definition-file", children_file.path ],
               "POST", "/tasks/9/validate-children", { "children" => [ {

@@ -40,16 +40,19 @@ These rules describe the implemented PLAN-022 state-oriented architecture.
 
 The bearer-authenticated JSON API and SQLite database own projects, workflows,
 task types, tasks, dependencies, and transitions. `GET /up` remains public.
-Rails validates workflow shape but has no semantic knowledge of planning,
-diagnosis, checks, documentation, review, publication, verification, or OKF.
+Rails validates workflow shape but does not select, execute, or interpret
+planning, diagnosis, checks, documentation, review, publication, verification,
+or OKF. It enforces a closed required-check assertion at built-in delivery gates
+without parsing check output or Markdown.
 
 The five domain tables remain `projects`, `workflows`, `task_types`, `tasks`,
 and `task_dependencies`. PLAN-022 adds execution context to `tasks`, not a new
 artifact or attempt table. `accepted_artifacts` is a JSON map keyed by step ID;
 each value contains `outcome`, complete `markdown`, `accepted_claim_version`,
-and `reconstructed`. Pause state uses `pause_message`, `pause_step`, and
-`pause_claim_version`; answer state uses `human_answer`, `human_answer_step`, and
-`human_answer_claim_version`.
+and `reconstructed`. Development and fix implementation entries may also contain
+the closed `required_checks` assertion. Pause state uses `pause_message`,
+`pause_step`, and `pause_claim_version`; answer state uses `human_answer`,
+`human_answer_step`, and `human_answer_claim_version`.
 Request-bound tasks may also store an immutable nullable `creation_key`. A
 partial unique index on project, task type, and non-null key is the final
 duplicate-creation boundary; ordinary tasks remain null and unaffected.
@@ -59,6 +62,8 @@ action, validates a required pause message, copies and updates the accepted map,
 and performs one fenced update requiring active status, owner, claim version,
 current step, and unexpired lease. The update stores the artifact, applies the
 transition, increments `claim_version`, and sets or clears pause and answer state.
+Built-in development and fix success at implementation, review, publication,
+and verification requires accepted `passed` or `not_required` check evidence.
 No accepted artifact can exist without its corresponding accepted transition.
 Built-in completion is additionally constrained to `verify`, regardless of an
 immutable snapshot's action. Brief publication takes a SQLite write lock before

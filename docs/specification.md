@@ -45,7 +45,8 @@ KOS is responsible for:
 - typed next-task selection, exact claims, and idempotent request create-or-get;
 - exclusive leased ownership and monotonically increasing claim-version fencing;
 - authoritative current-step context and focused accepted-artifact retrieval;
-- validation of the reported step, outcome, artifact, and pause message;
+- validation of the reported step, outcome, artifact, closed required-check
+  assertion, and pause message;
 - atomic accepted-artifact storage and workflow transition;
 - durable pause messages and exact human-answer binding;
 - atomic validation and materialization of brief child graphs; and
@@ -126,10 +127,12 @@ create-or-get and keyed create-and-claim return an existing exact immutable defi
 its owner, status, lease, step, fence, or artifacts; a mismatch conflicts.
 
 `accepted_artifacts` is the authoritative last accepted artifact map by step.
-Each value contains exactly the accepted `outcome`, complete `markdown`,
-`accepted_claim_version`, and boolean `reconstructed`. Reporting a repeated
-step replaces that step's value. This JSON representation is an implementation
-detail, not a universal task-state schema or attempt history.
+Each value contains the accepted `outcome`, complete `markdown`,
+`accepted_claim_version`, and boolean `reconstructed`. Development and fix
+implementation entries may additionally contain `required_checks`, whose closed
+values are `passed`, `not_required`, `missing`, `blocked`, and `failed`.
+Reporting a repeated step replaces that step's value. This JSON representation
+is an implementation detail, not a universal task-state schema or attempt history.
 
 ## Workflow And Built-Ins
 
@@ -249,22 +252,29 @@ syntax and options.
 - `step`: `id`, `name`, `instruction`, `artifact_template`, `model_tier`, and
   `allowed_outcomes`;
 - `artifacts`: one index entry per accepted step containing `step`, `outcome`,
-  `accepted_claim_version`, and `reconstructed`, never Markdown; and
+  applicable `required_checks`, `accepted_claim_version`, and `reconstructed`,
+  never Markdown; and
 - `pause`: null or `step`, `claim_version`, `message`, and an `answer` only when
   exactly bound to that pause.
 
-`artifact` requires one step and returns exactly `outcome`, `markdown`,
-`accepted_claim_version`, and `reconstructed`; an absent step is not an empty
-artifact.
+`artifact` requires one step and returns `outcome`, `markdown`, applicable
+`required_checks`, `accepted_claim_version`, and `reconstructed`; an absent step
+is not an empty artifact.
 
 `report-attempt` accepts task ID plus top-level `owner_id`, `claim_version`,
-`step`, `outcome`, `artifact`, and optional `message`. The CLI reads `artifact`
-from `--artifact-file`; `-` means standard input. An artifact must be a nonempty
-valid UTF-8 string of at most 1 MiB. A pause message must be a nonblank string.
+`step`, `outcome`, `artifact`, optional `message`, and optional
+`required_checks`. The CLI reads `artifact` from `--artifact-file`; `-` means
+standard input. An artifact must be a nonempty valid UTF-8 string of at most 1
+MiB. A pause message must be a nonblank string.
 In one database transaction KOS validates the outcome and pause requirement,
 checks active owner, unexpired lease, version, and current step, stores the last
 accepted artifact, applies the transition, increments the fence, and clears or
-sets pause/answer state. A built-in `complete_task` action is rejected unless the
+sets pause/answer state. For built-in development and fix work,
+`required_checks` is allowed only at implementation; `implemented` requires
+`passed` or `not_required`. Positive review, publication, and verification also
+require that assertion in accepted implementation evidence. Rails does not
+select, run, or parse checks or their Markdown output. A built-in `complete_task`
+action is rejected unless the
 reported step is `verify`, including immutable legacy snapshots. For a brief at
 `publish`, the transaction serializes with materialization, requires children
 before accepting `published`, and rejects `base_moved`, `graph_invalid`, or
@@ -321,8 +331,9 @@ observed graph and digest.
 ## Publication And Verification
 
 All task changes remain uncommitted until `publish`. The publisher validates
-accepted predecessor evidence and current work, fetches the default branch,
-and returns the explicit backward outcome if review is invalid or the base
+accepted predecessor evidence and current work, including successful structured
+required-check evidence for development and fix tasks, fetches the default
+branch, and returns the explicit backward outcome if review is invalid or the base
 moved. Otherwise it stages only validated task paths, checks the staged patch,
 creates one commit with subject `KOS task <id>: <title>` and exactly one
 `KOS-Task: <id>` trailer, pushes without force, and confirms the candidate in

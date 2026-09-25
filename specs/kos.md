@@ -51,6 +51,10 @@ reading the task instead of reconstructing progress from local execution files.
 - KOS retains the last accepted Markdown artifact for each reported step.
   Repeating a step replaces that step's accepted artifact; KOS does not expose
   attempt history.
+- Development and fix implementation evidence includes a closed required-check
+  result. Implementation cannot succeed, and review, publication, and
+  verification cannot approve, unless that result is `passed` or explicitly
+  `not_required`.
 - A paused task retains the exact human question or technical reason. A human
   answer is durably bound to that pause before the same step is retried.
 - Product behavior changes update the repository's `specs/` bundle before

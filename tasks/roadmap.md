@@ -10,9 +10,7 @@ None.
 
 ## Planned
 
-| ID | Task | Status | Dependencies |
-| --- | --- | --- | --- |
-| 010 | [Prevent publication without required checks](010-enforce-check-evidence/task.md) | planned | 009 |
+None.
 
 ## Completed
 
@@ -27,6 +25,7 @@ None.
 | 007 | [Simplify step agents](007-simplify-step-agents/task.md) | done | 006 |
 | 008 | [Simplify Git publication](008-simplify-git-publication/task.md) | done | 007 |
 | 009 | [Run live acceptance scenarios](009-live-acceptance/task.md) | done | 008 |
+| 010 | [Prevent publication without required checks](010-enforce-check-evidence/task.md) | done | 009 |
 
 ## Future Decisions
 

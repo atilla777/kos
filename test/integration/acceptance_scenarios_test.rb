@@ -29,7 +29,8 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
         previous = task.attributes
         artifact = "# #{step.titleize}\n\nAccepted #{outcome}.\n"
         task = lifecycle.report_attempt!(task_id: task.id, owner_id: task.owner_id,
-          claim_version: task.claim_version, step:, outcome:, artifact:)
+          claim_version: task.claim_version, step:, outcome:, artifact:,
+          required_checks: ("passed" if step == "implement"))
 
         assert_equal artifact, task.accepted_artifacts.dig(step, "markdown")
         assert_equal outcome, task.accepted_artifacts.dig(step, "outcome")
@@ -89,6 +90,40 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
           task.values_at(:status, :current_step, :owner_id)
         assert_equal outcome, task.accepted_artifacts.dig(source, "outcome")
       end
+    end
+  end
+
+  test "development and fix reject nonpassing checks before successful publication" do
+    BuiltInCatalog.install!
+
+    %w[development fix].each do |type_key|
+      lifecycle = TaskLifecycle.new
+      task = lifecycle.create!(project: create_project(name: "#{type_key}-checks"),
+        task_type: TaskType.find_by!(key: type_key), title: "Check gate", description_markdown: "Require checks")
+      task = lifecycle.claim!(task_id: task.id, owner_id: "#{type_key}-checks")
+      task = advance_to_step(lifecycle, task, type_key, "implement")
+
+      [ nil, "missing", "blocked", "failed" ].each do |required_checks|
+        before = task.attributes
+        assert_raises(TaskLifecycle::InvalidTransition) do
+          lifecycle.report_attempt!(task_id: task.id, owner_id: task.owner_id,
+            claim_version: task.claim_version, step: "implement", outcome: "implemented",
+            artifact: "# Implementation\n\nChecks did not pass.\n", required_checks:)
+        end
+        assert_equal before, task.reload.attributes
+      end
+
+      task = lifecycle.report_attempt!(task_id: task.id, owner_id: task.owner_id,
+        claim_version: task.claim_version, step: "implement", outcome: "implemented",
+        artifact: "# Implementation\n\nRequired checks passed.\n", required_checks: "passed")
+      %w[document review publish verify].each do |step|
+        task = lifecycle.report_attempt!(task_id: task.id, owner_id: task.owner_id,
+          claim_version: task.claim_version, step:, outcome: successful_outcome(type_key, step),
+          artifact: "# #{step.titleize}\n")
+      end
+
+      assert_equal "completed", task.status
+      assert_equal "passed", task.accepted_artifacts.dig("implement", "required_checks")
     end
   end
 
@@ -295,9 +330,9 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
     [ lifecycle.claim_next!(project:, owner_id: "owner"), lifecycle ]
   end
 
-  def report(lifecycle, task, step, outcome, artifact: "# #{step.capitalize}\n")
+  def report(lifecycle, task, step, outcome, artifact: "# #{step.capitalize}\n", required_checks: nil)
     lifecycle.report_attempt!(task_id: task.id, owner_id: task.owner_id, claim_version: task.claim_version,
-      step:, outcome:, artifact:)
+      step:, outcome:, artifact:, required_checks:)
   end
 
   def successful_outcome(type_key, step)
@@ -317,7 +352,8 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
       step = task.current_step
       materialize_acceptance_child(task) if type_key == "brief" && step == "publish"
       task = lifecycle.report_attempt!(task_id: task.id, owner_id: task.owner_id,
-        claim_version: task.claim_version, step:, outcome: successful_outcome(type_key, step), artifact: "# #{step}\n")
+        claim_version: task.claim_version, step:, outcome: successful_outcome(type_key, step), artifact: "# #{step}\n",
+        required_checks: ("passed" if step == "implement" && %w[development fix].include?(type_key)))
     end
     task
   end
@@ -342,7 +378,8 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
   def run_implementation(lifecycle, task, worktree, root, attempt:)
     git("diff", "--check", chdir: worktree)
     report(lifecycle, task, "implement", "implemented",
-      artifact: "# Implementation\n\nAttempt #{attempt}.\n\n## Checks\n\n`git diff --check`: passed.\n")
+      artifact: "# Implementation\n\nAttempt #{attempt}.\n\n## Checks\n\n`git diff --check`: passed.\n",
+      required_checks: ("passed" if %w[development fix].include?(task.task_type.key)))
   end
 
   def run_documentation(lifecycle, task, root, attempt:)

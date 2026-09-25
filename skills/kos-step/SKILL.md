@@ -24,7 +24,8 @@ truthful evidence and choose one allowed outcome. Use `needs_human` for one
 precise product decision and `blocked` for a concrete technical obstruction.
 
 Report the attempt yourself through `kos-cli`, using its installed help and
-standard input for the complete Markdown artifact. The server is authoritative
+standard input for the complete Markdown artifact and any profile-required
+structured fields. The server is authoritative
 for ownership, fencing, outcomes, and atomic artifact acceptance; never bypass
 a rejection. If the response is ambiguous, observe task state before any retry.
 Do not execute the next step.
