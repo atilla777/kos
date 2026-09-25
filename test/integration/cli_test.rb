@@ -18,13 +18,14 @@ class CliTest < ActiveSupport::TestCase
       "task-type" => %w[create update],
       "task" => %w[
         create create-or-get create-and-claim update show context artifact show-owned claim-next claim resumable resume
-        report-attempt cancel validate-children materialize-children children
+        report-attempt cancel materialize-children children
       ]
     }.each do |resource, actions|
       inventory = output.lines.grep(/^\s*#{Regexp.escape(resource)}\s+/).join
       assert_not_empty inventory
       actions.each { |action| assert_match(/\b#{Regexp.escape(action)}\b/, inventory) }
     end
+    refute_includes output, "validate-children"
     assert_empty error
 
     {
@@ -33,13 +34,15 @@ class CliTest < ActiveSupport::TestCase
       %w[task context] => [],
       %w[task artifact] => %w[--step],
       %w[task resume] => %w[--owner-id --claim-version --step --answer-file],
-      %w[task report-attempt] => %w[--owner-id --claim-version --step --outcome --artifact-file --required-checks]
+      %w[task report-attempt] => %w[--owner-id --claim-version --step --outcome --artifact-file --required-checks],
+      %w[task materialize-children] => %w[--definition-file --owner-id --claim-version]
     }.each do |command, options|
       command_output, command_error, command_status = run_cli(*command, "--help", environment: {})
 
       assert_predicate command_status, :success?, command.join(" ")
       assert_match(/Usage: kos #{Regexp.escape(command.join(" "))}/, command_output)
       options.each { |option| assert_includes command_output, option }
+      refute_includes command_output, "--expected-digest"
       assert_empty command_error
     end
   end
@@ -150,14 +153,10 @@ class CliTest < ActiveSupport::TestCase
               "step" => "develop", "outcome" => "ready", "required_checks" => "passed",
               "artifact" => "# Task\n\nMultiline description.\n" } ],
             [ [ "task", "cancel", "9" ], "POST", "/tasks/9/cancel", {} ],
-            [ [ "task", "validate-children", "9", "--definition-file", children_file.path ],
-              "POST", "/tasks/9/validate-children", { "children" => [ {
-                "key" => "child", "title" => "Child", "description_markdown" => "Work", "blocker_keys" => []
-              } ] } ],
             [ [ "task", "materialize-children", "9", "--definition-file", children_file.path,
-              "--owner-id", "brief-owner", "--claim-version", "3", "--expected-digest", "sha256:abc" ],
+              "--owner-id", "brief-owner", "--claim-version", "3" ],
               "POST", "/tasks/9/materialize-children", { "owner_id" => "brief-owner", "claim_version" => 3,
-                "expected_digest" => "sha256:abc", "children" => [ {
+                "children" => [ {
                   "key" => "child", "title" => "Child", "description_markdown" => "Work", "blocker_keys" => []
                 } ] } ],
             [ [ "task", "children", "9" ], "GET", "/tasks/9/children", nil ]

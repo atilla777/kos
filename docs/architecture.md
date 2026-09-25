@@ -70,8 +70,9 @@ Built-in development and fix success at implementation, review, and publication
 requires accepted `passed` or `not_required` check evidence.
 No accepted artifact can exist without its corresponding accepted transition.
 Built-in completion is additionally constrained to the `published` outcome at
-`publish`. Brief publication takes a SQLite write lock before
-observing children, so materialization and reporting serialize; `published`
+`publish`. Brief materialization takes a SQLite write lock, verifies the exact
+active publication fence, and then normalizes, validates, digests, and creates
+the graph in that transaction. Materialization and reporting serialize; `published`
 requires children, while a materialized graph forbids publication rewinds.
 
 The artifact limit is 1 MiB by UTF-8 bytes. Artifacts must be nonempty valid
@@ -175,7 +176,7 @@ The exact built-in dispatch map is:
 | `document` | `kos-document` | standard | edit and use `okf`; no commit or push |
 | `brief` | `kos-brief` | advanced | edit authorized specification/graph work; no commit or push |
 | `review` | `kos-review` | advanced | independent and read-only |
-| `publish` | `kos-publish` | standard | sole base-update, stage, commit, push, graph-validation, and materialization authority |
+| `publish` | `kos-publish` | standard | sole base-update, stage, commit, push, and graph-materialization authority |
 
 Managed profiles intentionally contain no KOS-specific OpenCode permission
 blocks. They are role and model selection, not a security boundary; tool approval

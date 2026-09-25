@@ -165,7 +165,8 @@ class KosSkillsTest < ActiveSupport::TestCase
     assert_includes File.read(AGENT_PATHS.fetch("kos-review")), "required-check evidence"
     publish = File.read(AGENT_PATHS.fetch("kos-publish"))
     assert_includes publish.gsub(/\s+/, " "), "required-check evidence"
-    assert_includes publish.gsub(/\s+/, " "), "validate its exact graph before commit or push"
+    assert_includes publish.gsub(/\s+/, " "), "inspect the exact reviewed graph before commit or push"
+    assert_includes publish.gsub(/\s+/, " "), "submit it once for atomic materialization"
     assert_includes File.read(AGENT_PATHS.fetch("kos-document")).gsub(/\s+/, " "), "Do not commit or push"
     assert_includes File.read(AGENT_PATHS.fetch("kos-brief")).gsub(/\s+/, " "), "Do not commit, push"
     assert_includes File.read(AGENT_PATHS.fetch("kos-step-standard")), "without commit or push"

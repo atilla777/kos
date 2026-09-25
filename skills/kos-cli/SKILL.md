@@ -62,7 +62,9 @@ response was lost. Observe authoritative state before retrying. Retry a mutation
 only when help or the server contract makes it idempotent, or observation proves
 it did not occur and the same fenced input remains valid. `task create-or-get`
 allows one identical retry because the server enforces request identity. If
-success or a safe retry cannot be established, stop as `blocked`.
+success or a safe retry cannot be established, stop as `blocked`. After an
+ambiguous brief graph materialization, compare the complete `task children`
+observation with the reviewed graph before considering any retry.
 
 Do not expose administrative project/workflow/task-type operations, task
 creation, claim, takeover, resume, cancellation, graph mutation, or arbitrary

@@ -69,7 +69,7 @@ alternate commit, base-update, push, or recovery procedures.
 At `publish`, fetch and observe the remote before mutation. Validate the task
 diff against the accepted plan, implementation, documentation, and review
 artifacts obtained through `kos-cli`. For a brief, also validate the accepted
-graph and reviewed specification and preserve publication-before-materialization.
+graph and reviewed specification, then preserve publication-before-materialization.
 If review evidence is invalid, do not publish and return `review_invalid`.
 
 If the default branch moved forward, preserve all staged, unstaged, and untracked

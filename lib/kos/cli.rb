@@ -62,7 +62,7 @@ module Kos
           workflow create
           task-type create | update
           task create | create-or-get | create-and-claim | update | show | context | artifact | show-owned | claim-next | claim | resumable | resume | report-attempt | cancel
-          task validate-children | materialize-children | children
+          task materialize-children | children
 
         Options:
           -v, --version             Show the installed CLI version
@@ -98,7 +98,6 @@ module Kos
       when [ "task", "resume" ] then task_resume
       when [ "task", "report-attempt" ] then task_report_attempt
       when [ "task", "cancel" ] then task_cancel
-      when [ "task", "validate-children" ] then task_validate_children
       when [ "task", "materialize-children" ] then task_materialize_children
       when [ "task", "children" ] then task_children
       else
@@ -301,15 +300,9 @@ module Kos
       [ :post, "/tasks/#{id}/cancel", {} ]
     end
 
-    def task_validate_children
-      id = shift_id!("task")
-      values = parse_graph_options("kos task validate-children ID")
-      [ :post, "/tasks/#{id}/validate-children", values ]
-    end
-
     def task_materialize_children
       id = shift_id!("task")
-      values = parse_graph_options("kos task materialize-children ID", materialize: true)
+      values = parse_graph_options("kos task materialize-children ID")
       [ :post, "/tasks/#{id}/materialize-children", values ]
     end
 
@@ -319,18 +312,13 @@ module Kos
       [ :get, "/tasks/#{id}/children", nil ]
     end
 
-    def parse_graph_options(usage, materialize: false)
-      definitions = {
+    def parse_graph_options(usage)
+      definitions = owner_options.merge(
         "--definition-file FILE" => [ :definition_file, String, "Child graph JSON file, or - for STDIN" ]
-      }
-      if materialize
-        definitions.merge!(owner_options)
-        definitions["--claim-version VERSION"] = [ :claim_version, Integer, "Current claim version" ]
-        definitions["--expected-digest DIGEST"] = [ :expected_digest, String, "Validated child graph digest" ]
-      end
+      )
+      definitions["--claim-version VERSION"] = [ :claim_version, Integer, "Current claim version" ]
       values = parse_options(usage, definitions)
-      required = materialize ? %i[definition_file owner_id claim_version expected_digest] : %i[definition_file]
-      require_values!(values, *required)
+      require_values!(values, :definition_file, :owner_id, :claim_version)
       definition_file = values.delete(:definition_file)
       definition = read_json(definition_file)
       raise Error.new("local_input_error", "child graph definition must be a JSON object") unless definition.is_a?(Hash)

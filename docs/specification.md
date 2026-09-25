@@ -193,9 +193,10 @@ not commit or push.
 
 Briefing is a fresh isolated step, not work performed in the main conversation.
 It updates OKF behavior and proposes a minimal acyclic graph. Review independently
-checks both. Publication validates the accepted graph, publishes the reviewed
-specification, observes remote success, and then atomically materializes the
-exact graph. Children are development tasks with the brief as parent and
+checks both. Publication inspects the accepted graph, publishes the reviewed
+specification, observes remote success, and then submits the exact graph to one
+fenced operation that atomically normalizes, validates, digests, and materializes
+it. Children are development tasks with the brief as parent and
 blocker, plus declared sibling blockers. Only then does the publisher report
 `published`, completing the brief.
 
@@ -284,7 +285,7 @@ the ordinary task envelope.
 The broader CLI also exposes project create/show/update; workflow create; task
 type create/update; task create/create-or-get/create-and-claim/update/show/show-owned;
 claim-next, exact claim, resumable, exact resume, cancel; and brief graph
-validate/materialize/children operations. The installed CLI help lists exact
+materialize/children operations. The installed CLI help lists exact
 commands and options; the README summarizes the API routes and operational
 setup.
 `task create-or-get` accepts a project, kind `fix` or `brief`, owner, and exact
@@ -318,8 +319,8 @@ translated or dual-run.
 Git recovery remains observation-oriented. Publication observes the base,
 candidate, and remote before retrying, never force-pushes, and never duplicates
 a confirmed commit. A moved base returns to implementation or briefing as the
-workflow specifies. Brief graph creation recovers by comparing the complete
-observed graph and digest.
+workflow specifies. Brief graph creation recovers by observing the complete
+materialized graph and its server-derived digest.
 
 ## Publication
 
@@ -330,7 +331,7 @@ branch, and returns the explicit backward outcome if review is invalid or the ba
 moved. Otherwise it stages only validated task paths, checks the staged patch,
 creates one commit with subject `KOS task <id>: <title>` and exactly one
 `KOS-Task: <id>` trailer, pushes without force, and confirms the candidate in
-remote history. A brief publisher then materializes its validated graph. The
+remote history. A brief publisher then atomically materializes its reviewed graph. The
 server will not accept `published` until those children exist, and after they
 exist it permits a technical `blocked` pause but no publication outcome that
 rewinds to briefing or review.

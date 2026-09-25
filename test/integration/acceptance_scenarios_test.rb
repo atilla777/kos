@@ -119,7 +119,7 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
     end
   end
 
-  test "brief materializes its exact validated graph before publication completes it" do
+  test "brief atomically materializes its exact graph before publication completes it" do
     BuiltInCatalog.install!
     lifecycle = TaskLifecycle.new
     project = create_project(name: "brief-lifecycle")
@@ -134,12 +134,11 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
         "blocker_keys" => [ "core" ] }
     ]
     graph = BriefTaskGraph.new
-    validation = graph.validate!(parent: brief, children:)
 
     assert_no_difference -> { Task.count } do
       assert_raises(TaskLifecycle::Conflict) do
         graph.materialize!(parent_id: brief.id, owner_id: brief.owner_id, claim_version: brief.claim_version,
-          expected_digest: validation.fetch(:digest), children:)
+          children:)
       end
     end
 
@@ -148,13 +147,14 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
     publish_fence = brief.claim_version
     assert_equal [ "active", "publish", "brief-owner" ], brief.values_at(:status, :current_step, :owner_id)
 
+    materialized = nil
     assert_difference -> { Task.count }, 2 do
       materialized = graph.materialize!(parent_id: brief.id, owner_id: brief.owner_id,
-        claim_version: publish_fence, expected_digest: validation.fetch(:digest), children:)
-      assert_equal validation.fetch(:digest), materialized.fetch(:digest)
+        claim_version: publish_fence, children:)
+      assert_match(/\Asha256:[0-9a-f]{64}\z/, materialized.fetch(:digest))
     end
     assert_equal [ "publish", publish_fence ], brief.reload.values_at(:current_step, :claim_version)
-    assert_equal validation.fetch(:digest), graph.observe(parent: brief).fetch(:digest)
+    assert_equal materialized.fetch(:digest), graph.observe(parent: brief).fetch(:digest)
 
     completed = lifecycle.report_attempt!(task_id: brief.id, owner_id: brief.owner_id,
       claim_version: publish_fence, step: "publish", outcome: "published", artifact: "# Publication\n")
@@ -347,10 +347,8 @@ class AcceptanceScenariosTest < ActiveSupport::TestCase
   def materialize_acceptance_child(task)
     children = [ { "key" => "work", "title" => "Work", "description_markdown" => "Implement work",
       "blocker_keys" => [] } ]
-    graph = BriefTaskGraph.new
-    digest = graph.validate!(parent: task, children:).fetch(:digest)
-    graph.materialize!(parent_id: task.id, owner_id: task.owner_id, claim_version: task.claim_version,
-      expected_digest: digest, children:)
+    BriefTaskGraph.new.materialize!(parent_id: task.id, owner_id: task.owner_id,
+      claim_version: task.claim_version, children:)
   end
 
   def run_read_only_plan(lifecycle, task, worktree, root)
@@ -572,13 +570,11 @@ class RestartRecoveryScenarioTest < ActiveSupport::TestCase
             key: "child", title: "Recovered child", description_markdown: "Implement", blocker_keys: []
           } ]))
           graph_file.flush
-          digest = run_kos_json(system, "task", "validate-children", task_id.to_s,
-            "--definition-file", graph_file.path).fetch("digest")
           proxy = dropping_proxy(system.fetch(:port))
 
           _output, error, status = run_kos(system, "task", "materialize-children", task_id.to_s,
             "--definition-file", graph_file.path, "--owner-id", "brief-owner", "--claim-version",
-            claim.fetch("claim_version").to_s, "--expected-digest", digest, api_url: proxy.fetch(:url))
+            claim.fetch("claim_version").to_s, api_url: proxy.fetch(:url))
           joined = proxy.fetch(:thread).join(5)
           cleanup_proxy(proxy)
           assert joined, "response-dropping proxy did not finish"
@@ -588,14 +584,17 @@ class RestartRecoveryScenarioTest < ActiveSupport::TestCase
 
           output, retry_error, retry_status = run_kos(system, "task", "materialize-children", task_id.to_s,
             "--definition-file", graph_file.path, "--owner-id", "brief-owner", "--claim-version",
-            claim.fetch("claim_version").to_s, "--expected-digest", digest)
+            claim.fetch("claim_version").to_s)
           assert_equal 1, retry_status.exitstatus
           assert_empty retry_error
           assert_equal "conflict", JSON.parse(output).fetch("error")
 
           observed = run_kos_json(system, "task", "children", task_id.to_s)
-          assert_equal digest, observed.fetch("digest")
-          assert_equal [ "Recovered child" ], observed.fetch("children").map { |entry| entry.dig("task", "title") }
+          assert_match(/\Asha256:[0-9a-f]{64}\z/, observed.fetch("digest"))
+          child = observed.fetch("children").sole
+          assert_equal [ "Recovered child", "Implement", [] ],
+            [ child.dig("task", "title"), child.dig("task", "description_markdown"),
+              child.fetch("sibling_blocker_ids") ]
         end
       end
     end

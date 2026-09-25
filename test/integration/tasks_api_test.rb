@@ -166,24 +166,21 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     assert_response :bad_request
   end
 
-  test "validates materializes and observes a brief child graph" do
+  test "atomically materializes and observes a brief child graph" do
     brief, claim = claimed_brief_at_publish
     children = [
       { key: "core", title: "Core", description_markdown: "Build core", blocker_keys: [] },
       { key: "surface", title: "Surface", description_markdown: "Build surface", blocker_keys: [ "core" ] }
     ]
 
-    post validate_children_task_path(brief), params: { children: }, headers: @headers, as: :json
-    assert_response :success
-    digest = response.parsed_body.fetch("digest")
-
     assert_difference -> { Task.count }, 2 do
       post materialize_children_task_path(brief), params: {
-        owner_id: "brief-owner", claim_version: claim.claim_version, expected_digest: digest, children:
+        owner_id: "brief-owner", claim_version: claim.claim_version, children:
       }, headers: @headers, as: :json
     end
     assert_response :created
-    assert_equal digest, response.parsed_body.fetch("digest")
+    digest = response.parsed_body.fetch("digest")
+    assert_match(/\Asha256:[0-9a-f]{64}\z/, digest)
     materialized = response.parsed_body.fetch("children")
     assert_equal [ "Core", "Surface" ], materialized.map { |entry| entry.dig("task", "title") }
 
@@ -203,28 +200,29 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     assert_equal [ core_id ], surface.fetch("sibling_blocker_ids")
   end
 
-  test "child graph endpoints return stable errors without partial writes" do
+  test "child graph materialization returns stable errors without partial writes" do
     brief, claim = claimed_brief_at_publish
     children = [ { key: "child", title: "Child", description_markdown: "Work", blocker_keys: [] } ]
 
-    post validate_children_task_path(brief), params: { children: [ children.first.merge(blocker_ids: [ -1 ]) ] },
-      headers: @headers, as: :json
-    assert_response :unprocessable_entity
-    assert_equal "invalid_graph", response.parsed_body.fetch("error")
-
-    digest = BriefTaskGraph.new.validate!(parent: brief, children:)[:digest]
     assert_no_difference -> { Task.count } do
       post materialize_children_task_path(brief), params: {
-        owner_id: "wrong-owner", claim_version: claim.claim_version, expected_digest: digest, children:
+        owner_id: "wrong-owner", claim_version: claim.claim_version, children:
       }, headers: @headers, as: :json
     end
     assert_response :conflict
     assert_equal "conflict", response.parsed_body.fetch("error")
 
-    post materialize_children_task_path(brief), params: {
-      owner_id: "brief-owner", claim_version: claim.claim_version, expected_digest: "sha256:wrong", children:
-    }, headers: @headers, as: :json
-    assert_response :conflict
+    assert_no_difference [ -> { Task.count }, -> { TaskDependency.count } ] do
+      post materialize_children_task_path(brief), params: {
+        owner_id: "brief-owner", claim_version: claim.claim_version,
+        children: [ children.first.merge(blocker_ids: [ -1 ]) ]
+      }, headers: @headers, as: :json
+    end
+    assert_response :unprocessable_entity
+    assert_equal "invalid_graph", response.parsed_body.fetch("error")
+
+    post "/tasks/#{brief.id}/validate-children", params: { children: }, headers: @headers, as: :json
+    assert_response :not_found
   end
 
   test "create and claim rejects incomplete blockers without creating a task" do
@@ -503,7 +501,6 @@ class TasksApiTest < ActionDispatch::IntegrationTest
       -> { post resume_task_path(1), params: {}, as: :json },
       -> { post report_attempt_task_path(1), params: {}, as: :json },
       -> { post cancel_task_path(1), params: {}, as: :json },
-      -> { post validate_children_task_path(1), params: {}, as: :json },
       -> { post materialize_children_task_path(1), params: {}, as: :json },
       -> { get children_task_path(1), as: :json }
     ]

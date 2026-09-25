@@ -79,11 +79,11 @@ evidence. Successful scenarios retain and expose `passed` or `not_required`
 alongside the implementation Markdown.
 
 Deterministic brief E2E runs briefing in a fresh `kos-brief` agent, verifies OKF
-conformance, independently reviews specification and exact graph, validates
-before publication, observes remote publication before materialization, and
+conformance, independently reviews the specification and exact graph, observes
+remote publication before one fenced atomic materialization operation, and
 completes only after observing the materialized graph. One-child and acyclic
 multi-child graphs, sibling blockers, parent availability, every backward
-outcome, repeated materialization, digest mismatch, and post-publication graph
+outcome, invalid-graph rollback, repeated materialization, and post-publication graph
 conflict are covered.
 
 State recovery tests restart the server after accepted reports and between

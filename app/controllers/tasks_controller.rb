@@ -140,17 +140,11 @@ class TasksController < ApplicationController
     render json: serialize(lifecycle.cancel!(task_id: params[:id]))
   end
 
-  def validate_children
-    result = task_graph.validate!(parent: Task.find(params[:id]), children: required_children)
-    render json: result
-  end
-
   def materialize_children
     result = task_graph.materialize!(
       parent_id: params[:id],
       owner_id: required_string(:owner_id),
       claim_version: required_integer(:claim_version),
-      expected_digest: required_string(:expected_digest),
       children: required_children
     )
     render json: { digest: result.fetch(:digest), children: result.fetch(:children).map { |task| serialize(task) } },

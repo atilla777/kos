@@ -43,7 +43,7 @@ class GemPackageTest < ActiveSupport::TestCase
         "task-type" => %w[create update],
         "task" => %w[
           create create-or-get create-and-claim update show context artifact show-owned claim-next claim resumable resume
-          report-attempt cancel validate-children materialize-children children
+          report-attempt cancel materialize-children children
         ]
       }.each do |resource, actions|
         inventory = output.lines.grep(/^\s*#{Regexp.escape(resource)}\s+/).join

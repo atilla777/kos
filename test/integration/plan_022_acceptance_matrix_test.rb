@@ -70,7 +70,7 @@ class Plan022AcceptanceMatrixTest < ActiveSupport::TestCase
     ]),
     Criterion.new("real development/fix/brief scenarios E2E", [
       [ "test/integration/acceptance_scenarios_test.rb", "built in development and fix lifecycles complete at publication" ],
-      [ "test/integration/acceptance_scenarios_test.rb", "brief materializes its exact validated graph before publication completes it" ]
+      [ "test/integration/acceptance_scenarios_test.rb", "brief atomically materializes its exact graph before publication completes it" ]
     ]),
     Criterion.new("no local tasks/id dir", [
       [ "test/integration/acceptance_scenarios_test.rb", "task state and accepted artifact survive restart without a local task artifact directory" ]

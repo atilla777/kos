@@ -20,7 +20,6 @@ Rails.application.routes.draw do
       post :resume
       post "report-attempt", action: :report_attempt
       post :cancel
-      post "validate-children", action: :validate_children
       post "materialize-children", action: :materialize_children
       get :children
     end

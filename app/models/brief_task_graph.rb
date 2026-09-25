@@ -6,23 +6,13 @@ class BriefTaskGraph
 
   REQUIRED_CHILD_KEYS = %w[key title description_markdown blocker_keys].freeze
 
-  def validate!(parent:, children:)
-    raise TaskLifecycle::Conflict, "brief task already has a materialized child graph" if parent.children.exists?
-
-    normalized = normalize!(parent:, children:)
-    { digest: definition_digest(normalized), children: normalized }
-  end
-
-  def materialize!(parent_id:, owner_id:, claim_version:, expected_digest:, children:)
+  def materialize!(parent_id:, owner_id:, claim_version:, children:)
     Task.transaction do
       parent = lock_parent!(parent_id)
-      normalized = normalize!(parent:, children:)
-      actual_digest = definition_digest(normalized)
-      raise TaskLifecycle::Conflict, "child graph digest does not match the validated definition" unless
-        expected_digest == actual_digest
-
       validate_claim!(parent, owner_id:, claim_version:)
       raise TaskLifecycle::Conflict, "brief task already has a materialized child graph" if parent.children.exists?
+      normalized = normalize!(parent:, children:)
+      actual_digest = definition_digest(normalized)
 
       task_type = TaskType.find_by!(key: "development")
       created = normalized.to_h do |definition|

@@ -170,7 +170,6 @@ POST  /tasks/:id/claim
 POST  /tasks/:id/resume
 POST  /tasks/:id/report-attempt
 POST  /tasks/:id/cancel
-POST  /tasks/:id/validate-children
 POST  /tasks/:id/materialize-children
 GET   /tasks/:id/children
 ```
@@ -204,6 +203,12 @@ the Markdown or check output. A brief `published` report
 requires an already materialized child graph under the same serialized
 transaction boundary, and a materialized graph cannot coexist with a
 publication rewind.
+
+`materialize-children` accepts `owner_id`, `claim_version`, and the complete
+child definition. Under the exact active publication fence, one transaction
+normalizes, validates, digests, and creates the whole graph or creates nothing.
+The returned server-derived digest and `children` observation support
+lost-response recovery; the digest is output rather than mutation input.
 
 Task responses for broader lifecycle operations contain `task`, `workflow`, and
 `step`. `claim-next` and `show-owned` return `204 No Content` when absent. Known

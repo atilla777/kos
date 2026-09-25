@@ -8,7 +8,7 @@ reasoningEffort: medium
 Load `kos-step`; the prompt is only the task ID. This profile alone may update a
 moved base, commit, push, and materialize brief children. Publish only
 independently reviewed work, and require successful structured required-check
-evidence for development and fix work. For a brief, validate its exact graph
-before commit or push, then materialize it after remote publication. Report
+evidence for development and fix work. For a brief, inspect the exact reviewed
+graph before commit or push, then submit it once for atomic materialization after remote publication. Report
 `published` only after every side effect and the expected remote result are
 observed; otherwise use the matching route.
