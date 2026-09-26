@@ -23,10 +23,47 @@ development records and are not read by the KOS server or CLI.
 | 013 | [Publish reviewed commit sequences](013-reviewed-commit-ranges/task.md) | done | 011, 012 |
 | 014 | [Run simplified live acceptance](014-simplified-live-acceptance/task.md) | done | 011, 012, 013 |
 | 015 | [Preserve exact slash-command arguments](015-preserve-slash-command-arguments/task.md) | done | 014 |
+| 016 | [Record post-acceptance decisions](016-record-observation-decisions/task.md) | done | 015 |
 
-## Future Decisions
+## Resolved Decisions
 
-- Reassess further server workflow and data-model reductions only after the
-  simplified publication flow has been exercised in real sessions.
-- Decide from observed failures whether Git publication needs a deterministic
-  CLI operation.
+### Server Workflow And Data Model
+
+Retain the current workflow and five-table data model. The live acceptance runs
+used or validated request idempotence, ownership fencing, pause and answer
+binding, required-check gates, interruption recovery, immutable workflow
+snapshots, and atomic brief graph materialization. Their extra agent launches do
+not identify redundant server state.
+
+Reconsider a focused reduction only when ordinary sessions show one of these
+conditions:
+
+- `document` is repeatedly a no-op and combining it with implementation would
+  not weaken product-specification maintenance;
+- agents make incorrect decisions from later accepted artifacts retained after
+  a backward transition;
+- leases or claim fencing repeatedly require operator intervention without
+  preventing stale or concurrent writes;
+- authoritative current state plus external session evidence cannot diagnose or
+  recover multiple failures; or
+- an explicit product decision removes support for custom workflows and task
+  types.
+
+### Git Publication
+
+Retain agent-driven publication. The live acceptance runs observed six correct
+remote publications, including a reviewed multi-commit sequence and recovery
+after an interrupted publisher, without a reproduced Git correctness failure.
+
+Reconsider a narrow deterministic Git helper after either:
+
+- one unsafe result, such as a wrong range or ref update, duplicate push, or an
+  accepted `published` result without the reviewed remote range;
+- two Git-specific retries or manual interventions caused by ambiguous remote
+  classification or recovery; or
+- measured publisher cost becomes operationally significant.
+
+If triggered, prefer a local helper limited to validating the reviewed range,
+fetching, classifying, pushing without force, and observing the remote result.
+Keep Git state outside Rails, and leave brief graph materialization and fenced
+task reporting separate rather than implying a cross-system transaction.
