@@ -22,6 +22,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     assert_equal @workflow.id, response.parsed_body.dig("workflow", "id")
     assert_equal "develop", response.parsed_body.dig("step", "id")
     assert_equal "advanced", response.parsed_body.dig("step", "model_tier")
+    assert_equal "main", response.parsed_body.dig("step", "execution_mode")
     assert_equal "Implement the task.", response.parsed_body.dig("step", "instruction")
 
     get task_path(task_id), headers: @headers, as: :json
@@ -61,7 +62,8 @@ class TasksApiTest < ActionDispatch::IntegrationTest
       body.fetch("task").keys.sort
     assert_equal %w[default_branch id name remote_url repository_identity], body.fetch("project").keys.sort
     assert_equal @project.repository_identity, body.dig("project", "repository_identity")
-    assert_equal %w[allowed_outcomes artifact_template id instruction model_tier name], body.fetch("step").keys.sort
+    assert_equal %w[allowed_outcomes artifact_template execution_mode id instruction model_tier name],
+      body.fetch("step").keys.sort
     assert_equal %w[question ready], body.dig("step", "allowed_outcomes").sort
     assert_equal [ {
       "step" => "develop", "outcome" => "question", "accepted_claim_version" => 1, "reconstructed" => false
@@ -288,7 +290,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "projects advanced tiers throughout a persisted legacy workflow" do
     definition = valid_workflow_definition.deep_dup
-    definition["steps"].each { |step| step.delete("model_tier") }
+    definition["steps"].each { |step| step.delete("model_tier"); step.delete("execution_mode") }
     workflow = Workflow.new(name: "Legacy", definition_json: definition)
     workflow.save!(validate: false)
     task_type = create_task_type(name: "Legacy", workflow:)
@@ -298,8 +300,12 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_equal "advanced", response.parsed_body.dig("step", "model_tier")
+    assert_equal "subagent", response.parsed_body.dig("step", "execution_mode")
     assert response.parsed_body.dig("workflow", "definition_json", "steps").all? do |step|
       step["model_tier"] == "advanced"
+    end
+    assert response.parsed_body.dig("workflow", "definition_json", "steps").all? do |step|
+      step["execution_mode"] == "subagent"
     end
   end
 

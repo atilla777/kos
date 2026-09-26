@@ -337,7 +337,7 @@ class TaskLifecycleTest < ActiveSupport::TestCase
       first_step = definition.fetch("steps").first
       first_step.fetch("outcomes")["premature"] = { "complete_task" => true }
       altered_workflow = create_workflow(name: "Invalid completion #{key}", definition:)
-      task_type.update!(workflow: altered_workflow)
+      task_type.update_builtin!(workflow: altered_workflow)
       task = create_task(project: create_project, workflow: altered_workflow, task_type:,
         current_step: first_step.fetch("id"))
       task = @lifecycle.claim!(task_id: task.id, owner_id: "#{key}-owner")
@@ -425,6 +425,30 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     assert_equal before, task.reload.attributes
   end
 
+  test "custom former built-in step names do not inherit built-in gates" do
+    %w[diagnose plan implement document brief review publish].each_with_index do |step_id, index|
+      definition = {
+        "steps" => [ {
+          "id" => step_id, "name" => "Custom #{step_id}",
+          "execution_mode" => index.even? ? "main" : "subagent",
+          "model_tier" => index.even? ? "standard" : "advanced",
+          "instruction" => "Complete custom work.", "artifact_template" => "# Custom",
+          "outcomes" => { "done" => { "complete_task" => true } }
+        } ]
+      }
+      workflow = create_workflow(name: "Custom #{step_id}", definition:)
+      task_type = create_task_type(key: "custom-collision-#{step_id}", workflow:)
+      task = create_task(project: create_project, workflow:, task_type:, current_step: step_id)
+      task = @lifecycle.claim!(task_id: task.id, owner_id: "custom-#{step_id}")
+
+      completed = @lifecycle.report_attempt!(task_id: task.id, owner_id: task.owner_id,
+        claim_version: task.claim_version, step: step_id, outcome: "done", artifact: "# Done")
+
+      assert_equal "completed", completed.status, step_id
+      assert_nil completed.accepted_artifacts.dig(step_id, "required_checks"), step_id
+    end
+  end
+
   test "built in check gates follow transition semantics rather than outcome names" do
     BuiltInCatalog.install!
     definition = BuiltInCatalog.definitions.fetch("development").deep_dup
@@ -437,7 +461,7 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     end
     workflow = create_workflow(name: "Renamed outcomes", definition:)
     task_type = TaskType.find_by!(key: "development")
-    task_type.update!(workflow:)
+    task_type.update_builtin!(workflow:)
     task = create_task(project: create_project, workflow:, task_type:, current_step: "implement")
     task = @lifecycle.claim!(task_id: task.id, owner_id: "renamed")
 
@@ -464,7 +488,7 @@ class TaskLifecycleTest < ActiveSupport::TestCase
     implementation.fetch("outcomes")["rediagnose"] = { "next_step" => "diagnose" }
     workflow = create_workflow(name: "Fix with rediagnosis", definition:)
     task_type = TaskType.find_by!(key: "fix")
-    task_type.update!(workflow:)
+    task_type.update_builtin!(workflow:)
     task = create_task(project: create_project, workflow:, task_type:, current_step: "implement")
     task = @lifecycle.claim!(task_id: task.id, owner_id: "rediagnose")
 

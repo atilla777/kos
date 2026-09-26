@@ -18,36 +18,32 @@ class KosGitSkillTest < ActiveSupport::TestCase
     assert match
     frontmatter = YAML.safe_load(match[1])
     assert_equal "kos-git", frontmatter.fetch("name")
-    assert_match(/KOS task worktree derivation/, frontmatter.fetch("description"))
+    assert_match(/KOS repository discovery.*worktree derivation/, frontmatter.fetch("description"))
     assert_equal [ "SKILL.md" ], Dir.children(SKILL_PATH.dirname).sort
   end
 
-  test "defines task-owned ranges read-only review and immutable publication" do
+  test "defines generic repository discovery worktree and preservation mechanisms" do
     source = File.read(SKILL_PATH)
     compact = source.gsub(/\s+/, " ")
 
-    %w[Repository\ Discovery Authoritative\ Context Step\ Policy Content\ Commits Review Publication].each do |heading|
+    %w[Repository\ Discovery Authoritative\ Context Operation\ Boundary].each do |heading|
       assert_match(/^## #{heading}$/, source)
     end
     assert_includes source, "Accept only a positive task ID"
     assert_includes source, "<kos-data-home>/worktrees/<project-id>/<task-id>"
-    assert_includes source, "exactly one raw commit\nmessage line exactly equal to `KOS-Task: <task-id>`"
-    assert_includes source, "clean index and worktree"
-    assert_includes compact, "exact base SHA, ordered commit SHAs, tip SHA"
-    assert_includes compact, "base and per-commit tree SHAs"
-    assert_includes compact, "SHA-256 digest of the complete base-to-tip binary diff"
-    assert_includes source, "not the diff bytes"
-    assert_includes source, "preserve `HEAD`, refs, index, worktree bytes"
-    assert_includes source, "never create, stage, commit, amend, rebase, squash, cherry-pick, or append a\ncommit"
-    assert_includes source, "remote tip equals the reviewed tip"
-    assert_includes source, "differs from both reviewed tip and base"
-    assert_includes source, "including errors and lost responses"
-    assert_includes source, "exact ordered sequence with the same commit and tree\nobjects"
-    assert_includes source, "never reports a KOS\nattempt"
+    assert_includes source, "Preserve staged,\nunstaged, and untracked task work"
+    assert_includes compact, "workflow instruction alone decides whether repository access is read-only"
+    assert_includes source, "Never infer Git\nauthority from a step ID"
+    assert_includes source, "External side effects with ambiguous results"
+    assert_includes source, "never reports a\nKOS attempt"
     assert_includes source, "exactly one configured fetch URL"
     assert_includes source, "exactly one configured push URL"
     assert_includes source, "absolute scp path"
     assert_includes source, "duplicate or ambiguous leading slashes"
+    %w[diagnose plan implement document brief review publish].each do |step|
+      refute_match(/`#{step}`/, source)
+    end
+    refute_match(/^## (?:Step Policy|Content Commits|Review|Publication)$/, source)
   end
 
   test "content steps leave a clean contiguous multi-commit task range" do

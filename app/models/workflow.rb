@@ -1,10 +1,12 @@
 class Workflow < ApplicationRecord
   ROOT_KEYS = %w[steps].freeze
-  STEP_KEYS = %w[artifact_template id instruction model_tier name outcomes].freeze
+  STEP_KEYS = %w[artifact_template execution_mode id instruction model_tier name outcomes].freeze
+  PREVIOUS_STEP_KEYS = %w[artifact_template id instruction model_tier name outcomes].freeze
   LEGACY_STEP_KEYS = %w[artifact_template id instruction name outcomes].freeze
   ACTION_KEYS = %w[complete_task next_step pause].freeze
   PAUSES = %w[blocked needs_human].freeze
   MODEL_TIERS = %w[standard advanced].freeze
+  EXECUTION_MODES = %w[main subagent].freeze
 
   has_many :task_types
   has_many :tasks
@@ -33,7 +35,10 @@ class Workflow < ApplicationRecord
 
   def definition_for_execution
     definition_json.merge("steps" => definition_json["steps"].map do |step|
-      step.merge("model_tier" => step.fetch("model_tier", "advanced"))
+      step.merge(
+        "model_tier" => step.fetch("model_tier", "advanced"),
+        "execution_mode" => step.fetch("execution_mode", "subagent")
+      )
     end)
   end
 
@@ -80,12 +85,15 @@ class Workflow < ApplicationRecord
     unless MODEL_TIERS.include?(step.fetch("model_tier", "advanced"))
       errors.add(:definition_json, "step #{index} model_tier must be standard or advanced")
     end
+    unless EXECUTION_MODES.include?(step.fetch("execution_mode", "subagent"))
+      errors.add(:definition_json, "step #{index} execution_mode must be main or subagent")
+    end
 
     validate_outcomes(step["outcomes"], index, targets)
   end
 
   def valid_step_keys?(keys)
-    keys == STEP_KEYS || legacy_definition_unchanged? && keys == LEGACY_STEP_KEYS
+    keys == STEP_KEYS || legacy_definition_unchanged? && [ PREVIOUS_STEP_KEYS, LEGACY_STEP_KEYS ].include?(keys)
   end
 
   def legacy_definition_unchanged?

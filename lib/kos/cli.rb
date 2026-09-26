@@ -2,6 +2,7 @@ require "json"
 require "net/http"
 require "openssl"
 require "optparse"
+require "securerandom"
 require "uri"
 require_relative "version"
 
@@ -30,6 +31,7 @@ module Kos
     def run
       return print_version if @arguments == [ "--version" ] || @arguments == [ "-v" ]
       return print_help if @arguments.empty? || @arguments == [ "--help" ] || @arguments == [ "-h" ]
+      return session_id if @arguments.first == "session-id"
 
       method, path, payload = command
       response = request(method, path, payload)
@@ -58,6 +60,7 @@ module Kos
 
         Resources and actions:
           health
+          session-id
           project create | show | update
           workflow create
           task-type create | update
@@ -69,6 +72,13 @@ module Kos
 
         Run `kos <resource> <action> --help` for command options.
       HELP
+      0
+    end
+
+    def session_id
+      @arguments.shift
+      parse_options("kos session-id", {})
+      @stdout.puts("kos-session-#{SecureRandom.hex(16)}")
       0
     end
 

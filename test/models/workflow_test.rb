@@ -40,19 +40,64 @@ class WorkflowTest < ActiveSupport::TestCase
     end
   end
 
+  test "requires an explicit main or subagent execution mode for new workflows" do
+    definition = valid_workflow_definition
+    definition["steps"][0].delete("execution_mode")
+    assert_not Workflow.new(name: "Workflow", definition_json: definition).valid?
+
+    [ "", "worker", nil, [] ].each do |mode|
+      definition = valid_workflow_definition
+      definition["steps"][0]["execution_mode"] = mode
+      assert_not Workflow.new(name: "Workflow", definition_json: definition).valid?
+    end
+
+    assert_equal %w[main subagent], valid_workflow_definition.fetch("steps").pluck("execution_mode")
+  end
+
   test "uses advanced as the effective tier for an unchanged persisted legacy workflow" do
     definition = valid_workflow_definition.deep_dup
-    definition["steps"].each { |step| step.delete("model_tier") }
+    definition["steps"].each { |step| step.delete("model_tier"); step.delete("execution_mode") }
     workflow = Workflow.new(name: "Legacy", definition_json: definition)
     workflow.save!(validate: false)
     workflow.reload
 
     assert workflow.valid?
     assert_equal "advanced", workflow.step_for("develop").fetch("model_tier")
+    assert_equal "subagent", workflow.step_for("develop").fetch("execution_mode")
     assert workflow.definition_for_execution.fetch("steps").all? { |step| step["model_tier"] == "advanced" }
     task_type = create_task_type(name: "Legacy", workflow:)
     task = create_task(workflow:, task_type:)
     assert_equal workflow, task.workflow
+  end
+
+  test "uses subagent as the effective mode for the previous persisted workflow shape" do
+    definition = valid_workflow_definition.deep_dup
+    definition["steps"].each { |step| step.delete("execution_mode") }
+    workflow = Workflow.new(name: "Previous", definition_json: definition)
+    workflow.save!(validate: false)
+
+    assert workflow.reload.valid?
+    assert workflow.definition_for_execution.fetch("steps").all? { |step| step["execution_mode"] == "subagent" }
+  end
+
+  test "former built-in step ids accept only their declared generic execution fields" do
+    ids = %w[diagnose plan implement document brief review publish]
+    steps = ids.each_with_index.map do |id, index|
+      action = index == ids.length - 1 ? { "complete_task" => true } : { "next_step" => ids.fetch(index + 1) }
+      {
+        "id" => id,
+        "name" => id.titleize,
+        "execution_mode" => index.even? ? "main" : "subagent",
+        "model_tier" => index.even? ? "standard" : "advanced",
+        "instruction" => "Execute custom #{id} behavior.",
+        "artifact_template" => "# #{id.titleize}",
+        "outcomes" => { "done" => action }
+      }
+    end
+
+    workflow = Workflow.create!(name: "Name collisions", definition_json: { "steps" => steps })
+
+    assert_equal steps, workflow.definition_for_execution.fetch("steps")
   end
 
   test "requires non-empty unique step ids and names" do

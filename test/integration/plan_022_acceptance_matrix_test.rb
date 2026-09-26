@@ -5,7 +5,7 @@ class Plan022AcceptanceMatrixTest < ActiveSupport::TestCase
 
   COVERAGE = [
     Criterion.new("agent only ID/context", [
-      [ "test/skills/kos_skills_test.rb", "step guidance keeps the lifecycle concise and leaves validation to the server" ]
+      [ "test/skills/kos_skills_test.rb", "step guidance uses workflow context as the complete role contract" ]
     ]),
     Criterion.new("context index no bodies", [
       [ "test/integration/tasks_api_test.rb", "context returns the bounded agent projection and artifact bodies are read separately" ]
@@ -36,14 +36,14 @@ class Plan022AcceptanceMatrixTest < ActiveSupport::TestCase
       [ "test/integration/acceptance_scenarios_test.rb", "a paused question and answer survive repeated interruption in server state" ]
     ]),
     Criterion.new("scheduler only ID", [
-      [ "test/skills/kos_skills_test.rb", "scheduler dispatches built-ins by exact step with an ID-only prompt" ]
+      [ "test/skills/kos_skills_test.rb", "scheduler dispatches by authoritative mode and tier with an ID-only prompt" ]
     ]),
     Criterion.new("scheduler no Markdown/Git", [
-      [ "test/skills/kos_skills_test.rb", "scheduler has no step artifact Git or result-parsing policy" ]
+      [ "test/skills/kos_skills_test.rb", "scheduler phase has no artifact Git or result-parsing policy" ]
     ]),
     Criterion.new("profile policy", [
-      [ "test/skills/kos_skills_test.rb", "profiles preserve role and model metadata without permission policy" ],
-      [ "test/skills/kos_skills_test.rb", "review plan and diagnose profiles are read-only" ]
+      [ "test/skills/kos_skills_test.rb", "installs exactly two generic tier profiles without role policy" ],
+      [ "test/skills/kos_skills_test.rb", "built-in workflow instructions retain delivery and independent review boundaries" ]
     ]),
     Criterion.new("independent read-only review", [
       [ "test/integration/acceptance_scenarios_test.rb", "a moved base repeats content checks and exact-range review before publication" ]
@@ -52,13 +52,13 @@ class Plan022AcceptanceMatrixTest < ActiveSupport::TestCase
       [ "test/integration/acceptance_scenarios_test.rb", "built in development and fix lifecycles complete at publication" ]
     ]),
     Criterion.new("publish observes remote", [
-      [ "test/skills/kos_skills_test.rb", "publication observes the exact reviewed remote range" ]
+      [ "test/skills/kos_skills_test.rb", "built-in workflow instructions retain delivery and independent review boundaries" ]
     ]),
     Criterion.new("publication prerequisites gate completion", [
       [ "test/models/brief_task_graph_test.rb", "rejects published before materialization without accepting an artifact" ]
     ]),
     Criterion.new("no push before publish", [
-      [ "test/skills/kos_skills_test.rb", "profiles retain operational role boundaries" ]
+      [ "test/skills/kos_skills_test.rb", "built-in workflow instructions retain delivery and independent review boundaries" ]
     ]),
     Criterion.new("existing IDs/relationships/workflows/worktrees", [
       [ "test/integration/repository_identity_migration_test.rb", "backfill and reversal preserve IDs relationships workflow snapshots and execution state" ],
@@ -105,11 +105,8 @@ class Plan022AcceptanceMatrixTest < ActiveSupport::TestCase
 
   test "clean install and workflow coverage use the exact managed inventory and catalog" do
     assert_equal %w[kos-brief.md kos-fix.md kos.md], managed_names(".opencode/commands")
-    assert_equal %w[
-      kos-brief.md kos-diagnose.md kos-document.md kos-implement.md kos-plan.md kos-publish.md kos-review.md
-      kos-step-advanced.md kos-step-standard.md
-    ], managed_names(".opencode/agents")
-    assert_equal %w[kos kos-brief kos-cli kos-git kos-step okf], managed_names("skills")
+    assert_equal %w[kos-step-advanced.md kos-step-standard.md], managed_names(".opencode/agents")
+    assert_equal %w[kos kos-cli kos-git kos-step okf], managed_names("skills")
     assert_equal %w[brief development fix], BuiltInCatalog.definitions.keys.sort
     assert_equal %w[brief review publish], catalog_steps("brief")
     assert_equal %w[plan implement document review publish], catalog_steps("development")

@@ -8,10 +8,12 @@ These rules describe the implemented PLAN-022 state-oriented architecture.
   artifacts, pause and answer bindings, and transactional transitions.
 - The CLI is a thin authenticated HTTP client. It never reads SQLite directly
   and does not contain an agent runtime or broker.
-- A slash-command orchestrator is only a scheduler: select or create, claim or
-  resume, read context, dispatch one exact profile by task ID, and reread context.
-- A fresh step agent owns one step: focused context reads, predecessor evidence,
-  worktree operations, checks, artifact production, outcome choice, and reporting.
+- A slash-command orchestrator schedules from context: select or create, claim
+  or resume, execute `main` steps locally or dispatch `subagent` steps by tier,
+  and reread context.
+- A main or subagent step executor owns one step: focused context reads,
+  predecessor evidence, worktree operations, checks, artifact production,
+  outcome choice, and reporting.
 - The filesystem owns task worktrees. It does not own request-bound creation
   recovery, accepted step artifacts, or human answers.
 - Git owns commits and SHA values. Rails has no Git-specific SHA fields. Content
@@ -71,6 +73,10 @@ transition, increments `claim_version`, and sets or clears pause and answer stat
 Built-in development and fix success at implementation, review, and publication
 requires accepted `passed` or `not_required` check evidence.
 No accepted artifact can exist without its corresponding accepted transition.
+New workflow steps require explicit `execution_mode` and `model_tier`; unchanged
+older revisions execute with effective `subagent` and `advanced` defaults where
+those fields are absent. Public administration cannot repoint reserved built-in
+task types; catalog installation owns their canonical workflow revisions.
 Built-in completion is additionally constrained to the `published` outcome at
 `publish`. Brief materialization takes a SQLite write lock, verifies the exact
 active publication fence, and then normalizes, validates, digests, and creates
@@ -109,20 +115,21 @@ state.
 ### Schedulers
 
 `skills/kos` contains the shared scheduler for development, fix, and brief
-tasks; `skills/kos-brief` is the brief command's thin entry adapter. The shared
-scheduler may discover a project, offer resumable tasks, request a safe claim or
-resume, and display persisted pause information.
-Each command session generates a fresh unpredictable owner for claim or resume;
+tasks; every slash command enters it directly. The scheduler may discover a
+project, offer resumable tasks, request a safe claim or resume, and display
+persisted pause information.
+The CLI generates one fresh unpredictable owner for each command session;
 `KOS_OWNER_ID` is not configuration. Request-bound creation uses that owner in
 the focused server-idempotent `task create-or-get` operation.
 
-For each active iteration the scheduler reads `task context`, maps the exact
-current built-in step to one focused profile, dispatches a fresh foreground
-child whose entire prompt is the decimal task ID, ignores all returned text, and
-rereads context. It never reads the task description for dispatch, workflow
-Markdown, accepted artifacts, local artifacts, Git diff/status/HEAD, checks,
-child outcomes, graph proposals, receipts, or pending submissions. It never
-calls `report-attempt` or performs brief graph operations.
+For each active iteration the scheduler reads `task context` and follows only
+the current step's `execution_mode` and `model_tier`. A `main` step executes in
+the command agent through the shared step contract. A `subagent` step dispatches
+one fresh generic standard or advanced child whose entire prompt is the decimal
+task ID, then ignores all returned text. After either path the scheduler rereads
+context. Scheduling decisions never inspect task Markdown, accepted artifacts,
+Git state, checks, child outcomes, graph proposals, receipts, or pending
+submissions. Step execution, including reporting, remains a distinct phase.
 
 Request-bound creation is one CLI and server operation. The scheduler supplies
 the project, kind, fresh owner, and exact request. The server derives the
@@ -138,14 +145,13 @@ literal quotes before this boundary. KOS intentionally does not infer argv or
 reverse that external representation. Interactive slash payloads and separate
 `opencode run --command ...` argv words are the supported exact invocation paths.
 
-### Step Agents
+### Step Execution
 
-Every step profile loads `kos-step` and receives exactly one positive task ID.
-The shared guidance tells it to read authoritative context and relevant accepted
-evidence, obtain its worktree through `kos-git`, execute one step, and report its
-own result. Role profiles stay concise: they define substantive responsibility,
-expected result, and essential read-only, mutation, or publication boundaries
-rather than repeating transport and fencing mechanics.
+Every executor loads `kos-step` with exactly one positive task ID. The shared
+guidance tells it to read authoritative context and relevant accepted evidence,
+obtain its worktree through `kos-git`, execute one step, and report its own
+result. The workflow step's instruction, artifact template, and outcomes are the
+complete substantive role contract. Step IDs and profiles confer no authority.
 
 The server transaction validates the active owner, claim version, current step,
 outcome, artifact, and pause message and is the acceptance boundary. On an
@@ -155,8 +161,8 @@ second step.
 
 ### Git And Worktrees
 
-`kos-git` accepts only a task ID, gets the registered project and authority from
-context, and derives `<kos-data-home>/worktrees/<project-id>/<task-id>`. It
+`kos-git` accepts only a task ID, gets the registered project from context, and
+derives `<kos-data-home>/worktrees/<project-id>/<task-id>`. It
 requires a verified detached worktree for the registered repository and remote,
 preserves staged, unstaged, and untracked work, and refuses unknown or unsafe
 paths and active Git operations rather than deleting or repairing them.
@@ -168,31 +174,24 @@ queries, fragments, local paths, ambiguous slashes, non-`git` SSH users, and
 fetch/push identity mismatches are rejected before mutation. `kos-cli` performs
 an exact registration lookup. There is no `KOS_PROJECT_*` configuration.
 
-## Profiles And Roles
+`kos-git` supplies reusable discovery, verified worktree derivation, state
+observation, and preservation rules. It does not infer read, commit, push,
+review, publication, or graph authority from a step ID or task type; the
+workflow instruction supplies those substantive boundaries.
 
-The slash commands run in OpenCode's primary `build` agent and load scheduler
-skills. The `.opencode/agents/kos-*` files below select role, model, reasoning
-effort, and prompt for fresh step subagents.
+## Execution Profiles
 
-The exact built-in dispatch map is:
-
-| Step | Profile | Model role | Worktree and operation authority |
-| --- | --- | --- | --- |
-| `diagnose` | `kos-diagnose` | advanced | read-only KOS/Git; reproduction from an exported tree with an isolated empty environment |
-| `plan` | `kos-plan` | advanced | read-only |
-| `implement` | `kos-implement` | standard | integrate base, edit, check, and create local task commits; never push |
-| `document` | `kos-document` | standard | edit, use `okf`, and create local task commits; never push |
-| `brief` | `kos-brief` | advanced | authorized specification/graph edits and local task commits; never push |
-| `review` | `kos-review` | advanced | independent read-only review of an exact commit range |
-| `publish` | `kos-publish` | standard | validate and push only the approved range; graph materialization authority |
+The slash commands run in OpenCode's primary `build` agent and load the shared
+scheduler. `main` may be declared by any built-in or custom step. `subagent`
+selection uses only `model_tier`: `kos-step-standard` selects the standard model
+and `kos-step-advanced` selects the advanced model. Built-in briefing is
+advanced `main`; its review is advanced `subagent`, and publication is standard
+`subagent`.
 
 Managed profiles intentionally contain no KOS-specific OpenCode permission
-blocks. They are role and model selection, not a security boundary; tool approval
-comes from the administrator's OpenCode configuration. Their prompts define the
-expected procedure: read-only roles preserve the repository, content roles leave
-a clean task-owned commit range, publish alone pushes and performs brief graph
-mutation, and generic custom-step roles do not commit or push. The shared bearer
-token remains the authorization boundary;
+blocks or substantive role instructions. They select only model, reasoning
+effort, and subagent mode. Tool approval comes from the administrator's OpenCode
+configuration. The shared bearer token remains the authorization boundary;
 lifecycle fencing coordinates trusted concurrent operations, while independent
 review checks the resulting work.
 
@@ -250,9 +249,10 @@ stored against the pause's step and incremented pause version; context projects
 it only for that exact binding. The binding survives another active takeover and
 is cleared by the next accepted report.
 
-This pre-release workflow change provides no legacy workflow support or data
-migration. Existing local database state will be reset separately instead of
-being translated, repointed, or dual-run. Legacy local files remain ignored.
+This pre-release workflow change provides no general legacy migration or
+dual-run path. Effective execution defaults preserve immutable workflow
+revisions that omit mode or tier; other incompatible local database state is
+reset rather than translated or repointed. Legacy local files remain ignored.
 
 Scoped server creation keys recover request creation through an identical
 create-or-get retry. Git publication and brief materialization ambiguity are

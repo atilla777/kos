@@ -28,7 +28,7 @@ Moving an unfinished active task to another host is unsupported.
 
 Users do not manage numeric project or task-type IDs, workflow IDs, claim
 versions, leases, internal API calls, worktree paths, or workflow outcomes.
-Each command session generates its own unpredictable non-secret owner ID. For
+The CLI generates each command session's unpredictable non-secret owner ID. For
 request-bound work, the server derives a deterministic bounded creation key and
 immutable task definition from the command kind and exact request.
 The shared bearer token authorizes every application operation and all token
@@ -74,11 +74,12 @@ they retain only that ID. For every iteration a scheduler:
 
 1. reads authoritative task context;
 2. stops on `completed`, `needs_human`, or `blocked` as directed by persisted state;
-3. maps the exact current built-in step to its focused profile, or an unknown
-   custom step's tier to the generic standard or advanced profile;
-4. launches one fresh foreground step agent whose complete prompt is the task
-   ID's decimal digits; and
-5. ignores child prose and claimed outcomes, then rereads task context.
+3. reads the current step's authoritative `execution_mode` and `model_tier`;
+4. executes a `main` step in the command agent, or launches one fresh generic
+   standard or advanced subagent whose complete prompt is the task ID's decimal
+   digits;
+5. ignores child prose and claimed outcomes when a child was launched; and
+6. rereads task context after either execution path.
 
 The scheduler never receives or reads task Markdown, task description for
 dispatch, workflow artifacts, Git diff, status, HEAD, project checks, child
@@ -86,9 +87,9 @@ dispatch, workflow artifacts, Git diff, status, HEAD, project checks, child
 artifacts, infer outcomes, report attempts, validate or materialize brief
 children, or perform Git checks.
 
-A fresh step agent receives only a positive task ID. It obtains authoritative
-context and relevant accepted evidence itself, invokes `kos-git` by task ID,
-and executes exactly one step within its concise role profile. It reports its
+A step executor receives or retains only a positive task ID. It obtains
+authoritative context and relevant accepted evidence itself, invokes `kos-git`
+by task ID, and executes exactly one step within the workflow instruction. It reports its
 complete artifact and selected transition itself. The server validates the
 active owner, fence, current step, outcome, and artifact atomically; the agent
 does not execute the next step.
@@ -147,10 +148,11 @@ is an implementation detail, not a universal task-state schema or attempt histor
 
 ## Workflow And Built-Ins
 
-A workflow definition contains an ordered `steps` array. Every step has a
-unique `id`, `name`, `instruction`, `artifact_template`, `model_tier` of
-`standard` or `advanced`, and an outcome map. Persisted legacy workflows without
-a tier execute as `advanced`. Every outcome has exactly one action:
+A workflow definition contains an ordered `steps` array. Every new step has a
+unique `id`, `name`, `instruction`, `artifact_template`, `execution_mode` of
+`main` or `subagent`, `model_tier` of `standard` or `advanced`, and an outcome
+map. Unchanged persisted workflows without a mode execute as `subagent`, and
+those without a tier execute as `advanced`. Every outcome has exactly one action:
 
 - `next_step` naming an existing step;
 - `pause` equal to `needs_human` or `blocked`; or
@@ -190,20 +192,22 @@ are:
 | `review` | `approved` -> `publish`; `changes_requested` -> `brief` |
 | `publish` | `published` -> complete; `review_invalid` -> `review`; `base_moved` -> `brief`; `graph_invalid` -> `brief` |
 
-Diagnosis, planning, and review are advanced and read-only. Briefing is advanced
-and may change only authorized specification and graph work. Briefing,
+Built-in diagnosis, planning, and review instructions require advanced,
+read-only execution. Built-in briefing is advanced `main` execution and may
+change only authorized specification and graph work. Briefing,
 implementation, and documentation may create local task commits but never push;
 each successful content step leaves a clean linear sequence from its observed
 base to its tip, with exactly one raw canonical `KOS-Task: <task-id>` line and no
 case variant or duplicate on every commit.
-Implementation owns base integration and all required tests, lint, formatting,
-builds, and type checks. Publication is standard and may only validate and push
-the approved sequence and, for a brief, materialize children. Unknown custom
-steps use tier-specific profiles that may not commit or push.
+Implementation instructions own base integration and all required tests, lint,
+formatting, builds, and type checks. Publication instructions are standard and
+may only validate and push the approved sequence and, for a brief, materialize
+children. Custom steps, including those whose IDs match built-in IDs, receive no
+implicit authority from their names.
 
-Briefing is a fresh isolated step, not work performed in the main conversation.
-It updates OKF behavior and proposes a minimal acyclic graph. Review independently
-checks both. Publication inspects the accepted graph, publishes the reviewed
+Briefing runs in the `/kos-brief` command agent and updates OKF behavior while
+proposing a minimal acyclic graph. Review runs independently in a fresh advanced
+subagent and checks both. Publication inspects the accepted graph, publishes the reviewed
 specification, observes remote success, and then submits the exact graph to one
 fenced operation that atomically normalizes, validates, digests, and materializes
 it. Children are development tasks with the brief as parent and
@@ -260,8 +264,8 @@ syntax and options.
   `current_step`, `owner_id`, `claim_version`, and `lease_expires_at`;
 - `project`: `id`, `name`, `repository_identity`, `remote_url`, and
   `default_branch`;
-- `step`: `id`, `name`, `instruction`, `artifact_template`, `model_tier`, and
-  `allowed_outcomes`;
+- `step`: `id`, `name`, `instruction`, `artifact_template`, `execution_mode`,
+  `model_tier`, and `allowed_outcomes`;
 - `artifacts`: one index entry per accepted step containing `step`, `outcome`,
   applicable `required_checks`, `accepted_claim_version`, and `reconstructed`,
   never Markdown; and
@@ -298,6 +302,11 @@ claim-next, exact claim, resumable, exact resume, cancel; and brief graph
 materialize/children operations. The installed CLI help lists exact
 commands and options; the README summarizes the API routes and operational
 setup.
+`kos session-id` is a local unauthenticated operation that returns
+`kos-session-` followed by 32 lowercase hexadecimal digits from a
+cryptographically secure random source.
+Public task-type administration may repoint custom types but cannot replace a
+reserved built-in type's workflow; catalog installation owns built-in revisions.
 `task create-or-get` accepts a project, kind `fix` or `brief`, owner, and exact
 request file. `task create-and-claim` accepts optional `--creation-key KEY`;
 ordinary task creation does not.
@@ -322,9 +331,10 @@ deletion, rename/fsync requirement, attempt marker, step receipt, or dual-read
 fallback. Old local task artifacts are not read, imported, or considered
 evidence.
 
-This pre-release workflow change provides no legacy workflow support or data
-migration. Existing local database state will be reset separately rather than
-translated or dual-run.
+This pre-release workflow change provides no general legacy migration or
+dual-run path. The effective mode and tier defaults preserve already-persisted
+immutable workflow revisions that omit those fields; other incompatible local
+database state will be reset rather than translated.
 
 Git recovery remains observation-oriented. Publication observes the approved
 base, ordered commit sequence, tip, trees, paths, diff digest, and remote before retrying,

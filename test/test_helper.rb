@@ -17,6 +17,7 @@ module ActiveSupport
           {
             "id" => "develop",
             "name" => "Develop",
+            "execution_mode" => "main",
             "model_tier" => "advanced",
             "instruction" => "Implement the task.",
             "artifact_template" => "# Development",
@@ -28,6 +29,7 @@ module ActiveSupport
           {
             "id" => "check",
             "name" => "Check",
+            "execution_mode" => "subagent",
             "model_tier" => "standard",
             "instruction" => "Run the checks.",
             "artifact_template" => "# Checks",

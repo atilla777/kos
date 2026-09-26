@@ -13,24 +13,41 @@ direct HTTP request, Rails command, or SQLite access. Stop as `blocked` when the
 configured executable is unavailable or incompatible.
 
 `KOS_API_URL` selects the server and otherwise defaults to the CLI's local URL.
-`KOS_API_TOKEN` is required except for `health`. Never print the token, put it in
+`KOS_API_TOKEN` is required for server-backed operations except `health`;
+`session-id` is local and needs neither setting. Never print the token, put it in
 process arguments, or embed it in a URL. It is a shared bearer credential whose
 holders are fully trusted for every application operation; owner IDs, leases,
 and claim-version fences provide concurrency consistency, not authorization.
 
 ## Discover And Invoke
 
-Run `--version` and top-level `--help` to identify the installed CLI. Before an
-operation's first use, read its `--help`. The executable's help is the
-authoritative command and option reference; do not reconstruct syntax from this
-skill. A required operation missing from help is incompatible and `blocked`,
-not permission to emulate it through another interface.
+Run `--version` and top-level `--help` to identify the installed CLI. The common
+templates below may be used directly. Installed per-command help is the fallback
+for uncommon operations and compatibility diagnosis; a missing required
+operation is `blocked`, not permission to emulate it through another interface.
 
 Pass every value as a distinct process argument. Never interpolate task text,
 Markdown, JSON, paths, identifiers, or credentials into shell syntax. Where
 help permits `-` as a file value, prefer standard input for exact structured
 content. Never use a repository-local task artifact, sidecar, or receipt as KOS
 protocol state.
+
+## Common Templates
+
+Each bracketed value below is one separate process argument. Supply file value
+`-` content on standard input, never through shell interpolation.
+
+- Owner: `session-id`.
+- Project lookup: `project show --repository-identity [IDENTITY]`.
+- Request creation: `task create-or-get --project-id [ID] --kind [KIND] --owner-id [OWNER] --request-file -`.
+- Resumable selection: `task resumable --project-id [ID] --task-type-key [KEY]`.
+- Claim: `task claim [ID] --owner-id [OWNER]`, or `task claim-next --project-id [ID] --task-type-key [KEY] --owner-id [OWNER]`.
+- Resume: `task resume [ID] --owner-id [OWNER] --claim-version [VERSION] --step [STEP]`; add `--answer-file -` or `--takeover-confirmed` only when required.
+- Context: `task context [ID]`.
+- Artifact: `task artifact [ID] --step [STEP]`.
+- Report: `task report-attempt [ID] --owner-id [OWNER] --claim-version [VERSION] --step [STEP] --outcome [OUTCOME] --artifact-file -`; add `--message [MESSAGE]` or `--required-checks [STATUS]` only when required.
+- Child observation: `task children [ID]`.
+- Child materialization: `task materialize-children [ID] --owner-id [OWNER] --claim-version [VERSION] --definition-file -`.
 
 ## Project Discovery
 

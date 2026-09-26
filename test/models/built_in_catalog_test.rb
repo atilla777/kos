@@ -13,6 +13,12 @@ class BuiltInCatalogTest < ActiveSupport::TestCase
     "fix" => %w[advanced advanced standard standard advanced standard]
   }.freeze
 
+  EXPECTED_MODES = {
+    "brief" => %w[main subagent subagent],
+    "development" => %w[subagent subagent subagent subagent subagent],
+    "fix" => %w[subagent subagent subagent subagent subagent subagent]
+  }.freeze
+
   test "installs the complete canonical catalog" do
     assert_difference [ -> { TaskType.count }, -> { Workflow.count } ], 3 do
       BuiltInCatalog.install!
@@ -25,6 +31,7 @@ class BuiltInCatalogTest < ActiveSupport::TestCase
       assert_equal definition, task_type.workflow.definition_json
       assert_equal EXPECTED_STEPS.fetch(key), steps.pluck("id")
       assert_equal EXPECTED_TIERS.fetch(key), steps.pluck("model_tier")
+      assert_equal EXPECTED_MODES.fetch(key), steps.pluck("execution_mode")
       assert steps.all? { |step| step.dig("outcomes", "needs_human") == { "pause" => "needs_human" } }
       assert steps.all? { |step| step.dig("outcomes", "blocked") == { "pause" => "blocked" } }
       refute_includes steps.pluck("id"), "check"
@@ -51,8 +58,8 @@ class BuiltInCatalogTest < ActiveSupport::TestCase
     steps = BuiltInCatalog.definitions.fetch("brief").fetch("steps").index_by { |step| step.fetch("id") }
     publish = steps.fetch("publish")
 
-    assert_includes publish.fetch("instruction"), "exact reviewed specification commits unchanged"
-    assert_includes publish.fetch("instruction"), "observe them remotely"
+    assert_includes publish.fetch("instruction"), "reviewed specification"
+    assert_includes publish.fetch("instruction"), "exact approved commits and trees remotely"
     assert_equal({ "complete_task" => true }, publish.dig("outcomes", "published"))
     assert_equal({ "next_step" => "review" }, publish.dig("outcomes", "review_invalid"))
     assert_equal({ "next_step" => "brief" }, publish.dig("outcomes", "base_moved"))
@@ -85,7 +92,7 @@ class BuiltInCatalogTest < ActiveSupport::TestCase
       description_markdown: "Description")
     custom = create_task_type(key: "custom", name: "Custom")
     changed = create_workflow(name: "Changed built-in")
-    development.update!(workflow: changed)
+    development.update_builtin!(workflow: changed)
 
     assert_difference -> { Workflow.count }, 1 do
       BuiltInCatalog.install!

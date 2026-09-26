@@ -24,6 +24,7 @@ development records and are not read by the KOS server or CLI.
 | 014 | [Run simplified live acceptance](014-simplified-live-acceptance/task.md) | done | 011, 012, 013 |
 | 015 | [Preserve exact slash-command arguments](015-preserve-slash-command-arguments/task.md) | done | 014 |
 | 016 | [Record post-acceptance decisions](016-record-observation-decisions/task.md) | done | 015 |
+| 017 | [Make workflow execution generic](017-generic-workflow-execution/task.md) | done | 016 |
 
 ## Resolved Decisions
 

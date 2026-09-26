@@ -4,15 +4,16 @@ KOS is a small state and coordination service for AI agents. This repository
 contains a Rails/SQLite state core, authenticated JSON API, thin packaged CLI,
 five domain tables, immutable workflows, fenced task lifecycle, canonical
 repository discovery, built-in brief/development/fix workflows, isolated Git
-worktrees, and distributable OpenCode commands, focused agents, and skills.
+worktrees, and distributable OpenCode commands, generic agents, and skills.
 
 PLAN-022 uses state-oriented execution. KOS stores the last accepted Markdown
 artifact for each reported step together with pause and human-answer bindings.
 Development and fix implementation artifacts also retain a closed required-check
 result.
-A scheduler dispatches only a task ID; each fresh step agent reads its own
-authoritative context and predecessor evidence, performs one step, and atomically
-reports its artifact and transition. Independent review precedes publication;
+A scheduler follows each workflow step's execution mode and model tier. Main
+steps run in the command agent; fresh generic subagents receive only a task ID.
+Each executor reads its own authoritative context and predecessor evidence,
+performs one step, and atomically reports its artifact and transition. Independent review precedes publication;
 publication observes the exact reviewed remote result and completes a built-in task
 with `published`.
 
@@ -59,6 +60,7 @@ gem install /tmp/kos.gem
 export KOS_CLI_PATH="$(realpath "$(command -v kos)")"
 "$KOS_CLI_PATH" --version
 "$KOS_CLI_PATH" --help
+"$KOS_CLI_PATH" session-id
 
 bin/install-opencode
 ```
@@ -89,10 +91,8 @@ There are no `KOS_PROJECT_*` environment variables.
 `bin/install-opencode` installs:
 
 - commands `kos.md`, `kos-fix.md`, and `kos-brief.md`;
-- focused agents `kos-diagnose`, `kos-plan`, `kos-implement`, `kos-document`,
-  `kos-brief`, `kos-review`, and `kos-publish`;
-- custom-step agents `kos-step-standard` and `kos-step-advanced`; and
-- skills `kos`, `kos-brief`, `kos-cli`, `kos-step`, `kos-git`, and
+- generic agents `kos-step-standard` and `kos-step-advanced`; and
+- skills `kos`, `kos-cli`, `kos-step`, `kos-git`, and
   `okf`.
 
 Standard agents use `openai/gpt-5.6-terra` with medium reasoning; advanced
@@ -108,7 +108,8 @@ full readiness procedure.
   never creates a task.
 - `/kos-fix <problem>` recovers or creates and claims the exact `fix` request.
 - `/kos-brief <request>` recovers or creates and claims the exact `brief`
-  request. Briefing itself runs in a fresh focused agent, not the main scheduler.
+  request. Its briefing step runs in the main command agent; independent review
+  and publication use fresh generic subagents.
 
 KOS preserves the exact bytes produced by OpenCode's `$ARGUMENTS` expansion.
 Interactive slash-command payloads are supported directly. For non-interactive
@@ -135,16 +136,16 @@ scheduler's exact stdin handoff to a fake CLI, the packaged CLI, and server
 creation-key/idempotence boundaries. They do not execute OpenCode internals;
 live OpenCode 1.18.26 expansion evidence covers that external boundary.
 
-Schedulers may select, create, claim, resume, read state, dispatch one current
-step, and reread state. Each command session generates a fresh unpredictable
+Schedulers may select, create, claim, resume, read state, execute or dispatch one
+current step, and reread state. The CLI generates each command session's fresh unpredictable
 non-secret owner ID; there is no `KOS_OWNER_ID` configuration. After obtaining a
 positive task ID schedulers retain only that ID. They do not read Markdown,
 dispatch descriptions or prior artifacts, inspect Git or checks, parse child
 text, report outcomes, or maintain pending submissions.
 
-Step agents receive only the positive ID. Concise role profiles tell them to use
-authoritative context and relevant evidence, invoke `kos-git` by ID, execute one
-exact step, and report the result themselves. The server validates ownership,
+Subagents receive only the positive ID. The workflow instruction tells every
+main or subagent executor to use authoritative context and relevant evidence,
+invoke `kos-git` by ID, execute one exact step, and report the result itself. The server validates ownership,
 fencing, transitions, and artifact acceptance. For fix and brief creation,
 schedulers send the project, kind, owner, and exact request to
 `task create-or-get`. The server derives the canonical definition and scoped
@@ -204,8 +205,8 @@ GET   /tasks/:id/children
 - `task`: `id`, `project_id`, `title`, `description_markdown`, `status`,
   `current_step`, `owner_id`, `claim_version`, `lease_expires_at`;
 - `project`: `id`, `name`, `repository_identity`, `remote_url`, `default_branch`;
-- `step`: `id`, `name`, `instruction`, `artifact_template`, `model_tier`,
-  `allowed_outcomes`;
+- `step`: `id`, `name`, `instruction`, `artifact_template`, `execution_mode`,
+  `model_tier`, `allowed_outcomes`;
 - `artifacts`: entries with `step`, `outcome`, applicable `required_checks`,
   `accepted_claim_version`, and `reconstructed`, without Markdown; and
 - `pause`: null or `step`, `claim_version`, `message`, and exactly bound `answer`.
@@ -254,7 +255,9 @@ export KOS_API_TOKEN="your-server-token"
 export KOS_CLI_PATH="$(realpath "$(command -v kos)")"
 ```
 
-The installed executable exposes every public API operation. Its top-level and
+The installed executable exposes every public API operation plus local
+`kos session-id`, which emits `kos-session-` and 32 lowercase hexadecimal digits
+without requiring API configuration. Its top-level and
 per-command help are the authoritative command and option reference:
 
 ```sh
@@ -276,17 +279,13 @@ requiring `KOS_API_TOKEN`. CLI-generated errors never expose the token.
 
 ## Workflow Authority
 
-The exact built-in profile mapping is:
-
-| Step | Profile | Authority |
-| --- | --- | --- |
-| `diagnose` | `kos-diagnose` | advanced, read-only |
-| `plan` | `kos-plan` | advanced, read-only |
-| `implement` | `kos-implement` | standard, base integration, edits, checks, and local task commits; no push |
-| `document` | `kos-document` | standard, edits, OKF, and local task commits; no push |
-| `brief` | `kos-brief` | advanced, authorized specification/graph edits and local task commits; no push |
-| `review` | `kos-review` | advanced, read-only review of an exact commit range |
-| `publish` | `kos-publish` | standard, exact reviewed-range push and graph mutation authority |
+Every new workflow step declares `execution_mode` as `main` or `subagent` and
+`model_tier` as `standard` or `advanced`. Unchanged persisted definitions without
+a mode execute as `subagent`. The step instruction, artifact template, and
+outcomes are the complete substantive contract. IDs, including built-in names,
+confer no role, Git, commit, push, graph, or model authority. Public task-type
+administration cannot repoint reserved built-in types; catalog installation owns
+their revisions.
 
 Development routes invalid plans back to `plan`, invalid implementation evidence
 to `implement`, review changes to `implement`, redesign to `plan`, invalid review
@@ -299,12 +298,12 @@ Every built-in step supports `needs_human` and `blocked`. `published` completes
 the built-in task and releases ownership after the publisher has observed the
 exact reviewed remote range and, for a brief, the materialized child graph.
 
-Managed profiles select the role, model, reasoning effort, and focused prompt.
+The two managed profiles select only standard or advanced model and reasoning effort.
 They contain no KOS-specific OpenCode permission policy and are not a security
 boundary. Tool approval follows the administrator's OpenCode configuration;
 the shared bearer token is the authorization boundary. Ownership and fencing
 provide concurrency consistency rather than agent authorization, while review
-detects violations of role-specific procedure.
+checks the workflow-directed result.
 
 ## Recovery And Upgrade
 
@@ -319,10 +318,11 @@ A changed fence and expected accepted entry prove success; an unchanged matching
 fence permits one controlled retry; contradiction blocks. The scheduler does not
 retain report bytes.
 
-This pre-release workflow change provides no legacy workflow support or data
-migration. Existing local database state will be reset separately rather than
-translated, repointed, or dual-run. Old local artifacts are never imported or
-read automatically.
+This pre-release workflow change provides no general legacy migration or
+dual-run path. Effective execution defaults preserve immutable workflow
+revisions that omit mode or tier; other incompatible local database state is
+reset rather than translated or repointed. Old local artifacts are never
+imported or read automatically.
 
 Git worktrees are derived as:
 

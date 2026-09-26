@@ -49,7 +49,7 @@ class TasksController < ApplicationController
       task: task.as_json(only: %i[id project_id title description_markdown status current_step owner_id claim_version
         lease_expires_at]),
       project: task.project.as_json(only: %i[id name repository_identity remote_url default_branch]),
-      step: step.slice("id", "name", "instruction", "artifact_template", "model_tier").merge(
+      step: step.slice("id", "name", "instruction", "artifact_template", "execution_mode", "model_tier").merge(
         "allowed_outcomes" => step.fetch("outcomes").keys),
       artifacts: artifact_index(task),
       pause: current_pause(task)

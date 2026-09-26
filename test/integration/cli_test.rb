@@ -12,6 +12,7 @@ class CliTest < ActiveSupport::TestCase
     assert_predicate status, :success?
     assert_includes output, "Usage: kos <resource> <action> [options]"
     assert_match(/^\s*health\s*$/, output)
+    assert_match(/^\s*session-id\s*$/, output)
     {
       "project" => %w[create show update],
       "workflow" => %w[create],
@@ -27,6 +28,11 @@ class CliTest < ActiveSupport::TestCase
     end
     refute_includes output, "validate-children"
     assert_empty error
+
+    command_output, command_error, command_status = run_cli("session-id", "--help", environment: {})
+    assert_predicate command_status, :success?
+    assert_match(/Usage: kos session-id/, command_output)
+    assert_empty command_error
 
     {
       %w[project show] => %w[--repository-identity],
@@ -45,6 +51,22 @@ class CliTest < ActiveSupport::TestCase
       refute_includes command_output, "--expected-digest"
       assert_empty command_error
     end
+  end
+
+  test "generates fresh local canonical session ids without API configuration" do
+    outputs = 2.times.map do
+      output, error, status = run_cli("session-id", environment: { "KOS_API_URL" => "not a URL" })
+      assert_predicate status, :success?
+      assert_empty error
+      assert_match(/\Akos-session-[0-9a-f]{32}\n\z/, output)
+      output
+    end
+
+    assert_equal 2, outputs.uniq.length
+
+    _output, error, status = run_cli("session-id", "extra", environment: {})
+    assert_equal 2, status.exitstatus
+    assert_equal "usage_error", JSON.parse(error).fetch("error")
   end
 
   test "checks public server health without a token" do

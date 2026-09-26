@@ -20,9 +20,9 @@
   from expansion bytes, including its quoted-multiword limitation.
 - Gem tests build and install the CLI into an isolated gem home, then use that
   executable against an isolated prepared Rails server for a core lifecycle smoke test.
-- Skill and profile contract tests verify durable safety and authority boundaries,
-  ID-only dispatch, focused operations, profile inventory and metadata, and
-  step-owned reporting without locking incidental prose.
+- Skill and profile contract tests verify both execution modes and model tiers,
+  ID-only subagent dispatch, workflow-owned authority, generic profile inventory
+  and metadata, terminal cancellation, and step-owned reporting.
 - Git tests use temporary source repositories, task worktrees, and bare remotes.
 - Migration and recovery tests use isolated persistent SQLite databases, data
   homes, subprocesses, repositories, remotes, and OpenCode configuration homes.
@@ -88,8 +88,9 @@ publication cannot positively advance without successful accepted check
 evidence. Successful scenarios retain and expose `passed` or `not_required`
 alongside the implementation Markdown.
 
-Deterministic brief E2E runs briefing in a fresh `kos-brief` agent, verifies OKF
-conformance, independently reviews the specification and exact graph, observes
+Deterministic brief E2E runs briefing in the `/kos-brief` main agent, verifies
+OKF conformance, independently reviews the specification and exact graph in a
+fresh advanced subagent, observes
 remote publication of the exact reviewed range before one fenced atomic materialization operation, and
 completes only after observing the materialized graph. One-child and acyclic
 multi-child graphs, sibling blockers, parent availability, every backward
@@ -111,14 +112,20 @@ colliding remotes roll back schema and data. URL and branch tests include
 equivalent SSH/HTTPS forms, ambiguous slashes, credentials, ports, unsafe users,
 fetch/push mismatch, and Git-invalid branches.
 
-Clean-install tests build the exact CLI gem and install all commands, focused
-agents, and skills into an isolated OpenCode configuration. They remove known
+Clean-install tests build the exact CLI gem and install all commands, two generic
+step agents, and skills into an isolated OpenCode configuration. They remove known
 obsolete managed agents, compare installed bytes with the checkout, restart the
 runtime boundary, and verify command and skill discovery.
 
+Generic-execution coverage validates `main` and `subagent`, standard and advanced
+tiers, main-agent briefing with independent subagent review, CLI-owned session
+IDs, cancelled terminal state, and custom steps colliding with every former
+built-in ID without inheriting name-based authority.
+
 Required live release acceptance invokes `/kos-brief`, `/kos`, and `/kos-fix` against an
 isolated Rails database, KOS data home, fixture repository, task worktrees, and
-bare remote. It proves ID-only scheduling, fresh focused agents, mandatory
+bare remote. It proves ID-only subagent scheduling, workflow-directed main
+execution, mandatory
 checks, read-only review, accepted exact-range evidence, unchanged task commits,
 remote publication observation, completed state, ownership release, and the
 brief child graph. The automated suite proves lifecycle and installed-asset

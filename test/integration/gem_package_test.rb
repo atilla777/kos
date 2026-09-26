@@ -34,6 +34,12 @@ class GemPackageTest < ActiveSupport::TestCase
       assert_equal "kos #{Kos::VERSION}\n", output
       assert_empty error
 
+      session_id, error, status = Open3.capture3(environment.merge("KOS_API_URL" => "invalid"),
+        bin_dir.join("kos").to_s, "session-id", chdir: directory)
+      assert_predicate status, :success?, error
+      assert_match(/\Akos-session-[0-9a-f]{32}\n\z/, session_id)
+      assert_empty error
+
       output, error, status = Open3.capture3(environment, bin_dir.join("kos").to_s, "--help", chdir: directory)
       assert_predicate status, :success?, error
       assert_match(/^\s*health\s*$/, output)
@@ -125,14 +131,21 @@ class GemPackageTest < ActiveSupport::TestCase
       stale_agent = config_home.join("agents/kos-step.md")
       stale_orchestrator = config_home.join("agents/kos-orchestrator.md")
       stale_verifier = config_home.join("agents/kos-verify.md")
+      obsolete_role_agents = %w[brief diagnose document implement plan publish review].map do |role|
+        config_home.join("agents/kos-#{role}.md")
+      end
       stale_skill = config_home.join("skills/kos/obsolete.md")
+      obsolete_brief_skill = config_home.join("skills/kos-brief/SKILL.md")
       obsolete_create_skill = config_home.join("skills/kos-create/SKILL.md")
       FileUtils.mkdir_p(stale_agent.dirname)
       FileUtils.mkdir_p(stale_skill.dirname)
       stale_agent.write("stale\n")
       stale_orchestrator.write("stale\n")
       stale_verifier.write("stale\n")
+      obsolete_role_agents.each { |path| path.write("obsolete\n") }
       stale_skill.write("stale\n")
+      FileUtils.mkdir_p(obsolete_brief_skill.dirname)
+      obsolete_brief_skill.write("obsolete\n")
       FileUtils.mkdir_p(obsolete_create_skill.dirname)
       obsolete_create_skill.write("obsolete\n")
 
@@ -144,16 +157,15 @@ class GemPackageTest < ActiveSupport::TestCase
         assert_includes output, config_home.to_s
       end
       assert_equal %w[kos-brief.md kos-fix.md kos.md], installed_names(config_home.join("commands"))
-      assert_equal %w[
-        kos-brief.md kos-diagnose.md kos-document.md kos-implement.md kos-plan.md kos-publish.md kos-review.md
-        kos-step-advanced.md kos-step-standard.md
-      ], installed_names(config_home.join("agents"))
-      assert_equal %w[kos kos-brief kos-cli kos-git kos-step okf],
+      assert_equal %w[kos-step-advanced.md kos-step-standard.md], installed_names(config_home.join("agents"))
+      assert_equal %w[kos kos-cli kos-git kos-step okf],
         installed_names(config_home.join("skills"))
       refute_predicate stale_agent, :exist?
       refute_predicate stale_orchestrator, :exist?
       refute_predicate stale_verifier, :exist?
+      obsolete_role_agents.each { |path| refute_predicate path, :exist? }
       refute_predicate stale_skill, :exist?
+      refute_predicate obsolete_brief_skill.dirname, :exist?
       refute_predicate obsolete_create_skill.dirname, :exist?
 
       assert_matching_tree Rails.root.join(".opencode/commands"), config_home.join("commands")

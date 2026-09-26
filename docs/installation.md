@@ -39,6 +39,7 @@ gem install /tmp/kos.gem
 export KOS_CLI_PATH="$(realpath "$(command -v kos)")"
 "$KOS_CLI_PATH" --version
 "$KOS_CLI_PATH" --help
+"$KOS_CLI_PATH" session-id
 ```
 
 ## OpenCode Inventory
@@ -54,27 +55,26 @@ The default destination is `$XDG_CONFIG_HOME/opencode`, or
 nonstandard destination. The installer copies this exact inventory:
 
 - commands: `kos.md`, `kos-fix.md`, and `kos-brief.md`;
-- focused agents: `kos-diagnose.md`, `kos-plan.md`, `kos-implement.md`,
-  `kos-document.md`, `kos-brief.md`, `kos-review.md`, and `kos-publish.md`;
-- custom-step agents: `kos-step-standard.md` and `kos-step-advanced.md`; and
-- skills: `kos`, `kos-brief`, `kos-cli`, `kos-step`, `kos-git`,
+- generic step agents: `kos-step-standard.md` and `kos-step-advanced.md`; and
+- skills: `kos`, `kos-cli`, `kos-step`, `kos-git`,
   and `okf`.
 
-The installer removes obsolete managed `kos-orchestrator.md`, `kos-step.md`, and
-`kos-verify.md` agent profiles. It refuses symlinked or wrongly typed managed
+The installer removes obsolete role-specific KOS agent profiles, including
+`kos-brief.md`, `kos-diagnose.md`, `kos-document.md`, `kos-implement.md`,
+`kos-plan.md`, `kos-publish.md`, and `kos-review.md`, plus the obsolete
+`kos-brief` skill and earlier managed profiles. It refuses symlinked or wrongly typed managed
 destinations.
 Slash commands run in the primary `build` agent under the user's main-agent permission
-policy; the installed focused profile files apply only after ID-only dispatch.
-Managed profiles contain no KOS-specific permission blocks: they select a role,
+policy; generic profiles apply only after ID-only subagent dispatch.
+Managed profiles contain no KOS-specific permission blocks: they select a
 model, reasoning effort, and prompt, while tool approval remains part of the
 administrator's OpenCode configuration.
 
-The shipped mapping uses `openai/gpt-5.6-terra` with medium reasoning for
-standard implementation, documentation, publication, generic standard steps,
-and `/kos` or `/kos-fix` scheduling. It uses `openai/gpt-5.6-sol` with high
-reasoning for diagnosis, planning, briefing, review, generic advanced steps,
-and `/kos-brief` scheduling. Administrators may substitute
-complete `provider/model-id` values while preserving these authority roles.
+The shipped generic standard profile uses `openai/gpt-5.6-terra` with medium
+reasoning, and the generic advanced profile uses `openai/gpt-5.6-sol` with high
+reasoning. `/kos` and `/kos-fix` use Terra; `/kos-brief` uses Sol so its built-in
+`main` briefing executes in the intended tier. Administrators may substitute
+complete `provider/model-id` values while preserving the two tiers.
 Check availability with `opencode models openai`.
 
 Restart OpenCode after every installation or profile, command, skill, or model
@@ -109,8 +109,9 @@ export KOS_CLI_PATH="$(realpath "$(command -v kos)")"
 ```
 
 `health` uses `KOS_API_URL` to call the public `GET /up` endpoint and does not
-require a token. All other CLI operations use the same `KOS_API_URL` and require
-the `KOS_API_TOKEN` configured when Rails started. This shared bearer token
+require a token. `session-id` is entirely local and requires neither API
+setting. All other CLI operations use the same `KOS_API_URL` and require the
+`KOS_API_TOKEN` configured when Rails started. This shared bearer token
 trusts its holders for every application operation. Owner IDs, leases, and
 claim-version fences coordinate concurrent trusted operations; they do not
 provide per-agent authorization.
@@ -122,8 +123,8 @@ ambiguous, malformed, or mismatched origin blocks before task or worktree
 mutation. There are no `KOS_PROJECT_*` environment variables.
 
 After restarting OpenCode, verify discovery of `/kos-brief`, `/kos`, and
-`/kos-fix`. CLI help is the authoritative command syntax reference. Verify the
-installed focused operations directly:
+`/kos-fix`. CLI help remains the fallback syntax reference for uncommon
+operations and compatibility diagnosis. Verify the installed focused operations directly:
 
 ```sh
 "$KOS_CLI_PATH" task context --help
@@ -136,11 +137,13 @@ input, and all managed profiles and skills come from the same revision.
 
 ## Upgrade
 
-This pre-release workflow change does not support existing task state. Stop
-Rails and active schedulers, remove the installation's SQLite database and task
-worktrees, then check out one new revision, rebuild and install the gem,
-reinstall OpenCode integration, prepare a fresh database, and restart Rails and
-OpenCode. Preserve repository work separately before the reset if needed.
+Stop Rails and active schedulers, check out one new revision, rebuild and
+install the gem, reinstall the OpenCode integration, prepare the existing
+database, and restart Rails and OpenCode. Back up persistent state first.
+Existing tasks retain their immutable workflow revisions; revisions lacking
+`execution_mode` execute as `subagent`, and those lacking `model_tier` execute
+as `advanced`. Database preparation installs new canonical built-in revisions
+for newly created tasks without repointing existing tasks.
 
 ```sh
 gem build kos.gemspec --output /tmp/kos.gem
@@ -149,10 +152,8 @@ bin/install-opencode
 bin/rails db:prepare
 ```
 
-Do not run the new catalog against the old database: existing tasks retain
-immutable workflow snapshots whose verifier is no longer installed. Do not
-import or dual-run old definitions or local `tasks/<id>/<step>.md` files and
-answer sidecars.
+Do not import or dual-run old local `tasks/<id>/<step>.md` files or answer
+sidecars. They are not workflow state and remain ignored.
 
 ## Check
 

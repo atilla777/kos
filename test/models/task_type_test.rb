@@ -29,4 +29,18 @@ class TaskTypeTest < ActiveSupport::TestCase
     assert_not task_type.update(key: "renamed")
     assert_equal "feature", task_type.reload.key
   end
+
+  test "only the catalog can replace a reserved task type workflow" do
+    BuiltInCatalog.install!
+    task_type = TaskType.find_by!(key: "development")
+    original = task_type.workflow
+    replacement = create_workflow(name: "Replacement")
+
+    assert_not task_type.update(workflow: replacement)
+    assert_includes task_type.errors[:workflow], "for a built-in task type is managed by the catalog"
+    assert_equal original, task_type.reload.workflow
+
+    assert task_type.update_builtin!(workflow: replacement)
+    assert_equal replacement, task_type.reload.workflow
+  end
 end

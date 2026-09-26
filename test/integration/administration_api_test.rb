@@ -41,6 +41,16 @@ class AdministrationApiTest < ActionDispatch::IntegrationTest
     assert_equal "validation_failed", response.parsed_body["error"]
   end
 
+  test "rejects a new workflow without an explicit execution mode" do
+    definition = valid_workflow_definition
+    definition["steps"][0].delete("execution_mode")
+
+    post workflows_path, params: { name: "Missing mode", definition_json: definition }, headers: @headers, as: :json
+
+    assert_response :unprocessable_entity
+    assert_equal "validation_failed", response.parsed_body["error"]
+  end
+
   test "changes a task type workflow without changing existing tasks" do
     original = create_workflow(name: "Original")
     replacement = create_workflow(name: "Replacement")
@@ -53,6 +63,21 @@ class AdministrationApiTest < ActionDispatch::IntegrationTest
     assert_equal "feature", response.parsed_body.dig("task_type", "key")
     assert_equal replacement.id, response.parsed_body.dig("task_type", "workflow_id")
     assert_equal original, task.reload.workflow
+  end
+
+  test "does not publicly replace reserved task type workflows" do
+    BuiltInCatalog.install!
+    replacement = create_workflow(name: "Replacement")
+
+    TaskType::RESERVED_KEYS.each do |key|
+      task_type = TaskType.find_by!(key:)
+      original_id = task_type.workflow_id
+      patch task_type_path(task_type), params: { workflow_id: replacement.id }, headers: @headers, as: :json
+
+      assert_response :unprocessable_entity
+      assert_equal "validation_failed", response.parsed_body["error"]
+      assert_equal original_id, task_type.reload.workflow_id
+    end
   end
 
   test "rejects duplicate and reserved task type keys" do
