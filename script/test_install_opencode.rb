@@ -7,7 +7,7 @@ class InstallOpencodeTest < Minitest::Test
   ROOT = File.expand_path("..", __dir__)
   SOURCE = File.join(ROOT, "integrations", "opencode")
 
-  def test_installs_global_agents_and_skills_and_is_idempotent
+  def test_installs_global_executors_and_skills_and_is_idempotent
     Dir.mktmpdir do |home|
       2.times do
         stdout, stderr, status = install(home)
@@ -19,10 +19,11 @@ class InstallOpencodeTest < Minitest::Test
         assert_equal File.binread(File.join(SOURCE, "skills", name, "SKILL.md")),
           File.binread(File.join(home, "opencode", "skills", name, "SKILL.md"))
       end
-      %w[kos-orchestrator kos-standard kos-advanced].each do |name|
+      %w[kos-standard kos-advanced].each do |name|
         assert_equal File.binread(File.join(SOURCE, "agent", "#{name}.md")),
           File.binread(File.join(home, "opencode", "agent", "#{name}.md"))
       end
+      refute File.exist?(File.join(home, "opencode", "agent", "kos-orchestrator.md"))
     end
   end
 
@@ -48,7 +49,8 @@ class InstallOpencodeTest < Minitest::Test
       env = { "XDG_CONFIG_HOME" => home, "OPENCODE_PURE" => "1" }
       agents, error, status = Open3.capture3(env, "opencode", "agent", "list", chdir: home)
       assert status.success?, error
-      %w[kos-orchestrator kos-standard kos-advanced].each { |name| assert_includes agents, name }
+      %w[kos-standard kos-advanced].each { |name| assert_includes agents, name }
+      refute_match(/^kos-orchestrator \(/, agents)
 
       skills, error, status = Open3.capture3(env, "opencode", "debug", "skill", chdir: home)
       assert status.success?, error
