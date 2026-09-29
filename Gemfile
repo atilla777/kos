@@ -2,7 +2,7 @@ source "https://rubygems.org"
 
 gem "rails", "8.1.3.1"
 gem "sqlite3", "~> 2.1"
-gem "puma", "~> 7.0"
+gem "puma", "~> 8.0"
 gem "bootsnap", require: false
 gem "json", "~> 2.18"
 gem "tzinfo-data", platforms: %i[ windows jruby ]
