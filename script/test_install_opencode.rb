@@ -15,7 +15,7 @@ class InstallOpencodeTest < Minitest::Test
         assert_includes stdout, "Restart OpenCode"
       end
 
-      %w[kos-setup kos-orchestrator kos-executor].each do |name|
+      %w[kos-setup kos-orchestrator kos-executor kos-git kos-github-cli].each do |name|
         assert_equal File.binread(File.join(SOURCE, "skills", name, "SKILL.md")),
           File.binread(File.join(home, "opencode", "skills", name, "SKILL.md"))
       end
@@ -74,6 +74,20 @@ class InstallOpencodeTest < Minitest::Test
     end
   end
 
+  def test_conflicting_new_skill_stops_before_copying_other_files
+    Dir.mktmpdir do |home|
+      target = File.join(home, "opencode", "skills", "kos-github-cli", "SKILL.md")
+      FileUtils.mkdir_p(File.dirname(target))
+      File.write(target, "my own skill")
+
+      _stdout, stderr, status = install(home)
+      refute status.success?
+      assert_includes stderr, "existing file differs"
+      assert_equal "my own skill", File.read(target)
+      refute File.exist?(File.join(home, "opencode", "skills", "kos-git", "SKILL.md"))
+    end
+  end
+
   def test_opencode_discovers_agents_and_skills_when_available
     skip "OpenCode executable is not installed" unless ENV.fetch("PATH").split(File::PATH_SEPARATOR).any? { |path| File.executable?(File.join(path, "opencode")) }
 
@@ -87,7 +101,7 @@ class InstallOpencodeTest < Minitest::Test
 
       skills, error, status = Open3.capture3(env, "opencode", "debug", "skill", chdir: home)
       assert status.success?, error
-      %w[kos-setup kos-orchestrator kos-executor].each { |name| assert_includes skills, name }
+      %w[kos-setup kos-orchestrator kos-executor kos-git kos-github-cli].each { |name| assert_includes skills, name }
 
       commands, error, status = Open3.capture3(env, "opencode", "debug", "config", chdir: home)
       assert status.success?, error

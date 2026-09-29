@@ -94,7 +94,7 @@ The CLI uses `http://127.0.0.1:3000` by default. Set `KOS_API_URL` or pass `--ur
 
 ## OpenCode Integration
 
-The integration ships three skills (`kos-setup`, `kos-orchestrator`, `kos-executor`), two subagent profiles (`kos-standard`, `kos-advanced`), and three global commands (`/kos-init` for setup/checks, `/kos-update` for a safe update, `/kos` for the existing orchestrator in Build). From the KOS checkout, after installing the server and CLI as above:
+The integration ships five skills (`kos-setup`, `kos-orchestrator`, `kos-executor`, `kos-git`, `kos-github-cli`), two subagent profiles (`kos-standard`, `kos-advanced`), and three global commands (`/kos-init` for setup/checks, `/kos-update` for a safe update, `/kos` for the existing orchestrator in Build). From the KOS checkout, after installing the server and CLI as above:
 
 ```bash
 ruby script/install-opencode
@@ -102,7 +102,9 @@ opencode models openai
 opencode agent list
 ```
 
-The installer copies only KOS files to `~/.config/opencode/` (or `$XDG_CONFIG_HOME/opencode/`), preserving other global settings. On update, it replaces a file only if its contents match a version of that file in the checkout's Git history. A modified file, symlink, or unknown version stops the whole preflight before copying; inspect the conflict and resolve it explicitly instead of deleting your changes. The old `agent/kos-orchestrator.md` profile from an earlier version is not removed automatically; inspect and remove it yourself if present. OpenCode loads configuration at startup: **quit and restart OpenCode** after installing or updating commands, agents or skills. Confirm `openai/gpt-6-luna` and `openai/gpt-6-sol` are available from your OpenAI provider and that both executor agents appear in `opencode agent list`. In the new Build session, `/kos` loads `kos-orchestrator`; the `kos-executor` skill is available to delegated executors. A shell's `opencode agent list` does not reload an already-running interactive session.
+The installer copies only KOS files to `~/.config/opencode/` (or `$XDG_CONFIG_HOME/opencode/`), preserving other global settings. On update, it replaces a file only if its contents match a version of that file in the checkout's Git history. A modified file, symlink, or unknown version stops the whole preflight before copying; inspect the conflict and resolve it explicitly instead of deleting your changes. The old `agent/kos-orchestrator.md` profile from an earlier version is not removed automatically; inspect and remove it yourself if present. OpenCode loads configuration at startup: **quit and restart OpenCode** after installing or updating commands, agents or skills. Confirm `openai/gpt-6-luna` and `openai/gpt-6-sol` are available from your OpenAI provider, both executor agents appear in `opencode agent list`, and `opencode debug skill` lists `kos-git` and `kos-github-cli`. In the new Build session, `/kos` loads `kos-orchestrator`; the `kos-executor` skill is available to delegated executors. A shell's `opencode agent list` does not reload an already-running interactive session.
+
+For an explicit Git request, load `kos-git`; for an explicit GitHub request involving PRs, checks or other GitHub operations, load `kos-github-cli`. A normal request to edit code does not itself call for these skills. They provide common check → action → verify examples and direct the agent to the installed `git help` / `git <command> --help` or `gh help` / `gh <command> --help` for other commands. They respect the active project's instructions and the user's publication request; the project determines whether publication uses a local merge or a PR. They do not create task worktrees or add Git commands to the KOS server or CLI.
 
 ## Updating an existing installation
 
