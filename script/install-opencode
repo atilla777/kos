@@ -1,0 +1,25 @@
+#!/usr/bin/env ruby
+
+require "fileutils"
+
+root = File.expand_path("..", __dir__)
+source = File.join(root, "integrations", "opencode")
+config = File.join(ENV.fetch("XDG_CONFIG_HOME", File.join(Dir.home, ".config")), "opencode")
+files = Dir.glob(File.join(source, "**", "*.md")).sort
+
+files.each do |file|
+  target = File.join(config, file.delete_prefix("#{source}/"))
+  if File.exist?(target) || File.symlink?(target)
+    abort "KOS installation stopped: existing file differs at #{target}" unless File.file?(target) && !File.symlink?(target) && File.binread(target) == File.binread(file)
+  end
+end
+
+files.each do |file|
+  target = File.join(config, file.delete_prefix("#{source}/"))
+  next if File.exist?(target)
+
+  FileUtils.mkdir_p(File.dirname(target))
+  FileUtils.cp(file, target)
+end
+
+puts "Installed #{files.length} KOS OpenCode files in #{config}. Restart OpenCode to load them."

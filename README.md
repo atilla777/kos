@@ -43,6 +43,22 @@ gem install ./kos-cli-0.1.0.gem
 
 The CLI uses `http://127.0.0.1:3000` by default. Set `KOS_API_URL` or pass `--url URL` before the resource name to select another local endpoint. Set `KOS_PROJECT` or pass `--project REPOSITORY` to select a project explicitly. Claim operations require a stable session identity through `KOS_SESSION_ID` or `--session SESSION`. Protected writes accept the server-issued claim through `KOS_CLAIM_ID` or `--claim CLAIM`; avoid exposing claim values in logs or shared shell history. Command-line options override environment variables.
 
+## OpenCode Integration
+
+The integration ships three skills (`kos-setup`, `kos-orchestrator`, `kos-executor`) and three agent profiles (`kos-orchestrator`, `kos-standard`, `kos-advanced`). From the KOS checkout, after installing the server and CLI as above:
+
+```bash
+ruby script/install-opencode
+opencode models openai
+opencode agent list
+```
+
+The installer copies only KOS files to `~/.config/opencode/` (or `$XDG_CONFIG_HOME/opencode/`), preserving other global settings. It stops before copying if a destination differs; resolve that file explicitly before rerunning. To refresh after updating KOS, review and remove or relocate only the previous KOS copies first. OpenCode loads configuration at startup: **quit and restart OpenCode** after installing or updating agents or skills. Confirm `openai/gpt-6-luna` and `openai/gpt-6-sol` are available from your OpenAI provider and that all three agents appear in `opencode agent list`.
+
+In the target Git repository, select the `kos-orchestrator` primary agent and ask it to work on the next KOS task. Before claiming work, set a stable `KOS_SESSION_ID` unique to this OpenCode session (for example, its OpenCode session ID). Use `KOS_PROJECT` if the Git `origin` cannot identify the project; use `KOS_API_URL` for a nondefault loopback port. Do not reuse a session ID for independent concurrent agents. An active claim belongs to the whole task; pass it to the executor privately, without logging it. The orchestrator reads compact routes and delegates `standard` steps to Luna, `advanced` steps to Sol, while running `main` steps itself (under the Sol profile). The executor independently calls `kos task step show TASK_ID` and writes results under the delegated claim; the orchestrator verifies and explicitly advances or completes. The workflow author chooses the tier for each step: focused documentation or simple development may be `standard`, while work needing more judgment may be `advanced`. Project instructions govern any publication by the main agent.
+
+If work takes longer than the 30-minute lease, the orchestrator explicitly renews it. On a conflict or ambiguous write, inspect the current route or artifact before retrying. OpenCode profiles provide instructions, not server-side validation of the model, instruction quality, tests, or Git state. See [the user scenarios](docs/knowledge/features/opencode-integration.md) for normal and recovery flows.
+
 ## Basic Workflow
 
 With the server running, enter any Git repository whose `origin` is a supported SSH or HTTPS URL. Create a `workflow.json` definition:
@@ -172,6 +188,7 @@ ruby -Icli/lib:cli/test cli/test/command_test.rb
 ruby -Icli/lib:cli/test cli/test/client_test.rb
 (cd cli && gem build kos-cli.gemspec --output /tmp/kos-cli.gem)
 script/acceptance
+ruby script/test_install_opencode.rb
 ```
 
 Run `script/acceptance` from the repository root. It builds and installs the gem into an isolated temporary gem home, starts a temporary Rails/SQLite server, exercises automatic Git project discovery and the main task cycle through the installed `kos` executable, and verifies online backup and offline restore. `bin/ci` runs this acceptance test together with style, security, server tests, CLI tests, and the gem build. The complete mapping from specification section 15 to automated checks is in [`docs/acceptance.md`](docs/acceptance.md).
