@@ -3,6 +3,7 @@ class Project < ApplicationRecord
 
   has_many :tasks, dependent: :restrict_with_error
   has_many :task_groups, dependent: :restrict_with_error
+  has_many :workflows, dependent: :restrict_with_error
 
   before_validation :canonicalize_repository
 

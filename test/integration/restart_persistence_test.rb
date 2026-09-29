@@ -9,6 +9,7 @@ class RestartPersistenceTest < ActiveSupport::TestCase
     TaskDependency.delete_all
     Task.delete_all
     TaskGroup.delete_all
+    Workflow.delete_all
     Project.delete_all
   end
 
@@ -17,12 +18,13 @@ class RestartPersistenceTest < ActiveSupport::TestCase
     TaskDependency.delete_all
     Task.delete_all
     TaskGroup.delete_all
+    Workflow.delete_all
     Project.delete_all
   end
 
   test "a fresh application process reads lease progress and artifacts from SQLite in UTC" do
     project = Project.create!(name: "Restart", repository: "github.com/atilla777/restart")
-    task = project.tasks.create!(kind: "feature", title: "Persist", description: "Persist state.")
+    task = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Persist", description: "Persist state.")
     task, = Task.claim_for!(project: project, task_id: task.id, session_id: "agent-1")
     task.update_from_request!(attributes: { work_summary: "Work survives" }, claim_id: task.claim_id)
     artifact = task.put_artifact!(

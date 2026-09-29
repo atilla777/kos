@@ -5,7 +5,10 @@ Rails.application.routes.draw do
     namespace :v1 do
       resources :projects, only: %i[index show create update destroy]
       resources :task_groups, path: "task-groups", only: %i[index show create update destroy]
+      resources :workflows, only: %i[index show create destroy]
       resources :tasks, only: %i[index show create update destroy] do
+        get "step", to: "tasks#step", on: :member
+        post "advance", to: "tasks#advance", on: :member
         get "artifacts", to: "task_artifacts#index"
         get "artifacts/:key", to: "task_artifacts#show", as: :artifact, format: false
         put "artifacts/:key", to: "task_artifacts#update", format: false

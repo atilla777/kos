@@ -6,7 +6,7 @@ KOS is a local task tracker for AI agents. The first MVP consists of a Rails app
 
 The agreed MVP scope and baseline contract are in [docs/mvp-specification.md](docs/mvp-specification.md). The current user-visible behavior of implemented features is documented in [docs/knowledge/index.md](docs/knowledge/index.md) and is the source of truth for those scenarios. Read both before planning or changing behavior. Resolve contradictions explicitly before implementation; section 17 of the MVP specification contains proposed defaults that are not yet approved requirements.
 
-Keep the MVP small. Do not introduce agent orchestration, workflow engines, skills, Git automation, UI, MCP, distributed infrastructure, or generalized extension systems unless the specification is explicitly changed.
+Keep the MVP small. The expanded MVP includes server-owned workflow definitions, a current step and step context, but not agent launching or automatic quality assessment. Do not introduce agent orchestration, harness-specific skills or configuration, Git automation, UI, MCP, distributed infrastructure, or generalized extension systems unless the specification is explicitly changed.
 
 ## Development Rules
 
@@ -31,6 +31,8 @@ Every development task follows these stages in order. Track progress and evidenc
 5. **Publish:** inspect Git status and the full diff, stage only intended files without secrets or runtime data, commit, and push to `origin/main` on GitHub. Confirm the remote branch contains the commit; if publication fails, keep the task active and record the blocker. Do not force-push or overwrite unrelated work.
 
 After any fixes introduced by review or documentation, rerun affected checks and review the final change before publishing. The task note records plan, verification, review, documentation impact, commit and publication result.
+
+At the end of every report to the user, state what was done and what task comes next. If the user must take an action, say exactly what to do; when continuing in a new session would help, provide a ready-to-use continuation prompt. Do not present unpublished work as complete.
 
 ## Obsidian Tasks
 

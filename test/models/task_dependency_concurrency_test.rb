@@ -7,6 +7,7 @@ class TaskDependencyConcurrencyTest < ActiveSupport::TestCase
     TaskDependency.delete_all
     Task.delete_all
     TaskGroup.delete_all
+    Workflow.delete_all
     Project.delete_all
   end
 
@@ -14,13 +15,14 @@ class TaskDependencyConcurrencyTest < ActiveSupport::TestCase
     TaskDependency.delete_all
     Task.delete_all
     TaskGroup.delete_all
+    Workflow.delete_all
     Project.delete_all
   end
 
   test "concurrent opposite dependencies cannot commit a cycle" do
     project = Project.create!(name: "KOS", repository: "github.com/atilla777/kos")
-    first = project.tasks.create!(kind: "feature", title: "First", description: "First.")
-    second = project.tasks.create!(kind: "feature", title: "Second", description: "Second.")
+    first = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "First", description: "First.")
+    second = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Second", description: "Second.")
     ready = Queue.new
     start = Queue.new
     results = Queue.new

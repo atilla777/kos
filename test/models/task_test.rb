@@ -6,7 +6,7 @@ class TaskTest < ActiveSupport::TestCase
   end
 
   test "requires kind title and description" do
-    task = @project.tasks.build
+    task = @project.tasks.build(workflow: workflow_for(@project))
 
     assert_not task.valid?
     assert task.errors.of_kind?(:kind, :blank)
@@ -16,6 +16,7 @@ class TaskTest < ActiveSupport::TestCase
 
   test "new tasks are planned without ownership even when protected values are supplied" do
     task = @project.tasks.create!(
+      workflow: workflow_for(@project),
       kind: "feature",
       title: "Task CRUD",
       description: "Implement task CRUD.",
@@ -36,6 +37,7 @@ class TaskTest < ActiveSupport::TestCase
   test "database enforces the project foreign key and task constraints" do
     attributes = {
       project_id: @project.id,
+      workflow_id: workflow_for(@project).id,
       kind: "feature",
       title: "Task CRUD",
       description: "Implement task CRUD.",
@@ -72,7 +74,7 @@ class TaskTest < ActiveSupport::TestCase
   end
 
   test "project deletion is restricted while tasks exist" do
-    @project.tasks.create!(kind: "feature", title: "Task CRUD", description: "Implement it.")
+    @project.tasks.create!(workflow: workflow_for(@project), kind: "feature", title: "Task CRUD", description: "Implement it.")
 
     assert_not @project.destroy
     assert Project.exists?(@project.id)
@@ -82,10 +84,10 @@ class TaskTest < ActiveSupport::TestCase
   end
 
   test "database enforces dependency identity uniqueness and project" do
-    task = @project.tasks.create!(kind: "feature", title: "Task", description: "Task.")
-    blocker = @project.tasks.create!(kind: "feature", title: "Blocker", description: "Blocker.")
+    task = @project.tasks.create!(workflow: workflow_for(@project), kind: "feature", title: "Task", description: "Task.")
+    blocker = @project.tasks.create!(workflow: workflow_for(@project), kind: "feature", title: "Blocker", description: "Blocker.")
     other = Project.create!(name: "Other", repository: "github.com/atilla777/other")
-    foreign = other.tasks.create!(kind: "feature", title: "Foreign", description: "Foreign.")
+    foreign = other.tasks.create!(workflow: workflow_for(other), kind: "feature", title: "Foreign", description: "Foreign.")
     attributes = {
       task_id: task.id,
       blocking_task_id: blocker.id,

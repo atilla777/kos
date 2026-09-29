@@ -1,0 +1,45 @@
+class Workflow < ApplicationRecord
+  belongs_to :project
+  has_many :tasks, dependent: :restrict_with_error
+
+  validates :name, presence: true
+  validate :valid_steps
+  before_update :reject_changes
+
+  def step_at(position)
+    steps.fetch(position)
+  end
+
+  private
+
+  def reject_changes
+    raise ActiveRecord::ReadOnlyError, "Workflow definitions cannot be changed; create a new workflow."
+  end
+
+  def valid_steps
+    unless steps.is_a?(Array) && steps.any?
+      errors.add(:steps, "must be a nonempty list")
+      return
+    end
+
+    steps.each_with_index do |step, index|
+      unless step.is_a?(Hash) && (step.keys - %w[name instructions executor model_tier inputs outputs]).empty? &&
+          step["name"].is_a?(String) && step["name"].strip.present? &&
+          step["instructions"].is_a?(String) && step["instructions"].strip.present? &&
+          %w[main subagent].include?(step["executor"]) &&
+          (step["executor"] == "main" ? !step.key?("model_tier") : %w[standard advanced].include?(step["model_tier"])) &&
+          step["inputs"].is_a?(Array) && step["outputs"].is_a?(Array) &&
+          step["inputs"].all? { |input| valid_input?(input) } &&
+          step["outputs"].all? { |output| output.is_a?(String) && output.strip.present? } &&
+          step["outputs"].uniq == step["outputs"]
+        errors.add(:steps, "has an invalid step at position #{index}")
+      end
+    end
+  end
+
+  def valid_input?(input)
+    input.is_a?(Hash) && input.keys.sort == %w[key source] &&
+      %w[task blockers].include?(input["source"]) &&
+      input["key"].is_a?(String) && input["key"].strip.present?
+  end
+end

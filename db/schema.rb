@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_29_000007) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_29_000008) do
   create_table "projects", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "name", null: false
@@ -62,6 +62,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_000007) do
     t.string "claim_id"
     t.datetime "claimed_at"
     t.datetime "created_at", null: false
+    t.integer "current_step", default: 0, null: false
     t.text "description", null: false
     t.string "kind", null: false
     t.datetime "lease_expires_at"
@@ -72,16 +73,30 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_000007) do
     t.string "title", null: false
     t.datetime "updated_at", null: false
     t.text "work_summary"
+    t.integer "workflow_id", null: false
     t.index ["claim_id"], name: "index_tasks_on_claim_id", unique: true, where: "claim_id IS NOT NULL"
     t.index ["id", "project_id"], name: "index_tasks_on_id_and_project_id", unique: true
     t.index ["project_id", "session_id", "lease_expires_at"], name: "index_tasks_on_project_session_and_lease", where: "status = 'in_progress'"
     t.index ["project_id"], name: "index_tasks_on_project_id"
     t.index ["task_group_id"], name: "index_tasks_on_task_group_id"
+    t.index ["workflow_id"], name: "index_tasks_on_workflow_id"
     t.check_constraint "(status = 'in_progress' AND session_id IS NOT NULL AND length(trim(session_id)) > 0 AND claim_id IS NOT NULL AND length(trim(claim_id)) > 0 AND claimed_at IS NOT NULL AND lease_expires_at IS NOT NULL AND lease_expires_at > claimed_at) OR (status IN ('planned', 'done') AND session_id IS NULL AND claim_id IS NULL AND claimed_at IS NULL AND lease_expires_at IS NULL)", name: "tasks_status_ownership_consistent"
+    t.check_constraint "current_step >= 0", name: "tasks_current_step_nonnegative"
     t.check_constraint "length(trim(description)) > 0", name: "tasks_description_present"
     t.check_constraint "length(trim(kind)) > 0", name: "tasks_kind_present"
     t.check_constraint "length(trim(title)) > 0", name: "tasks_title_present"
     t.check_constraint "status IN ('planned', 'in_progress', 'done')", name: "tasks_status_allowed"
+  end
+
+  create_table "workflows", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "name", null: false
+    t.integer "project_id", null: false
+    t.json "steps", null: false
+    t.datetime "updated_at", null: false
+    t.index ["id", "project_id"], name: "index_workflows_on_id_and_project_id", unique: true
+    t.index ["project_id"], name: "index_workflows_on_project_id"
+    t.check_constraint "length(trim(name)) > 0", name: "workflows_name_present"
   end
 
   add_foreign_key "task_artifacts", "tasks", on_delete: :cascade
@@ -90,4 +105,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_000007) do
   add_foreign_key "task_groups", "projects", on_delete: :restrict
   add_foreign_key "tasks", "projects", on_delete: :restrict
   add_foreign_key "tasks", "task_groups", column: ["task_group_id", "project_id"], primary_key: ["id", "project_id"], on_delete: :restrict
+  add_foreign_key "tasks", "workflows", column: ["workflow_id", "project_id"], primary_key: ["id", "project_id"], on_delete: :restrict
+  add_foreign_key "workflows", "projects", on_delete: :restrict
 end

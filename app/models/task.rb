@@ -13,6 +13,7 @@ class Task < ApplicationRecord
   LEASE_DURATION = 30.minutes
 
   belongs_to :project
+  belongs_to :workflow
   belongs_to :task_group, optional: true
   has_many :task_dependencies, dependent: :destroy
   has_many :blocking_tasks, through: :task_dependencies
@@ -28,6 +29,10 @@ class Task < ApplicationRecord
 
   validates :kind, :title, :description, presence: true
   validates :status, inclusion: { in: STATUSES }
+  validates :current_step, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+  validate :workflow_belongs_to_project
+  validate :current_step_in_workflow
+  validate :workflow_immutable, on: :update
   validate :task_group_belongs_to_project
   validate :structural_changes_require_planned_status, on: :update
 
@@ -144,6 +149,21 @@ class Task < ApplicationRecord
       work_summary: work_summary,
       work_summary_provided: work_summary_provided
     )
+  end
+
+  def advance_step!(claim_id:, expected_step:)
+    with_locked_project do
+      ensure_active_claim!(claim_id, Time.current)
+      raise ClaimError, "step_conflict" unless current_step == expected_step
+      raise ClaimError, "invalid_transition" if current_step >= workflow.steps.length - 1
+
+      @advancing_step = true
+      begin
+        update!(current_step: current_step + 1)
+      ensure
+        @advancing_step = false
+      end
+    end
   end
 
   def update_from_request!(attributes:, claim_id:)
@@ -269,6 +289,9 @@ class Task < ApplicationRecord
   def finish_claim!(status:, claim_id:, work_summary:, work_summary_provided:)
     with_locked_project do
       ensure_active_claim!(claim_id, Time.current)
+      if status == "done" && current_step != workflow.steps.length - 1
+        raise ClaimError, "invalid_transition"
+      end
       attributes = {
         status: status,
         session_id: nil,
@@ -292,6 +315,21 @@ class Task < ApplicationRecord
 
     errors.add(:kind, "can only be changed while the task is planned") if will_save_change_to_kind?
     errors.add(:task_group, "can only be changed while the task is planned") if will_save_change_to_task_group_id?
+  end
+
+  def workflow_belongs_to_project
+    errors.add(:workflow, "must belong to the same project") if workflow && workflow.project_id != project_id
+  end
+
+  def current_step_in_workflow
+    return unless workflow && current_step.is_a?(Integer)
+
+    errors.add(:current_step, "must refer to a workflow step") unless current_step.between?(0, workflow.steps.length - 1)
+  end
+
+  def workflow_immutable
+    errors.add(:workflow, "cannot be changed") if will_save_change_to_workflow_id?
+    errors.add(:current_step, "must be advanced explicitly") if will_save_change_to_current_step? && !@advancing_step
   end
 
   def validate_blocker_ids!(ids)

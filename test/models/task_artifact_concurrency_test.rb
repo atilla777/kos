@@ -8,6 +8,7 @@ class TaskArtifactConcurrencyTest < ActiveSupport::TestCase
     TaskDependency.delete_all
     Task.delete_all
     TaskGroup.delete_all
+    Workflow.delete_all
     Project.delete_all
   end
 
@@ -16,6 +17,7 @@ class TaskArtifactConcurrencyTest < ActiveSupport::TestCase
     TaskDependency.delete_all
     Task.delete_all
     TaskGroup.delete_all
+    Workflow.delete_all
     Project.delete_all
   end
 
@@ -65,7 +67,7 @@ class TaskArtifactConcurrencyTest < ActiveSupport::TestCase
 
   def create_claimed_task
     project = Project.create!(name: "KOS", repository: "github.com/atilla777/kos")
-    task = project.tasks.create!(kind: "feature", title: "Artifacts", description: "Store results.")
+    task = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Artifacts", description: "Store results.")
     claimed_task, = Task.claim_for!(project: project, task_id: task.id, session_id: "agent-1")
     [ project, claimed_task ]
   end

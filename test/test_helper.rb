@@ -10,6 +10,13 @@ module ActiveSupport
     # Setup all fixtures in test/fixtures/*.yml for all tests in alphabetical order.
     fixtures :all
 
+    def workflow_for(project)
+      project.workflows.first || project.workflows.create!(name: "Test workflow", steps: [
+        { "name" => "Work", "instructions" => "Perform the test task.", "executor" => "main",
+          "inputs" => [], "outputs" => [] }
+      ])
+    end
+
     # Add more helper methods to be used by all tests here...
   end
 end

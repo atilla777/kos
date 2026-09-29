@@ -50,10 +50,41 @@ module Api
         current_task = Task.current_for(project: scoped_project, session_id: session_id)
         return render_data({ task: nil, reason: "no_current_task" }) unless current_task
 
-        render_data({ task: serialize_context(current_task, owned: true) })
+        render_data({ task: compact_context? ? serialize_route(current_task, owned: true) : serialize_context(current_task, owned: true) })
+      end
+
+      def step
+        definition = task.workflow.step_at(task.current_step)
+        inputs = definition.fetch("inputs").map do |input|
+          source_tasks = input.fetch("source") == "task" ? [ task ] : task.blocking_tasks.order(:id).to_a
+          matches = source_tasks.filter_map do |source|
+            artifact = source.task_artifacts.find_by(key: input.fetch("key"))
+            next unless artifact
+
+            artifact.as_json(only: %i[id task_id key content lock_version created_at updated_at])
+              .merge("source" => { "task_id" => source.id, "task_title" => source.title })
+          end
+          { "selector" => input, "artifacts" => matches, "missing" => matches.empty? }
+        end
+        render_data({ step: {
+          "task_id" => task.id, "workflow_id" => task.workflow_id, "current_step" => task.current_step,
+          "name" => definition.fetch("name"), "executor" => definition.fetch("executor"),
+          "model_tier" => definition["model_tier"], "instructions" => definition.fetch("instructions"),
+          "inputs" => inputs, "outputs" => definition.fetch("outputs")
+        } })
+      end
+
+      def advance
+        task.advance_step!(claim_id: claim_id, expected_step: Integer(params.require(:expected_step).to_s, 10))
+        render_data({ task: serialize_route(task, owned: true) })
+      rescue Task::ClaimError => error
+        render_operation_error(error)
+      rescue ArgumentError, TypeError
+        raise ActionController::BadRequest
       end
 
       def claim
+        compact_context?
         claimed_task, reused = Task.claim_for!(
           project: scoped_project,
           task_id: params[:id],
@@ -65,6 +96,7 @@ module Api
       end
 
       def claim_next
+        compact_context?
         claimed_task, reused = Task.claim_next_for!(
           project: scoped_project,
           session_id: session_id,
@@ -177,7 +209,7 @@ module Api
       end
 
       def task_params
-        params.permit(:kind, :title, :description, :work_summary, :task_group_id)
+        params.permit(:kind, :title, :description, :work_summary, :task_group_id, :workflow_id)
       end
 
       def blocked_by_ids_provided?
@@ -255,12 +287,24 @@ module Api
 
       def serialize_detailed(task)
         task.as_json(only: %i[
-          id project_id task_group_id kind title description status work_summary session_id
+          id project_id task_group_id workflow_id current_step kind title description status work_summary session_id
           claimed_at lease_expires_at created_at updated_at
         ]).merge(
           "blocked_by_ids" => task.task_dependencies.order(:blocking_task_id).pluck(:blocking_task_id),
           "lease_expired" => task.lease_expired?
         )
+      end
+
+      def serialize_route(task, owned: false)
+        definition = task.workflow.step_at(task.current_step)
+        result = serialize_detailed(task).slice(
+          "id", "project_id", "workflow_id", "current_step", "title", "status", "lease_expires_at"
+        ).merge("step" => {
+          "name" => definition.fetch("name"), "executor" => definition.fetch("executor"),
+          "model_tier" => definition["model_tier"]
+        })
+        result["claim_id"] = task.claim_id if owned
+        result
       end
 
       def serialize_owned(task)
@@ -364,9 +408,16 @@ module Api
 
       def render_claim(claimed_task, reused)
         render_data({
-          task: serialize_context(claimed_task, owned: true),
+          task: compact_context? ? serialize_route(claimed_task, owned: true) : serialize_context(claimed_task, owned: true),
           claim_status: reused ? "existing" : "created"
         })
+      end
+
+      def compact_context?
+        return false if params[:context].blank?
+        raise ActionController::BadRequest unless params[:context] == "route"
+
+        true
       end
 
       def render_claim_error(error, task_id)
@@ -386,7 +437,8 @@ module Api
           "invalid_transition" => "Task cannot perform this operation from its current state.",
           "task_already_claimed" => "Task has an active claim.",
           "task_has_dependents" => "Task is required by another task.",
-          "task_has_started_dependents" => "Dependent work has already started."
+          "task_has_started_dependents" => "Dependent work has already started.",
+          "step_conflict" => "Task has moved to another step."
         }
         render_error(error.code, messages.fetch(error.code), status: :conflict, details: { task_id: task.id })
       end

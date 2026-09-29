@@ -42,8 +42,8 @@ class TaskGroupsApiTest < ActionDispatch::IntegrationTest
   test "reports current progress and rejects deletion of a nonempty group" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
     group = project.task_groups.create!(kind: "epic", title: "Task groups", description: "Implement groups.")
-    done = project.tasks.create!(task_group: group, kind: "feature", title: "Done", description: "Done task.")
-    project.tasks.create!(task_group: group, kind: "feature", title: "Planned", description: "Planned task.")
+    done = project.tasks.create!(workflow: workflow_for(project), task_group: group, kind: "feature", title: "Done", description: "Done task.")
+    project.tasks.create!(workflow: workflow_for(project), task_group: group, kind: "feature", title: "Planned", description: "Planned task.")
     done.update!(status: "done")
 
     get "/api/v1/task-groups/#{group.id}", params: { project: REPOSITORY }

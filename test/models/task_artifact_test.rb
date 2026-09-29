@@ -3,7 +3,7 @@ require "test_helper"
 class TaskArtifactTest < ActiveSupport::TestCase
   test "artifact keys are unique within a task and versions advance on update" do
     project = Project.create!(name: "KOS", repository: "github.com/atilla777/kos")
-    task = project.tasks.create!(kind: "feature", title: "Artifacts", description: "Store results.")
+    task = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Artifacts", description: "Store results.")
     artifact = task.task_artifacts.create!(key: "specification", content: "# Version 1")
 
     assert_equal 0, artifact.lock_version
@@ -16,7 +16,7 @@ class TaskArtifactTest < ActiveSupport::TestCase
 
   test "destroying a task deletes its artifacts" do
     project = Project.create!(name: "KOS", repository: "github.com/atilla777/kos")
-    task = project.tasks.create!(kind: "feature", title: "Artifacts", description: "Store results.")
+    task = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Artifacts", description: "Store results.")
     artifact = task.task_artifacts.create!(key: "report", content: "# Report")
 
     task.destroy!

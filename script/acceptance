@@ -96,8 +96,21 @@ class Acceptance
 
   def verify_main_cycle(ssh_repository, https_repository, outside_repository)
     git_state = repository_state(ssh_repository)
+    definition = {
+      name: "Acceptance workflow",
+      steps: [
+        { name: "Report", instructions: "Write a test report.", executor: "subagent",
+          model_tier: "standard", inputs: [], outputs: [ "test_report" ] },
+        { name: "Finish", instructions: "Review the report.", executor: "main",
+          inputs: [ { source: "task", key: "test_report" } ], outputs: [] }
+      ]
+    }
+    workflow = kos("workflow", "create", "--file", "-", chdir: ssh_repository,
+      stdin_data: JSON.generate(definition))
+    workflow_id = workflow.dig("data", "workflow", "id") or raise "Workflow creation returned no ID"
     created = kos(
       "task", "create",
+      "--workflow-id", workflow_id.to_s,
       "--kind", "feature",
       "--title", "Acceptance task",
       "--description", "Verify the installed CLI against the local server.",
@@ -114,10 +127,15 @@ class Acceptance
     assert(JSON.parse(missing_project.fetch(:stdout)).dig("error", "code") == "invalid_usage", "Missing Git error was not JSON")
     kos("--project", "github.com/acceptance/kos-example", "task", "list", chdir: outside_repository)
 
-    claimed = kos("--session", "acceptance-agent", "task", "claim-next", chdir: https_repository)
+    claimed = kos("--session", "acceptance-agent", "task", "claim-next", "--route", chdir: https_repository)
     task = claimed.dig("data", "task") or raise "claim-next returned no task"
     assert(task.fetch("id") == task_id, "claim-next selected an unexpected task")
+    assert(task.dig("step", "model_tier") == "standard", "Wrong model tier in route")
+    assert(!task.key?("artifacts"), "Compact route exposed artifacts")
     claim_id = task.fetch("claim_id")
+
+    packet = kos("task", "step", "show", task_id.to_s, chdir: https_repository)
+    assert(packet.dig("data", "step", "instructions") == "Write a test report.", "Step instruction missing")
 
     artifact = kos(
       "--claim", claim_id,
@@ -126,6 +144,13 @@ class Acceptance
       stdin_data: "# Test report\n\nAcceptance passed.\n"
     )
     assert(artifact.dig("data", "artifact", "content").include?("Acceptance passed"), "Artifact was not saved")
+
+    advanced = kos("--claim", claim_id, "task", "advance", task_id.to_s,
+      "--expected-step", "0", chdir: https_repository)
+    assert(advanced.dig("data", "task", "current_step") == 1, "Task did not advance")
+    packet = kos("task", "step", "show", task_id.to_s, chdir: https_repository)
+    assert(packet.dig("data", "step", "inputs", 0, "artifacts", 0, "content").include?("Acceptance passed"),
+      "Next step could not read the previous result")
 
     completed = kos(
       "--claim", claim_id,

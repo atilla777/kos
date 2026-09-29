@@ -10,6 +10,7 @@ class SqliteContentionTest < ActionDispatch::IntegrationTest
     TaskDependency.delete_all
     Task.delete_all
     TaskGroup.delete_all
+    Workflow.delete_all
     Project.delete_all
   end
 
@@ -18,12 +19,13 @@ class SqliteContentionTest < ActionDispatch::IntegrationTest
     TaskDependency.delete_all
     Task.delete_all
     TaskGroup.delete_all
+    Workflow.delete_all
     Project.delete_all
   end
 
   test "a held SQLite write lock times out predictably without partial changes" do
     project = Project.create!(name: "Contention", repository: REPOSITORY)
-    task = project.tasks.create!(kind: "feature", title: "Claim", description: "Claim safely.")
+    task = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Claim", description: "Claim safely.")
     locked = Queue.new
     release = Queue.new
 

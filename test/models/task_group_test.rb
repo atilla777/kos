@@ -18,8 +18,8 @@ class TaskGroupTest < ActiveSupport::TestCase
   test "computes progress from current task statuses" do
     assert_equal({ completed: false, tasks_total: 0, tasks_done: 0, tasks_in_progress: 0 }, @group.progress)
 
-    done = @project.tasks.create!(task_group: @group, kind: "feature", title: "Done", description: "Done task.")
-    active = @project.tasks.create!(task_group: @group, kind: "feature", title: "Active", description: "Active task.")
+    done = @project.tasks.create!(workflow: workflow_for(@project), task_group: @group, kind: "feature", title: "Done", description: "Done task.")
+    active = @project.tasks.create!(workflow: workflow_for(@project), task_group: @group, kind: "feature", title: "Active", description: "Active task.")
     done.update!(status: "done")
     active.update!(
       status: "in_progress",
@@ -37,7 +37,7 @@ class TaskGroupTest < ActiveSupport::TestCase
 
   test "database and model reject membership across projects" do
     other = Project.create!(name: "Other", repository: "github.com/atilla777/other")
-    task = other.tasks.build(task_group: @group, kind: "feature", title: "Wrong", description: "Wrong project.")
+    task = other.tasks.build(workflow: workflow_for(other), task_group: @group, kind: "feature", title: "Wrong", description: "Wrong project.")
 
     assert_not task.valid?
     assert_includes task.errors[:task_group], "must belong to the same project"
@@ -51,7 +51,7 @@ class TaskGroupTest < ActiveSupport::TestCase
 
   test "group membership can only change while a task is planned" do
     replacement = @project.task_groups.create!(kind: "epic", title: "Replacement", description: "Replacement group.")
-    task = @project.tasks.create!(task_group: @group, kind: "feature", title: "Active", description: "Active task.")
+    task = @project.tasks.create!(workflow: workflow_for(@project), task_group: @group, kind: "feature", title: "Active", description: "Active task.")
     task.update!(
       status: "in_progress",
       session_id: "session",
@@ -67,7 +67,7 @@ class TaskGroupTest < ActiveSupport::TestCase
   end
 
   test "nonempty groups and projects with groups cannot be deleted" do
-    @project.tasks.create!(task_group: @group, kind: "feature", title: "Task", description: "Implement it.")
+    @project.tasks.create!(workflow: workflow_for(@project), task_group: @group, kind: "feature", title: "Task", description: "Implement it.")
 
     assert_not @group.destroy
     assert_not @project.destroy

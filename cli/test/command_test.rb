@@ -44,6 +44,29 @@ class CommandTest < Minitest::Test
     FakeClient.response = nil
   end
 
+  def test_creates_workflow_and_routes_subagent_to_a_step_packet
+    definition = '{"name":"Feature","steps":[{"name":"Plan","instructions":"Plan it.","executor":"subagent","model_tier":"advanced","inputs":[],"outputs":["plan"]}]}'
+    command_with_input = KosCli::Command.new(
+      stdin: StringIO.new(definition), stdout: @stdout, stderr: @stderr, client_class: FakeClient
+    )
+    assert_equal 0, command_with_input.run(%w[--project github.com/owner/project workflow create --file -])
+    assert_equal [ :post, "/workflows", {
+      project: "github.com/owner/project", name: "Feature",
+      steps: [ { "name" => "Plan", "instructions" => "Plan it.", "executor" => "subagent",
+        "model_tier" => "advanced", "inputs" => [], "outputs" => [ "plan" ] } ]
+    }, nil ], FakeClient.requests.last
+
+    assert_equal 0, command.run(%w[--project github.com/owner/project --session agent task claim 42 --route])
+    assert_equal "route", FakeClient.requests.last[2][:context]
+
+    assert_equal 0, command.run(%w[--project github.com/owner/project task step show 42])
+    assert_equal [ :get, "/tasks/42/step", nil, { project: "github.com/owner/project" } ], FakeClient.requests.last
+
+    assert_equal 0, command.run(%w[--project github.com/owner/project --claim secret task advance 42 --expected-step 0])
+    assert_equal 0, FakeClient.requests.last[2][:expected_step]
+    assert_equal "secret", FakeClient.requests.last[2][:claim_id]
+  end
+
   def test_creates_project_from_explicit_repository
     exit_code = command.run(%w[
       --project git@github.com:Owner/Project.git
@@ -182,7 +205,7 @@ class CommandTest < Minitest::Test
       "--title", "Create tasks",
       "--description", "Implement task CRUD",
       "--work-summary", "Started",
-      "--group-id", "7"
+      "--group-id", "7", "--workflow-id", "3"
     ])
 
     assert_equal 0, exit_code
@@ -195,7 +218,8 @@ class CommandTest < Minitest::Test
         title: "Create tasks",
         description: "Implement task CRUD",
         work_summary: "Started",
-        task_group_id: 7
+        task_group_id: 7,
+        workflow_id: 3
       },
       nil
     ], FakeClient.requests.last
@@ -205,7 +229,7 @@ class CommandTest < Minitest::Test
   def test_creates_task_with_blockers
     exit_code = command.run(%w[
       --project github.com/owner/project task create
-      --kind feature --title Work --description Implement
+      --kind feature --title Work --description Implement --workflow-id 3
       --blocked-by-ids 7,9
     ])
 
@@ -251,7 +275,7 @@ class CommandTest < Minitest::Test
   def test_creates_task_using_current_git_repository
     with_current_repository("git.example.com/Team/Project") do
       exit_code = command.run(%w[
-        task create --kind bug --title Broken --description Fix
+        task create --kind bug --title Broken --description Fix --workflow-id 3
       ])
 
       assert_equal 0, exit_code

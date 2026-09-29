@@ -5,7 +5,7 @@ class TaskArtifactsApiTest < ActionDispatch::IntegrationTest
 
   setup do
     @project = Project.create!(name: "KOS", repository: REPOSITORY)
-    @task = @project.tasks.create!(kind: "feature", title: "Artifacts", description: "Store results.")
+    @task = @project.tasks.create!(workflow: workflow_for(@project), kind: "feature", title: "Artifacts", description: "Store results.")
     @task, = Task.claim_for!(project: @project, task_id: @task.id, session_id: "agent-1")
   end
 

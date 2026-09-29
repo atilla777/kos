@@ -44,8 +44,9 @@ module KosCli
       status, response = case argv.shift
       when "project" then run_project(client, argv, options)
       when "group" then run_group(client, argv, options)
+      when "workflow" then run_workflow(client, argv, options)
       when "task" then run_task(client, argv, options)
-      else raise OptionParser::ParseError, "Expected: kos project|group|task COMMAND"
+      else raise OptionParser::ParseError, "Expected: kos project|group|workflow|task COMMAND"
       end
       success = status.between?(200, 299)
       write_json(response, redact_secrets: !success)
@@ -156,8 +157,71 @@ module KosCli
       when "update" then update_task(client, argv, global)
       when "delete" then delete_task(client, argv, global)
       when "artifact" then run_task_artifact(client, argv, global)
+      when "step" then run_task_step(client, argv, global)
+      when "advance" then advance_task(client, argv, global)
       else raise OptionParser::ParseError, "Expected task create, list, ready, claim-next, claim, current, renew, release, complete, reopen, show, update, delete, or artifact."
       end
+    end
+
+    def run_workflow(client, argv, global)
+      case argv.shift
+      when "create"
+        values = {}
+        OptionParser.new { |parser| parser.on("--file PATH") { |path| values[:file] = path } }.parse!(argv)
+        ensure_empty!(argv)
+        raise OptionParser::ParseError, "Provide --file PATH." unless values[:file]
+
+        definition = JSON.parse(read_utf8(values[:file]))
+        unless definition.is_a?(Hash) && definition.keys.sort == %w[name steps]
+          raise OptionParser::ParseError, "Workflow file must contain only name and steps."
+        end
+
+        client.request(:post, "/workflows", body: {
+          project: resolve_project(global), name: definition.fetch("name"), steps: definition.fetch("steps")
+        })
+      when "list"
+        values = { limit: 50 }
+        OptionParser.new do |parser|
+          parser.on("--limit LIMIT", Integer) { |value| values[:limit] = value }
+          parser.on("--after-id ID", Integer) { |value| values[:after_id] = value }
+        end.parse!(argv)
+        ensure_empty!(argv)
+        client.request(:get, "/workflows", query: { project: resolve_project(global), **values })
+      when "show"
+        id = task_id!(argv.shift)
+        ensure_empty!(argv)
+        client.request(:get, "/workflows/#{id}", query: { project: resolve_project(global) })
+      when "delete"
+        id = task_id!(argv.shift)
+        ensure_empty!(argv)
+        client.request(:delete, "/workflows/#{id}", query: { project: resolve_project(global) })
+      else
+        raise OptionParser::ParseError, "Expected workflow create, list, show, or delete."
+      end
+    rescue JSON::ParserError
+      raise OptionParser::ParseError, "Workflow file must contain valid JSON."
+    end
+
+    def run_task_step(client, argv, global)
+      raise OptionParser::ParseError, "Expected task step show." unless argv.shift == "show"
+
+      id = task_id!(argv.shift)
+      ensure_empty!(argv)
+      client.request(:get, "/tasks/#{id}/step", query: { project: resolve_project(global) })
+    end
+
+    def advance_task(client, argv, global)
+      id = task_id!(argv.shift)
+      values = {}
+      OptionParser.new do |parser|
+        parser.on("--expected-step N", Integer) { |value| values[:expected_step] = nonnegative_version!(value) }
+      end.parse!(argv)
+      ensure_empty!(argv)
+      raise OptionParser::ParseError, "Provide --expected-step N." unless values.key?(:expected_step)
+
+      client.request(:post, "/tasks/#{id}/advance", body: {
+        project: resolve_project(global), claim_id: resolve_claim(global), **values
+      })
     end
 
     def run_task_artifact(client, argv, global)
@@ -241,10 +305,11 @@ module KosCli
         parser.on("--description DESCRIPTION") { |value| values[:description] = value }
         parser.on("--work-summary SUMMARY") { |value| values[:work_summary] = value }
         parser.on("--group-id ID", Integer) { |value| values[:task_group_id] = value }
+        parser.on("--workflow-id ID", Integer) { |value| values[:workflow_id] = value }
         parser.on("--blocked-by-ids IDS") { |value| values[:blocked_by_ids] = id_list(value) }
       end.parse!(argv)
       ensure_empty!(argv)
-      missing = %i[kind title description].reject { |field| values.key?(field) }
+      missing = %i[kind title description workflow_id].reject { |field| values.key?(field) }
       raise OptionParser::ParseError, "Provide --#{missing.first.to_s.tr("_", "-")}." if missing.any?
 
       client.request(:post, "/tasks", body: { project: resolve_project(global), **values })
@@ -277,6 +342,7 @@ module KosCli
       OptionParser.new do |parser|
         parser.on("--kind KIND") { |value| values[:kind] = value }
         parser.on("--group-id ID", Integer) { |value| values[:task_group_id] = value }
+        parser.on("--route") { values[:context] = "route" }
         parse_context_options(parser, values)
       end.parse!(argv)
       ensure_empty!(argv)
@@ -290,7 +356,10 @@ module KosCli
     def claim_task(client, argv, global)
       id = task_id!(argv.shift)
       values = {}
-      OptionParser.new { |parser| parse_context_options(parser, values) }.parse!(argv)
+      OptionParser.new do |parser|
+        parser.on("--route") { values[:context] = "route" }
+        parse_context_options(parser, values)
+      end.parse!(argv)
       ensure_empty!(argv)
       client.request(:post, "/tasks/#{id}/claim", body: {
         project: resolve_project(global),
@@ -301,7 +370,10 @@ module KosCli
 
     def current_task(client, argv, global)
       values = {}
-      OptionParser.new { |parser| parse_context_options(parser, values) }.parse!(argv)
+      OptionParser.new do |parser|
+        parser.on("--route") { values[:context] = "route" }
+        parse_context_options(parser, values)
+      end.parse!(argv)
       ensure_empty!(argv)
       client.request(:get, "/tasks/current", query: {
         project: resolve_project(global),

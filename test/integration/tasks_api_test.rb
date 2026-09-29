@@ -4,8 +4,10 @@ class TasksApiTest < ActionDispatch::IntegrationTest
   REPOSITORY = "github.com/atilla777/kos"
 
   test "creates, lists, shows, updates, and deletes a task in its project" do
+    project = Project.create!(name: "KOS", repository: REPOSITORY)
     post "/api/v1/tasks", params: {
       project: REPOSITORY,
+      workflow_id: workflow_for(project).id,
       kind: "feature",
       title: "Task CRUD",
       description: "Implement task CRUD."
@@ -62,6 +64,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     2.times do |index|
       post "/api/v1/tasks", params: {
         project: "GitHub.com/Atilla777/KOS.git",
+        workflow_id: workflow_for(project).id,
         kind: "feature",
         title: "Task #{index}",
         description: "Implement it."
@@ -81,6 +84,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
     post "/api/v1/tasks", params: {
       project: REPOSITORY,
+      workflow_id: workflow_for(project).id,
       task_group_id: group.id,
       kind: "feature",
       title: "Grouped task",
@@ -100,12 +104,13 @@ class TasksApiTest < ActionDispatch::IntegrationTest
   end
 
   test "rejects a group from another project" do
-    Project.create!(name: "KOS", repository: REPOSITORY)
+    project = Project.create!(name: "KOS", repository: REPOSITORY)
     other = Project.create!(name: "Other", repository: "github.com/atilla777/other")
     group = other.task_groups.create!(kind: "epic", title: "Other", description: "Other group.")
 
     post "/api/v1/tasks", params: {
       project: REPOSITORY,
+      workflow_id: workflow_for(project).id,
       task_group_id: group.id,
       kind: "feature",
       title: "Wrong group",
@@ -127,7 +132,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
   test "all id operations reject a different project scope" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
     other = Project.create!(name: "Other", repository: "github.com/atilla777/other")
-    task = project.tasks.create!(kind: "feature", title: "Task CRUD", description: "Implement it.")
+    task = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Task CRUD", description: "Implement it.")
 
     get "/api/v1/tasks/#{task.id}", params: { project: other.repository }
     assert_response :not_found
@@ -142,8 +147,10 @@ class TasksApiTest < ActionDispatch::IntegrationTest
   end
 
   test "create and update ignore protected fields" do
+    project = Project.create!(name: "KOS", repository: REPOSITORY)
     post "/api/v1/tasks", params: {
       project: REPOSITORY,
+      workflow_id: workflow_for(project).id,
       kind: "feature",
       title: "Task CRUD",
       description: "Implement it.",
@@ -152,6 +159,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
       claim_id: "claim",
       claimed_at: Time.current,
       lease_expires_at: 1.hour.from_now,
+      current_step: 77,
       project_id: 999_999
     }, as: :json
     task_id = response.parsed_body.dig("data", "task", "id")
@@ -161,6 +169,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     assert_equal "planned", task.status
     assert_nil task.session_id
     assert_nil task.claim_id
+    assert_equal 0, task.current_step
     assert_equal Project.find_by!(repository: REPOSITORY).id, task.project_id
 
     patch "/api/v1/tasks/#{task.id}", params: {
@@ -170,12 +179,14 @@ class TasksApiTest < ActionDispatch::IntegrationTest
       claim_id: "claim",
       claimed_at: Time.current,
       lease_expires_at: 1.hour.from_now,
+      current_step: 99,
       project_id: 999_999
     }, as: :json
 
     assert_response :ok
     task.reload
     assert_equal "planned", task.status
+    assert_equal 0, task.current_step
     assert_nil task.session_id
     assert_nil task.claim_id
     assert_equal Project.find_by!(repository: REPOSITORY).id, task.project_id
@@ -185,9 +196,9 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     project = Project.create!(name: "KOS", repository: REPOSITORY)
     other = Project.create!(name: "Other", repository: "github.com/atilla777/other")
     3.times do |index|
-      project.tasks.create!(kind: "feature", title: "Task #{index}", description: "Implement it.")
+      project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Task #{index}", description: "Implement it.")
     end
-    other.tasks.create!(kind: "feature", title: "Other", description: "Implement it.")
+    other.tasks.create!(workflow: workflow_for(other), kind: "feature", title: "Other", description: "Implement it.")
 
     get "/api/v1/tasks", params: { project: REPOSITORY, limit: 2 }
     first_page = response.parsed_body.fetch("data")
@@ -226,7 +237,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "project deletion returns a safe conflict while tasks exist" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
-    project.tasks.create!(kind: "feature", title: "Task CRUD", description: "Implement it.")
+    project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Task CRUD", description: "Implement it.")
 
     delete "/api/v1/projects/#{project.id}", as: :json
 
@@ -238,11 +249,12 @@ class TasksApiTest < ActionDispatch::IntegrationTest
   test "creates a grouped task with blockers atomically" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
     group = project.task_groups.create!(kind: "epic", title: "Graph", description: "Build the graph.")
-    blocker = project.tasks.create!(kind: "decomposition", title: "Plan", description: "Plan the work.")
+    blocker = project.tasks.create!(workflow: workflow_for(project), kind: "decomposition", title: "Plan", description: "Plan the work.")
 
     post "/api/v1/tasks", params: {
       project: REPOSITORY,
       task_group_id: group.id,
+      workflow_id: workflow_for(project).id,
       kind: "feature",
       title: "Implement",
       description: "Implement the plan.",
@@ -258,10 +270,11 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "rolls back task creation when any blocker is invalid" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
-    blocker = project.tasks.create!(kind: "feature", title: "Blocker", description: "Block work.")
+    blocker = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Blocker", description: "Block work.")
 
     post "/api/v1/tasks", params: {
       project: REPOSITORY,
+      workflow_id: workflow_for(project).id,
       kind: "feature",
       title: "Invalid graph",
       description: "Must roll back.",
@@ -277,10 +290,10 @@ class TasksApiTest < ActionDispatch::IntegrationTest
   test "replaces the complete blocker set and rejects invalid graph changes atomically" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
     other_project = Project.create!(name: "Other", repository: "github.com/atilla777/other")
-    first = project.tasks.create!(kind: "feature", title: "First", description: "First.")
-    second = project.tasks.create!(kind: "feature", title: "Second", description: "Second.")
-    target = project.tasks.create!(kind: "feature", title: "Target", description: "Target.")
-    foreign = other_project.tasks.create!(kind: "feature", title: "Foreign", description: "Foreign.")
+    first = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "First", description: "First.")
+    second = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Second", description: "Second.")
+    target = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Target", description: "Target.")
+    foreign = other_project.tasks.create!(workflow: workflow_for(other_project), kind: "feature", title: "Foreign", description: "Foreign.")
     target.replace_blockers!([ first.id ])
 
     patch "/api/v1/tasks/#{target.id}", params: {
@@ -317,8 +330,8 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "rejects cycles without changing the existing graph" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
-    first = project.tasks.create!(kind: "feature", title: "First", description: "First.")
-    second = project.tasks.create!(kind: "feature", title: "Second", description: "Second.")
+    first = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "First", description: "First.")
+    second = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Second", description: "Second.")
     second.replace_blockers!([ first.id ])
 
     patch "/api/v1/tasks/#{first.id}", params: {
@@ -334,8 +347,8 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "rolls back task fields when blocker replacement fails" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
-    blocker = project.tasks.create!(kind: "feature", title: "Blocker", description: "Blocker.")
-    target = project.tasks.create!(kind: "feature", title: "Original", description: "Original.")
+    blocker = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Blocker", description: "Blocker.")
+    target = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Original", description: "Original.")
     target.replace_blockers!([ blocker.id ])
 
     patch "/api/v1/tasks/#{target.id}", params: {
@@ -352,14 +365,14 @@ class TasksApiTest < ActionDispatch::IntegrationTest
   test "ready is computed by the server with filters ordering and pagination" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
     group = project.task_groups.create!(kind: "epic", title: "Ready", description: "Ready work.")
-    blocker = project.tasks.create!(kind: "decomposition", title: "Plan", description: "Plan.")
-    blocked = project.tasks.create!(kind: "feature", title: "Blocked", description: "Blocked.", task_group: group)
+    blocker = project.tasks.create!(workflow: workflow_for(project), kind: "decomposition", title: "Plan", description: "Plan.")
+    blocked = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Blocked", description: "Blocked.", task_group: group)
     blocked.replace_blockers!([ blocker.id ])
-    first = project.tasks.create!(kind: "feature", title: "First ready", description: "Ready.", task_group: group)
-    second = project.tasks.create!(kind: "feature", title: "Second ready", description: "Ready.", task_group: group)
-    project.tasks.create!(kind: "bug", title: "Different kind", description: "Ready.", task_group: group)
-    active = project.tasks.create!(kind: "feature", title: "Active", description: "Claimed.", task_group: group)
-    expired = project.tasks.create!(kind: "feature", title: "Expired", description: "Claim expired.", task_group: group)
+    first = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "First ready", description: "Ready.", task_group: group)
+    second = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Second ready", description: "Ready.", task_group: group)
+    project.tasks.create!(workflow: workflow_for(project), kind: "bug", title: "Different kind", description: "Ready.", task_group: group)
+    active = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Active", description: "Claimed.", task_group: group)
+    expired = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Expired", description: "Claim expired.", task_group: group)
     active.update_columns(
       status: "in_progress", session_id: "active-session", claim_id: "active-claim",
       claimed_at: Time.current, lease_expires_at: 1.hour.from_now
@@ -407,8 +420,8 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "a blocker cannot be deleted while a dependent task exists" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
-    blocker = project.tasks.create!(kind: "feature", title: "Blocker", description: "Blocker.")
-    dependent = project.tasks.create!(kind: "feature", title: "Dependent", description: "Dependent.")
+    blocker = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Blocker", description: "Blocker.")
+    dependent = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Dependent", description: "Dependent.")
     dependent.replace_blockers!([ blocker.id ])
 
     delete "/api/v1/tasks/#{blocker.id}", params: { project: REPOSITORY }, as: :json
@@ -421,7 +434,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "claims a task with a server-issued lease and does not expose the claim in ordinary show" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
-    task = project.tasks.create!(kind: "feature", title: "Claim", description: "Claim it.")
+    task = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Claim", description: "Claim it.")
     before_claim = Time.current
 
     post "/api/v1/tasks/#{task.id}/claim", params: {
@@ -448,17 +461,19 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     project = Project.create!(name: "KOS", repository: REPOSITORY)
     group = project.task_groups.create!(kind: "epic", title: "Context", description: "Provide context.")
     blocker = project.tasks.create!(
+      workflow: workflow_for(project),
       kind: "decomposition", title: "Plan", description: "Plan it.", work_summary: "Plan complete."
     )
     blocker.update_columns(status: "done")
     blocker_artifact = blocker.task_artifacts.create!(key: "plan", content: "# Plan")
     task = project.tasks.create!(
+      workflow: workflow_for(project),
       kind: "feature", title: "Implement", description: "Use the plan.",
       work_summary: "Not started.", task_group: group
     )
     task.replace_blockers!([ blocker.id ])
     own_artifact = task.task_artifacts.create!(key: "notes", content: "# Notes")
-    dependent = project.tasks.create!(kind: "test", title: "Verify", description: "Verify it.")
+    dependent = project.tasks.create!(workflow: workflow_for(project), kind: "test", title: "Verify", description: "Verify it.")
     dependent.replace_blockers!([ task.id ])
 
     get "/api/v1/tasks/#{task.id}", params: { project: REPOSITORY }
@@ -500,16 +515,16 @@ class TasksApiTest < ActionDispatch::IntegrationTest
   test "task context marks incomplete collections and continues each with its cursor" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
     blockers = 2.times.map do |index|
-      blocker = project.tasks.create!(kind: "task", title: "Blocker #{index}", description: "Block.")
+      blocker = project.tasks.create!(workflow: workflow_for(project), kind: "task", title: "Blocker #{index}", description: "Block.")
       blocker.update_columns(status: "done")
       blocker.task_artifacts.create!(key: "result-#{index}", content: "Result #{index}")
       blocker
     end
-    task = project.tasks.create!(kind: "task", title: "Context", description: "Read context.")
+    task = project.tasks.create!(workflow: workflow_for(project), kind: "task", title: "Context", description: "Read context.")
     task.replace_blockers!(blockers.map(&:id))
     2.times { |index| task.task_artifacts.create!(key: "own-#{index}", content: "Own #{index}") }
     dependents = 2.times.map do |index|
-      dependent = project.tasks.create!(kind: "task", title: "Dependent #{index}", description: "Wait.")
+      dependent = project.tasks.create!(workflow: workflow_for(project), kind: "task", title: "Dependent #{index}", description: "Wait.")
       dependent.replace_blockers!([ task.id ])
       dependent
     end
@@ -546,8 +561,8 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "task context explains why work is unavailable" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
-    blocker = project.tasks.create!(kind: "task", title: "Blocker", description: "Block.")
-    task = project.tasks.create!(kind: "task", title: "Waiting", description: "Wait.")
+    blocker = project.tasks.create!(workflow: workflow_for(project), kind: "task", title: "Blocker", description: "Block.")
+    task = project.tasks.create!(workflow: workflow_for(project), kind: "task", title: "Waiting", description: "Wait.")
     task.replace_blockers!([ blocker.id ])
 
     get "/api/v1/tasks/#{task.id}", params: { project: REPOSITORY }
@@ -559,7 +574,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "repeated claim and current return the existing claim without extending it" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
-    task = project.tasks.create!(kind: "feature", title: "Claim", description: "Claim it.")
+    task = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Claim", description: "Claim it.")
 
     post "/api/v1/tasks/#{task.id}/claim", params: { project: REPOSITORY, session_id: "agent-1" }, as: :json
     original = response.parsed_body.dig("data", "task")
@@ -583,11 +598,11 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "claim enforces blockers ownership and terminal state" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
-    blocker = project.tasks.create!(kind: "feature", title: "Blocker", description: "Block.")
-    blocked = project.tasks.create!(kind: "feature", title: "Blocked", description: "Wait.")
+    blocker = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Blocker", description: "Block.")
+    blocked = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Blocked", description: "Wait.")
     blocked.replace_blockers!([ blocker.id ])
-    other = project.tasks.create!(kind: "feature", title: "Other", description: "Other.")
-    done = project.tasks.create!(kind: "feature", title: "Done", description: "Done.")
+    other = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Other", description: "Other.")
+    done = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Done", description: "Done.")
     done.update_columns(status: "done")
 
     post "/api/v1/tasks/#{blocked.id}/claim", params: { project: REPOSITORY, session_id: "agent-1" }, as: :json
@@ -612,9 +627,9 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "claim-next atomically selects filtered work or returns a normal empty result" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
-    project.tasks.create!(kind: "bug", title: "Bug", description: "Bug.")
-    first = project.tasks.create!(kind: "feature", title: "First", description: "First.")
-    project.tasks.create!(kind: "feature", title: "Second", description: "Second.")
+    project.tasks.create!(workflow: workflow_for(project), kind: "bug", title: "Bug", description: "Bug.")
+    first = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "First", description: "First.")
+    project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Second", description: "Second.")
 
     post "/api/v1/tasks/claim-next", params: {
       project: REPOSITORY,
@@ -645,7 +660,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "expired task receives a fresh claim id" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
-    task = project.tasks.create!(kind: "feature", title: "Expired", description: "Expired.")
+    task = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Expired", description: "Expired.")
     task.update_columns(
       status: "in_progress",
       session_id: "old-agent",
@@ -664,7 +679,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "claim operations require a nonblank string session" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
-    task = project.tasks.create!(kind: "feature", title: "Claim", description: "Claim.")
+    task = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Claim", description: "Claim.")
 
     [ nil, "", "   ", 123 ].each do |session|
       post "/api/v1/tasks/#{task.id}/claim", params: { project: REPOSITORY, session_id: session }, as: :json
@@ -675,7 +690,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "renews an active claim without changing its identity or start time" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
-    task = project.tasks.create!(kind: "feature", title: "Renew", description: "Renew it.")
+    task = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Renew", description: "Renew it.")
     task.update_columns(
       status: "in_progress", session_id: "agent-1", claim_id: "current-claim",
       claimed_at: 10.minutes.ago, lease_expires_at: 1.minute.from_now
@@ -697,7 +712,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "only the active claim can update in-progress task text" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
-    task = project.tasks.create!(kind: "feature", title: "Progress", description: "Track it.", work_summary: "Original")
+    task = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Progress", description: "Track it.", work_summary: "Original")
     task.update_columns(
       status: "in_progress", session_id: "agent-1", claim_id: "current-claim",
       claimed_at: Time.current, lease_expires_at: 1.hour.from_now
@@ -734,8 +749,8 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "blockers cannot be removed after dependent work starts" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
-    blocker = project.tasks.create!(kind: "feature", title: "Blocker", description: "Produce a result.")
-    dependent = project.tasks.create!(kind: "feature", title: "Dependent", description: "Use the result.")
+    blocker = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Blocker", description: "Produce a result.")
+    dependent = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Dependent", description: "Use the result.")
     dependent.replace_blockers!([ blocker.id ])
     blocker.update_columns(status: "done")
 
@@ -755,7 +770,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "release and complete atomically save summaries and clear ownership" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
-    task = project.tasks.create!(kind: "feature", title: "Finish", description: "Finish it.")
+    task = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Finish", description: "Finish it.")
 
     post "/api/v1/tasks/#{task.id}/claim", params: { project: REPOSITORY, session_id: "agent-1" }, as: :json
     first_claim = response.parsed_body.dig("data", "task", "claim_id")
@@ -786,7 +801,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "an expired owner cannot mutate a task after a fresh claim" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
-    task = project.tasks.create!(kind: "feature", title: "Takeover", description: "Take it.", work_summary: "Saved")
+    task = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Takeover", description: "Take it.", work_summary: "Saved")
     task.update_columns(
       status: "in_progress", session_id: "old-agent", claim_id: "old-claim",
       claimed_at: 2.hours.ago, lease_expires_at: 1.hour.ago
@@ -814,7 +829,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "an expired claim cannot renew release or complete at the lease boundary" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
-    task = project.tasks.create!(kind: "feature", title: "Expired", description: "Expire it.", work_summary: "Safe")
+    task = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Expired", description: "Expire it.", work_summary: "Safe")
     task.update_columns(
       status: "in_progress", session_id: "agent-1", claim_id: "expired-claim",
       claimed_at: 30.minutes.ago, lease_expires_at: Time.current
@@ -836,8 +851,8 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "reopen is explicit and rejects started dependent work" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
-    completed = project.tasks.create!(kind: "feature", title: "Result", description: "Produce it.")
-    dependent = project.tasks.create!(kind: "feature", title: "Consumer", description: "Use it.")
+    completed = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Result", description: "Produce it.")
+    dependent = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Consumer", description: "Use it.")
     dependent.replace_blockers!([ completed.id ])
     completed.update_columns(status: "done")
 
@@ -862,7 +877,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
 
   test "active claims prevent deletion but expired claims do not" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
-    task = project.tasks.create!(kind: "feature", title: "Delete", description: "Delete it.")
+    task = project.tasks.create!(workflow: workflow_for(project), kind: "feature", title: "Delete", description: "Delete it.")
     task.update_columns(
       status: "in_progress", session_id: "agent-1", claim_id: "claim",
       claimed_at: Time.current, lease_expires_at: 1.hour.from_now
