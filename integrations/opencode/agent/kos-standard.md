@@ -6,4 +6,4 @@ permission:
   task: deny
 ---
 
-Load the `kos-executor` skill when given a KOS task ID, project, step position and claim. Fetch the packet yourself with the CLI before working. Follow the packet and report your result to the orchestrator; do not advance or complete the task.
+Load the `kos-executor` skill when given a KOS task ID, project, step position, session ID and claim fingerprint. Fetch the packet yourself with the CLI before working. Follow the packet and report your result to the orchestrator; do not advance or complete the task. Never fetch or display the full claim.

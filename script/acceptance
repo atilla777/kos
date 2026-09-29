@@ -161,6 +161,28 @@ class Acceptance
 
     ready = kos("task", "ready", chdir: ssh_repository)
     assert(ready.dig("data", "tasks").none? { |item| item["id"] == task_id }, "Completed task remained ready")
+
+    verify_fingerprint_cycle(ssh_repository, workflow_id)
+  end
+
+  def verify_fingerprint_cycle(repository, workflow_id)
+    created = kos("task", "create", "--workflow-id", workflow_id.to_s, "--kind", "acceptance",
+      "--title", "Fingerprint task", "--description", "Write without exposing a claim.", chdir: repository)
+    task_id = created.dig("data", "task", "id")
+    claimed = kos("--session", "fingerprint-agent", "task", "claim", task_id.to_s, "--fingerprint", chdir: repository)
+    route = claimed.dig("data", "task")
+    fingerprint = route.fetch("claim_fingerprint")
+    assert(fingerprint.match?(/\A[0-9a-f]{64}\z/), "Invalid claim fingerprint")
+    assert(!route.key?("claim_id"), "Fingerprint route exposed claim")
+
+    args = [ "--session", "fingerprint-agent", "--claim-fingerprint", fingerprint ]
+    kos(*args, "task", "artifact", "put", task_id.to_s, "test_report", "--file", "-",
+      "--expected-step", "0", chdir: repository, stdin_data: "# Fingerprint report\n")
+    advanced = kos(*args, "task", "advance", task_id.to_s, "--expected-step", "0", chdir: repository)
+    assert(!advanced.dig("data", "task").key?("claim_id"), "Fingerprint advance exposed claim")
+    completed = kos(*args, "task", "complete", task_id.to_s, chdir: repository)
+    assert(completed.dig("data", "task", "status") == "done", "Fingerprint task did not complete")
+    assert(!completed.dig("data", "task").key?("claim_id"), "Fingerprint completion exposed claim")
   end
 
   def create_online_backup

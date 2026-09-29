@@ -1,4 +1,5 @@
 require "json"
+require "digest"
 require "optparse"
 require "uri"
 
@@ -30,11 +31,13 @@ module KosCli
     end
 
     def run(argv)
+      @fingerprint_route = false
       options = {
         url: ENV.fetch("KOS_API_URL", DEFAULT_URL),
         project: ENV["KOS_PROJECT"],
         session: ENV["KOS_SESSION_ID"],
-        claim: ENV["KOS_CLAIM_ID"]
+        claim: ENV["KOS_CLAIM_ID"],
+        claim_fingerprint: nil
       }
       parse_global_options(argv, options)
       @secrets = sensitive_values(options)
@@ -49,6 +52,7 @@ module KosCli
       else raise OptionParser::ParseError, "Expected: kos project|group|workflow|task COMMAND"
       end
       success = status.between?(200, 299)
+      response = with_claim_fingerprint(response) if success && (@fingerprint_route || options[:claim_fingerprint])
       write_json(response, redact_secrets: !success)
       success ? 0 : api_exit_code(status)
     rescue OptionParser::ParseError, ArgumentError, RepositoryError => error
@@ -77,6 +81,12 @@ module KosCli
         parser.on("--project REPOSITORY") { |value| options[:project] = value }
         parser.on("--session SESSION") { |value| options[:session] = value }
         parser.on("--claim CLAIM") { |value| options[:claim] = value }
+        parser.on("--claim-fingerprint SHA256") do |value|
+          raise OptionParser::ParseError, "Claim fingerprint must be 64 lowercase hex characters." unless value.match?(/\A[0-9a-f]{64}\z/)
+
+          options[:claim_fingerprint] = value
+          options[:claim] = nil
+        end
       end.order!(argv)
     end
 
@@ -220,7 +230,7 @@ module KosCli
       raise OptionParser::ParseError, "Provide --expected-step N." unless values.key?(:expected_step)
 
       client.request(:post, "/tasks/#{id}/advance", body: {
-        project: resolve_project(global), claim_id: resolve_claim(global), **values
+        project: resolve_project(global), claim_id: resolve_claim_for_task(client, global, id, expected_step: values[:expected_step]), **values
       })
     end
 
@@ -342,7 +352,7 @@ module KosCli
       OptionParser.new do |parser|
         parser.on("--kind KIND") { |value| values[:kind] = value }
         parser.on("--group-id ID", Integer) { |value| values[:task_group_id] = value }
-        parser.on("--route") { values[:context] = "route" }
+        parse_route_option(parser, values)
         parse_context_options(parser, values)
       end.parse!(argv)
       ensure_empty!(argv)
@@ -357,7 +367,7 @@ module KosCli
       id = task_id!(argv.shift)
       values = {}
       OptionParser.new do |parser|
-        parser.on("--route") { values[:context] = "route" }
+        parse_route_option(parser, values)
         parse_context_options(parser, values)
       end.parse!(argv)
       ensure_empty!(argv)
@@ -371,7 +381,7 @@ module KosCli
     def current_task(client, argv, global)
       values = {}
       OptionParser.new do |parser|
-        parser.on("--route") { values[:context] = "route" }
+        parse_route_option(parser, values)
         parse_context_options(parser, values)
       end.parse!(argv)
       ensure_empty!(argv)
@@ -387,7 +397,7 @@ module KosCli
       ensure_empty!(argv)
       client.request(:post, "/tasks/#{id}/#{operation}", body: {
         project: resolve_project(global),
-        claim_id: resolve_claim(global)
+        claim_id: resolve_claim_for_task(client, global, id)
       })
     end
 
@@ -400,7 +410,7 @@ module KosCli
       ensure_empty!(argv)
       client.request(:post, "/tasks/#{id}/#{operation}", body: {
         project: resolve_project(global),
-        claim_id: resolve_claim(global),
+        claim_id: resolve_claim_for_task(client, global, id),
         **values
       })
     end
@@ -434,7 +444,8 @@ module KosCli
       ensure_empty!(argv)
       raise OptionParser::ParseError, "Provide a mutable task field." if values.empty?
 
-      values[:claim_id] = global[:claim] if global[:claim]&.strip&.length&.positive?
+      values[:claim_id] = resolve_claim_for_task(client, global, id) if global[:claim_fingerprint]
+      values[:claim_id] ||= global[:claim] if global[:claim]&.strip&.length&.positive?
       client.request(:patch, "/tasks/#{id}", body: { project: resolve_project(global), **values })
     end
 
@@ -464,13 +475,20 @@ module KosCli
       OptionParser.new do |parser|
         parser.on("--file PATH") { |value| values[:file] = value }
         parser.on("--version VERSION", Integer) { |value| values[:lock_version] = nonnegative_version!(value) }
+        parser.on("--expected-step N", Integer) { |value| values[:expected_step] = nonnegative_version!(value) }
       end.parse!(argv)
       ensure_empty!(argv)
       raise OptionParser::ParseError, "Provide --file PATH or --file -." unless values.key?(:file)
+      if global[:claim_fingerprint] && !values.key?(:expected_step)
+        raise OptionParser::ParseError, "Provide --expected-step N with --claim-fingerprint."
+      end
+      if values.key?(:expected_step) && !global[:claim_fingerprint]
+        raise OptionParser::ParseError, "--expected-step requires --claim-fingerprint."
+      end
 
       client.request(:put, artifact_path(id, key), body: {
         project: resolve_project(global),
-        claim_id: resolve_claim(global),
+        claim_id: resolve_claim_for_task(client, global, id, expected_step: values[:expected_step]),
         content: read_utf8(values.fetch(:file)),
         lock_version: values[:lock_version]
       })
@@ -488,7 +506,7 @@ module KosCli
 
       client.request(:delete, artifact_path(id, key), body: {
         project: resolve_project(global),
-        claim_id: resolve_claim(global),
+        claim_id: resolve_claim_for_task(client, global, id),
         lock_version: values.fetch(:lock_version)
       })
     end
@@ -509,6 +527,39 @@ module KosCli
       raise OptionParser::ParseError, "Provide --claim or KOS_CLAIM_ID." unless claim&.strip&.length&.positive?
 
       claim
+    end
+
+    def resolve_claim_for_task(client, global, task_id, expected_step: nil)
+      return resolve_claim(global) unless global[:claim_fingerprint]
+
+      status, response = client.request(:get, "/tasks/current", query: {
+        project: resolve_project(global), session_id: resolve_session(global), context: "route"
+      })
+      raise ApiError.new(status, response) unless status.between?(200, 299)
+
+      task = response.dig("data", "task")
+      claim = task && task["claim_id"]
+      unless task && task["id"] == task_id && claim.is_a?(String) &&
+          Digest::SHA256.hexdigest(claim) == global[:claim_fingerprint]
+        raise ApiError.new(409, { error: { code: "claim_mismatch", message: "Current claim differs from the delegated claim." } })
+      end
+      if !expected_step.nil? && task["current_step"] != expected_step
+        raise ApiError.new(409, { error: { code: "step_conflict", message: "Task has moved to another step." } })
+      end
+
+      @secrets << claim
+      claim
+    end
+
+    def with_claim_fingerprint(response)
+      task = response.dig("data", "task")
+      return response unless task.is_a?(Hash) && task["claim_id"].is_a?(String)
+
+      claim = task.fetch("claim_id")
+      @secrets << claim
+      response.merge("data" => response.fetch("data").merge("task" => task.except("claim_id").merge(
+        "claim_fingerprint" => Digest::SHA256.hexdigest(claim)
+      )))
     end
 
     def task_id!(value)
@@ -567,6 +618,14 @@ module KosCli
         values[:dependency_artifact_after_id] = value
       end
       parser.on("--blocks-after-id ID", Integer) { |value| values[:blocks_after_id] = value }
+    end
+
+    def parse_route_option(parser, values)
+      parser.on("--route") { values[:context] = "route" }
+      parser.on("--fingerprint") do
+        values[:context] = "route"
+        @fingerprint_route = true
+      end
     end
 
     def resolve_id(client, target, global)

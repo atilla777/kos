@@ -26,4 +26,6 @@ bin/ci
 | 15.12 Product boundaries | `script/acceptance` verifies normal commands do not change branch, remote, or worktree state. Repository dependencies and runtime code contain no GitHub API, OpenCode, Redis, skill, MCP, UI, or workflow-engine integration. |
 | 15.13 Step routing | `script/acceptance` creates a workflow with subagent and main steps, uses compact claim and a step packet, writes a result, advances, reads it as next-step input, and completes. `test/integration/workflow_api_test.rb` covers missing inputs, cross-project workflow, reclaim and stale transitions; `test/models/task_claim_concurrency_test.rb` covers competing advances. |
 
+`script/acceptance` also runs a second installed-CLI cycle using a claim fingerprint instead of printing or passing the full claim; `cli/test/command_test.rb` verifies that a changed claim, missing current task, wrong step or read error stops the protected write before it is sent. Live OpenCode agent handoff and local transcript inspection are documented in the PLAN-016 acceptance record, not simulated by the CLI-only script.
+
 The same acceptance script creates an online SQLite backup, restores it into a separate database while the server is stopped, and verifies the completed task. Temporary servers, databases, gems, repositories, and backups are removed after the run.

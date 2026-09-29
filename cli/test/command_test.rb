@@ -1,4 +1,5 @@
 require "minitest/autorun"
+require "digest"
 require "stringio"
 require "tempfile"
 require_relative "../lib/kos_cli"
@@ -6,7 +7,7 @@ require_relative "../lib/kos_cli"
 class CommandTest < Minitest::Test
   class FakeClient
     class << self
-      attr_accessor :requests, :response
+      attr_accessor :requests, :response, :responses
     end
 
     def initialize(url)
@@ -15,7 +16,7 @@ class CommandTest < Minitest::Test
 
     def request(method, path, body: nil, query: nil)
       self.class.requests << [ method, path, body, query ]
-      self.class.response || [ 200, { "data" => {} } ]
+      self.class.responses&.shift || self.class.response || [ 200, { "data" => {} } ]
     end
   end
 
@@ -42,6 +43,63 @@ class CommandTest < Minitest::Test
     @stdout = StringIO.new
     @stderr = StringIO.new
     FakeClient.response = nil
+    FakeClient.responses = nil
+  end
+
+  def test_fingerprint_route_and_protected_write_keep_claim_out_of_output_and_arguments
+    claim = "a" * 64
+    fingerprint = Digest::SHA256.hexdigest(claim)
+    route = { "data" => { "task" => { "id" => 42, "current_step" => 0, "claim_id" => claim } } }
+    FakeClient.responses = [ [ 200, route ] ]
+    assert_equal 0, command.run(%w[--project github.com/owner/project --session agent task claim 42 --fingerprint])
+    assert_equal fingerprint, JSON.parse(@stdout.string).dig("data", "task", "claim_fingerprint")
+    refute_includes @stdout.string, claim
+    assert_equal "route", FakeClient.requests.last[2][:context]
+
+    setup
+    FakeClient.responses = [ [ 200, route ], [ 200, { "data" => { "artifact" => { "key" => "report" } } } ] ]
+    cmd = KosCli::Command.new(stdin: StringIO.new("# Result"), stdout: @stdout, stderr: @stderr, client_class: FakeClient)
+    assert_equal 0, cmd.run([ "--project", "github.com/owner/project", "--session", "agent",
+      "--claim-fingerprint", fingerprint, "task", "artifact", "put", "42", "report", "--file", "-", "--expected-step", "0" ])
+    assert_equal [ :get, "/tasks/current", nil,
+      { project: "github.com/owner/project", session_id: "agent", context: "route" } ], FakeClient.requests[-2]
+    assert_equal claim, FakeClient.requests.last[2][:claim_id]
+    assert_equal "# Result", FakeClient.requests.last[2][:content]
+    refute_includes @stdout.string, claim
+  end
+
+  def test_fingerprint_rejects_reclaimed_and_wrong_step_without_writing
+    claim = "a" * 64
+    fingerprint = Digest::SHA256.hexdigest(claim)
+    [ [ "b" * 64, 42, 0, "claim_mismatch" ], [ claim, 43, 0, "claim_mismatch" ],
+      [ claim, 42, 1, "step_conflict" ], [ nil, 42, nil, "claim_mismatch" ] ].each do |actual, id, step, code|
+      setup
+      FakeClient.response = [ 200, { "data" => { "task" => actual &&
+        { "id" => id, "current_step" => step, "claim_id" => actual } } } ]
+      cmd = KosCli::Command.new(stdin: StringIO.new("# Result"), stdout: @stdout, stderr: @stderr, client_class: FakeClient)
+      assert_equal 4, cmd.run([ "--project", "github.com/owner/project", "--session", "agent",
+        "--claim-fingerprint", fingerprint, "task", "artifact", "put", "42", "report", "--file", "-", "--expected-step", "0" ])
+      assert_equal code, JSON.parse(@stdout.string).dig("error", "code")
+      assert_equal 1, FakeClient.requests.count { |request| request.first == :get }
+      refute FakeClient.requests.any? { |request| request.first == :put }
+      refute_includes @stdout.string, actual if actual
+    end
+  end
+
+  def test_fingerprint_propagates_current_read_failure_without_writing
+    FakeClient.response = [ 503, { "error" => { "code" => "database_busy" } } ]
+    assert_equal 1, command.run([ "--project", "github.com/owner/project", "--session", "agent",
+      "--claim-fingerprint", "a" * 64, "task", "complete", "42" ])
+    assert_equal "database_busy", JSON.parse(@stdout.string).dig("error", "code")
+    refute FakeClient.requests.any? { |request| request.first == :post }
+  end
+
+  def test_expected_step_is_only_supported_with_fingerprint_mode
+    assert_equal 2, command.run(%w[
+      --project github.com/owner/project --claim secret task artifact put 42 report --file - --expected-step 0
+    ])
+    assert_equal "invalid_usage", JSON.parse(@stdout.string).dig("error", "code")
+    refute FakeClient.requests.any? { |request| request.first == :put }
   end
 
   def test_creates_workflow_and_routes_subagent_to_a_step_packet
