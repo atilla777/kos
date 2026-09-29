@@ -1,0 +1,67 @@
+{
+  "name": "KOS Fix v1",
+  "steps": [
+    {
+      "name": "Diagnose the problem",
+      "instructions": "Start from the symptoms and expected behavior in the task description; a prior brief is not required. Reproduce the problem where feasible, find its cause and scope, distinguish evidence from hypotheses, and identify a regression check. Save root_cause_report. If information is missing, investigate available evidence before asking for a human decision; do not move on while the actual blocker remains unknown.",
+      "executor": "subagent",
+      "model_tier": "advanced",
+      "inputs": [],
+      "outputs": ["root_cause_report"]
+    },
+    {
+      "name": "Refine and plan the fix",
+      "instructions": "Use the diagnosis and task description to define the smallest correct fix, task-specific acceptance criteria, a regression test and relevant checks. Save implementation_plan. Ask for a human decision only if a genuine product ambiguity blocks progress.",
+      "executor": "subagent",
+      "model_tier": "advanced",
+      "inputs": [{"source": "task", "key": "root_cause_report"}],
+      "outputs": ["implementation_plan"]
+    },
+    {
+      "name": "Fix and test",
+      "instructions": "Implement the fix in the verified task worktree when this is development work. Add a meaningful regression test when appropriate, run relevant checks, resolve failures, and save test_report with evidence. Continue unless a real blocker or human decision prevents progress.",
+      "executor": "subagent",
+      "model_tier": "advanced",
+      "inputs": [
+        {"source": "task", "key": "root_cause_report"},
+        {"source": "task", "key": "implementation_plan"}
+      ],
+      "outputs": ["test_report"]
+    },
+    {
+      "name": "Review and resolve findings",
+      "instructions": "Independently review diagnosis, fix, regression coverage, complete diff and project rules. Save review_report with findings and verdict. If issues remain, report them to the orchestrator for correction and repeat this review on the same step. Advance only after issues are resolved and affected checks pass.",
+      "executor": "subagent",
+      "model_tier": "advanced",
+      "inputs": [
+        {"source": "task", "key": "root_cause_report"},
+        {"source": "task", "key": "implementation_plan"},
+        {"source": "task", "key": "test_report"}
+      ],
+      "outputs": ["review_report"]
+    },
+    {
+      "name": "Update project documentation",
+      "instructions": "Load kos-project-docs and follow the target project's documentation rules, path and format. Update changed user-visible behavior and error scenarios and run applicable checks. If no update is required, inspect relevant rules and record why. Save documentation_report with evidence or reason. Ask for clarification only when required documentation lacks an unambiguous path.",
+      "executor": "subagent",
+      "model_tier": "standard",
+      "inputs": [
+        {"source": "task", "key": "root_cause_report"},
+        {"source": "task", "key": "review_report"}
+      ],
+      "outputs": ["documentation_report"]
+    },
+    {
+      "name": "Publish and verify",
+      "instructions": "Publication is included in the assigned task; no separate per-step permission is needed. Follow the target project's rules and the verified task worktree. Inspect status, complete diff, tests and review, publish by the project's required route, confirm the result at the destination, and save publication_report with verifiable reference and destination. If publication is blocked or ambiguous, retain the worktree and stay on this step. Only the orchestrator may complete the KOS task after verifying publication.",
+      "executor": "subagent",
+      "model_tier": "standard",
+      "inputs": [
+        {"source": "task", "key": "test_report"},
+        {"source": "task", "key": "review_report"},
+        {"source": "task", "key": "documentation_report"}
+      ],
+      "outputs": ["publication_report"]
+    }
+  ]
+}

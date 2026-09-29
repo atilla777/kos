@@ -1,9 +1,20 @@
-# This file should ensure the existence of records required to run the application in every environment (production,
-# development, test). The code here should be idempotent so that it can be executed at any point in every environment.
-# The data can then be loaded with the bin/rails db:seed command (or created alongside the database with db:setup).
-#
-# Example:
-#
-#   ["Action", "Comedy", "Drama", "Horror"].each do |genre_name|
-#     MovieGenre.find_or_create_by!(name: genre_name)
-#   end
+require "json"
+
+# These shared definitions are immutable. Change a name for a new edition;
+# never silently replace the steps of an existing task's workflow.
+Workflow.transaction do
+  Dir[Rails.root.join("config/workflows/*.json")].sort.each do |path|
+    definition = JSON.parse(File.read(path))
+    name = definition.fetch("name")
+    steps = definition.fetch("steps")
+    existing = Workflow.where(project_id: nil, name: name).to_a
+
+    raise "Multiple global workflows named #{name}" if existing.length > 1
+
+    if existing.empty?
+      Workflow.create!(name: name, steps: steps)
+    elsif existing.first.steps != steps
+      raise "Global workflow #{name} differs from #{path}; create a newly named edition instead"
+    end
+  end
+end

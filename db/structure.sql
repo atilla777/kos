@@ -70,7 +70,9 @@ WHEN OLD.project_id IS NOT NEW.project_id
 BEGIN
   SELECT RAISE(ABORT, 'workflow project cannot change');
 END;
+CREATE UNIQUE INDEX "index_global_workflows_on_name" ON "workflows" ("name") WHERE project_id IS NULL;
 INSERT INTO "schema_migrations" (version) VALUES
+('20260929000010'),
 ('20260929000009'),
 ('20260929000008'),
 ('20260929000007'),
