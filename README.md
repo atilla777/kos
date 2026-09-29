@@ -88,13 +88,13 @@ command -v kos
 kos --help
 ```
 
-Ensure `$HOME/.local/bin` is in your shell's `PATH` (including new OpenCode sessions); `command -v kos` should resolve to `$HOME/.local/bin/kos` rather than an older installation. If it does not, add that directory to your shell's startup configuration and open a new shell. Rebuild and reinstall after changing the CLI source. `kos project list --limit 50` checks the installed CLI against the running API without creating records.
+Ensure `$HOME/.local/bin` is in your shell's `PATH` (including new OpenCode sessions); `command -v kos` should resolve to `$HOME/.local/bin/kos` rather than an older installation. If it does not, add that directory to your shell's startup configuration and open a new shell. Rebuild and reinstall after changing the CLI source. The gem version alone does not identify the checkout revision: reinstall with `--force` when updating, then compare installed files as described below. `kos project list --limit 50` checks the installed CLI against the running API without creating records.
 
 The CLI uses `http://127.0.0.1:3000` by default. Set `KOS_API_URL` or pass `--url URL` before the resource name to select another local endpoint. Set `KOS_PROJECT` or pass `--project REPOSITORY` to select a project explicitly. Claim operations require a stable session identity through `KOS_SESSION_ID` or `--session SESSION`. Protected writes accept the server-issued claim through `KOS_CLAIM_ID` or `--claim CLAIM`; avoid exposing claim values in logs or shared shell history. Command-line options override environment variables.
 
 ## OpenCode Integration
 
-The integration ships three skills (`kos-setup`, `kos-orchestrator`, `kos-executor`) and two subagent profiles (`kos-standard`, `kos-advanced`). From the KOS checkout, after installing the server and CLI as above:
+The integration ships three skills (`kos-setup`, `kos-orchestrator`, `kos-executor`), two subagent profiles (`kos-standard`, `kos-advanced`), and three global commands (`/kos-init` for setup/checks, `/kos-update` for a safe update, `/kos` for the existing orchestrator in Build). From the KOS checkout, after installing the server and CLI as above:
 
 ```bash
 ruby script/install-opencode
@@ -102,7 +102,48 @@ opencode models openai
 opencode agent list
 ```
 
-The installer copies only KOS files to `~/.config/opencode/` (or `$XDG_CONFIG_HOME/opencode/`), preserving other global settings. It stops before copying if a destination differs; resolve that file explicitly before rerunning. To refresh after updating KOS, review and remove or relocate only the previous KOS copies first. If you installed an earlier version, remove its obsolete `agent/kos-orchestrator.md` profile so it does not remain in the mode selector. OpenCode loads configuration at startup: **quit and restart OpenCode** after installing or updating agents or skills. Confirm `openai/gpt-6-luna` and `openai/gpt-6-sol` are available from your OpenAI provider and that both executor agents appear in `opencode agent list`. In the new Build session, load `kos-orchestrator`; the `kos-executor` skill is available to delegated executors. A shell's `opencode agent list` does not reload an already-running interactive session.
+The installer copies only KOS files to `~/.config/opencode/` (or `$XDG_CONFIG_HOME/opencode/`), preserving other global settings. On update, it replaces a file only if its contents match a version of that file in the checkout's Git history. A modified file, symlink, or unknown version stops the whole preflight before copying; inspect the conflict and resolve it explicitly instead of deleting your changes. The old `agent/kos-orchestrator.md` profile from an earlier version is not removed automatically; inspect and remove it yourself if present. OpenCode loads configuration at startup: **quit and restart OpenCode** after installing or updating commands, agents or skills. Confirm `openai/gpt-6-luna` and `openai/gpt-6-sol` are available from your OpenAI provider and that both executor agents appear in `opencode agent list`. In the new Build session, `/kos` loads `kos-orchestrator`; the `kos-executor` skill is available to delegated executors. A shell's `opencode agent list` does not reload an already-running interactive session.
+
+## Updating an existing installation
+
+Use `/kos-update` in a current OpenCode session or follow these instructions with the agent. If the command is not installed yet, ask Build to load `kos-setup` and follow this section. `/kos-init` is for first installation and checks; it does not authorize migration of an existing database. Identify the existing KOS checkout and the service that uses it **before** changing files. Check for an existing `storage/development.sqlite3` and inspect its schema as in [Server Setup](#server-setup). Record the current checkout revision (`git rev-parse HEAD`), CLI executable (`command -v kos`), whether the loopback server is running, and how it is started. Never substitute a new checkout or a test database for the persistent store by accident.
+
+### Fetch and install files
+
+Confirm that `origin` is the intended GitHub KOS repository (`github.com/atilla777/kos`); do not print embedded credentials in remote URLs. Work on `main` only. Stop and ask the user to resolve any tracked or untracked changes, local commits, divergent history, unexpected origin, or different branch; do not stash, reset, switch branches, merge non-fast-forward, or overwrite files to make the update succeed. From the checkout:
+
+```bash
+git status --porcelain --untracked-files=all
+git branch --show-current
+git fetch origin main
+git rev-list --count origin/main..HEAD
+git merge-base --is-ancestor HEAD origin/main
+git merge --ff-only origin/main
+git rev-parse HEAD
+bundle install
+bundle check
+```
+
+The first command must be empty, the branch must be `main`, the count must be `0`, and `merge-base` must succeed **before** running `git merge --ff-only`. If fetch fails (network, authorization), stop without using stale `origin/main`. If dependency installation fails, report the resulting revision and fix the dependency issue before continuing; do not claim the update is finished. Do not run `bin/rails db:prepare` as part of updating files.
+
+Build and install the CLI from this revision as in [CLI Installation](#cli-installation), using `gem install --user-install --bindir "$HOME/.local/bin" --no-document --force /tmp/kos-cli.gem` on update. Check `command -v kos` resolves to that user installation. The version string may not change across revisions; compare the installed gem's executable and library contents with the checkout instead of trusting its version alone:
+
+```bash
+ruby -rrubygems -e 's=Gem::Specification.find_by_name("kos-cli"); files=Dir["cli/{exe,lib}/**/*"].select { |f| File.file?(f) }; abort "CLI files differ" unless files.all? { |f| p=f.delete_prefix("cli/"); File.file?(File.join(s.full_gem_path,p)) && File.binread(f)==File.binread(File.join(s.full_gem_path,p)) }; puts "CLI matches checkout"'
+ruby script/install-opencode
+```
+
+The comparison must run from the checkout root using the same Ruby environment as `kos`. After the OpenCode installer succeeds, compare its KOS destinations with the source and start a **new OpenCode session** to see the commands and agents. If installation stops on a conflicting destination, inspect its diff and preserve it until its owner decides how to resolve it; other destinations are not changed by that installer attempt. Check `kos project list --limit 50` against the server **only after** checking server/schema compatibility. A running server can still be on the old code even if the checkout and CLI are new; report that state explicitly.
+
+### Database and server: two separate approvals
+
+Inspect the existing database read-only and compare `schema_migrations` with `db/migrate/` before proposing any migration. Show the user which migrations are pending and their data effects (the workflow migration can remove earlier tasks and artifacts). If a migration is needed, create a uniquely named backup **outside the checkout** with SQLite's online `.backup` while the old server is still available; confirm the backup exists and returns `ok` from `PRAGMA integrity_check`, and check that the expected tables and record counts are present. A failed backup means stop. Present the migration plan and obtain explicit permission to migrate **this database**; an update request or permission to install files is not enough.
+
+Separately, show how the currently running server would be stopped and started (manual process or user service) and obtain explicit permission to stop/restart **that server**. When a migration requires a stop, request both permissions before stopping it; then stop the server, migrate only the backed-up database with `bin/rails db:migrate`, and restart only under the separately approved plan. If either permission is refused, leave the database and running process alone and report which components are updated and which are not. If migration fails, do not restart against a possibly inconsistent schema; inspect the error and backup. Restore only after another explicit decision, with the server stopped; do not automatically restore and then rerun `db:prepare`.
+
+After an approved restart, verify loopback binding, the API response, installed CLI, and OpenCode in a new session. An update is complete only when all intended components pass these checks. If a step fails, state the last successful step and safe next action; do not report success based on a successful fetch or file copy alone.
+
+## Working with OpenCode
 
 In the target Git repository, ask the current main agent in Build to load the `kos-orchestrator` skill and work on the next KOS task. Before claiming work, set a stable `KOS_SESSION_ID` unique to this OpenCode session (for example, its OpenCode session ID). Use `KOS_PROJECT` if the Git `origin` cannot identify the project; use `KOS_API_URL` for a nondefault loopback port. Do not reuse a session ID for independent concurrent agents. An active claim belongs to the whole task: use `kos task current --fingerprint` or `kos task claim-next --fingerprint` to obtain a compact route without printing the claim. Delegate only its fingerprint, task ID, step position, project and session ID to the executor. The executor independently calls `kos task step show TASK_ID` and writes results using `kos --session SESSION --claim-fingerprint HASH task artifact put TASK_ID KEY --file PATH --expected-step N`; the CLI retrieves the actual token in memory and the server still validates it. The orchestrator verifies and explicitly advances or completes using the same fingerprint mode. The workflow author chooses the tier for each step: focused documentation or simple development may be `standard`, while work needing more judgment may be `advanced`. Project instructions govern any publication by the main agent.
 

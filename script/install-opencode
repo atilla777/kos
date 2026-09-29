@@ -1,19 +1,38 @@
 #!/usr/bin/env ruby
 
 require "fileutils"
+require "open3"
 
 root = File.expand_path("..", __dir__)
 source = File.join(root, "integrations", "opencode")
 config = File.join(ENV.fetch("XDG_CONFIG_HOME", File.join(Dir.home, ".config")), "opencode")
 files = Dir.glob(File.join(source, "**", "*.md")).sort
+replacements = []
+
+def previous_kos_copy?(root, relative, content)
+  commits, status = Open3.capture2("git", "-C", root, "log", "--format=%H", "HEAD", "--", relative)
+  return false unless status.success?
+
+  commits.each_line.any? do |commit|
+    old, _error, result = Open3.capture3("git", "-C", root, "show", "#{commit.strip}:#{relative}")
+    result.success? && old == content
+  end
+end
 
 files.each do |file|
   target = File.join(config, file.delete_prefix("#{source}/"))
   if File.exist?(target) || File.symlink?(target)
-    abort "KOS installation stopped: existing file differs at #{target}" unless File.file?(target) && !File.symlink?(target) && File.binread(target) == File.binread(file)
+    abort "KOS installation stopped: existing file differs at #{target}" unless File.file?(target) && !File.symlink?(target)
+    next if File.binread(target) == File.binread(file)
+
+    relative = file.delete_prefix("#{root}/")
+    abort "KOS installation stopped: existing file differs at #{target} (not a known previous KOS copy)" unless previous_kos_copy?(root, relative, File.binread(target))
+
+    replacements << [ file, target ]
   end
 end
 
+replacements.each { |file, target| FileUtils.cp(file, target) }
 files.each do |file|
   target = File.join(config, file.delete_prefix("#{source}/"))
   next if File.exist?(target)
@@ -22,4 +41,4 @@ files.each do |file|
   FileUtils.cp(file, target)
 end
 
-puts "Installed #{files.length} KOS OpenCode files in #{config}. Restart OpenCode to load them."
+puts "Installed #{files.length} KOS OpenCode files (#{replacements.length} updated) in #{config}. Restart OpenCode to load them."
