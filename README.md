@@ -10,6 +10,8 @@ Current user-facing behavior and scenarios are documented in the [OKF knowledge 
 - Bundler 4.0.20
 - SQLite 3
 
+Check the installed tools with `ruby --version`, `bundle --version`, and `sqlite3 --version`. If you use mise and `bundle` reports that no version is set for its shim despite Bundler 4.0.20 being installed, run `mise use -g bundler@4.0.20` and check `bundle --version` again. On other Ruby installations, install the required Bundler version with `gem install bundler -v 4.0.20`.
+
 ## Server Setup
 
 Get the source and enter the repository:
@@ -20,26 +22,73 @@ cd kos
 ```
 
 ```bash
-gem install bundler -v 4.0.20
 bundle config set --local path vendor/bundle
 bundle install
-bin/rails db:prepare
-bin/rails server
+bundle check
 ```
 
-The server listens only on `http://127.0.0.1:3000`. Set `PORT` to change the port while retaining the loopback-only binding. The persistent development database is `storage/development.sqlite3`.
+For a **new installation with no existing development database**, initialize it and start the server:
+
+```bash
+bin/rails db:prepare
+bin/rails server -b 127.0.0.1 -p 3000
+```
+
+For an **existing installation**, inspect `storage/development.sqlite3` before running `db:prepare`, upgrading, or restoring anything. The file is persistent, not disposable test data. For example, from the repository root:
+
+```bash
+sqlite3 'file:storage/development.sqlite3?mode=ro' '.tables'
+sqlite3 'file:storage/development.sqlite3?mode=ro' 'SELECT version FROM schema_migrations ORDER BY version;'
+sqlite3 'file:storage/development.sqlite3?mode=ro' 'SELECT COUNT(*) FROM projects;'
+```
+
+If the file contains data, preserve it before any migration: review the pending migrations and [make an online backup](#backup-and-restore). In particular, upgrading a database from before the workflow migration can remove its earlier tasks and artifacts. Do not run `db:prepare` on that database until you have reviewed the effect and backed up what you need. For an up-to-date database, start the server without a migration. If the file is missing, use the new-installation instructions above. Never use the test database as the persistent store.
+
+The server listens only on `http://127.0.0.1:3000`; `PORT` changes the port while retaining loopback-only binding. The persistent development database is `storage/development.sqlite3`. In another terminal, check the listener and API:
+
+```bash
+ss -ltn '( sport = :3000 )'  # 127.0.0.1:3000 only
+curl --noproxy '*' -i http://127.0.0.1:3000/api/v1/projects
+```
+
+An empty `projects` array with HTTP 200 is a healthy server, not an automatically registered KOS development project. Reads do not create projects; register a project explicitly or create its first workflow before expecting `kos task ready` to return work.
+
+### Optional daily startup with systemd (Linux + mise)
+
+If you want the local server started at user login, create `~/.config/systemd/user/kos.service` with the **absolute path to your own checkout** in `WorkingDirectory`:
+
+```ini
+[Unit]
+Description=KOS local Rails API
+
+[Service]
+Type=simple
+WorkingDirectory=/absolute/path/to/kos
+ExecStart=/usr/bin/mise exec bundler@4.0.20 -- bin/rails server -b 127.0.0.1 -p 3000
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+
+This example assumes `mise` is at `/usr/bin/mise` and Bundler and the Rails dependencies were installed as above; adjust the path if necessary (`command -v mise`). Start only one server on the port. After creating the unit, run `systemctl --user daemon-reload` and `systemctl --user enable --now kos.service`. Check `systemctl --user status kos.service` and the loopback/API commands above; stop it with `systemctl --user stop kos.service`. This user service starts with the user's systemd manager, ordinarily at login; boot-time startup without login is not implied. To use the manual server instead, stop the user service first.
 
 The API is under `/api/v1`. Successful responses use a `data` object; errors use an `error` object with a stable `code` and `message`. Project, task-group, task, and workflow lists default to 50 records, accept at most 100, and return `pagination.next_after_id` for continuation. Group, workflow, and task operations require the canonical repository key in `project`; creating a group or workflow atomically creates a missing project, while reads never do. A task must reference an existing workflow in its project. Group progress is computed from its tasks, and nonempty groups cannot be deleted.
 
 ## CLI Installation
 
-Build and install the gem from the repository:
+Build and install the gem from the repository into your user environment without writing the built gem into the checkout:
 
 ```bash
 cd cli
-gem build kos-cli.gemspec
-gem install ./kos-cli-0.1.0.gem
+gem build kos-cli.gemspec --output /tmp/kos-cli.gem
+mkdir -p "$HOME/.local/bin"
+gem install --user-install --bindir "$HOME/.local/bin" --no-document /tmp/kos-cli.gem
+command -v kos
+kos --help
 ```
+
+Ensure `$HOME/.local/bin` is in your shell's `PATH` (including new OpenCode sessions); `command -v kos` should resolve to `$HOME/.local/bin/kos` rather than an older installation. If it does not, add that directory to your shell's startup configuration and open a new shell. Rebuild and reinstall after changing the CLI source. `kos project list --limit 50` checks the installed CLI against the running API without creating records.
 
 The CLI uses `http://127.0.0.1:3000` by default. Set `KOS_API_URL` or pass `--url URL` before the resource name to select another local endpoint. Set `KOS_PROJECT` or pass `--project REPOSITORY` to select a project explicitly. Claim operations require a stable session identity through `KOS_SESSION_ID` or `--session SESSION`. Protected writes accept the server-issued claim through `KOS_CLAIM_ID` or `--claim CLAIM`; avoid exposing claim values in logs or shared shell history. Command-line options override environment variables.
 
@@ -53,7 +102,7 @@ opencode models openai
 opencode agent list
 ```
 
-The installer copies only KOS files to `~/.config/opencode/` (or `$XDG_CONFIG_HOME/opencode/`), preserving other global settings. It stops before copying if a destination differs; resolve that file explicitly before rerunning. To refresh after updating KOS, review and remove or relocate only the previous KOS copies first. If you installed an earlier version, remove its obsolete `agent/kos-orchestrator.md` profile so it does not remain in the mode selector. OpenCode loads configuration at startup: **quit and restart OpenCode** after installing or updating agents or skills. Confirm `openai/gpt-6-luna` and `openai/gpt-6-sol` are available from your OpenAI provider and that both executor agents appear in `opencode agent list`.
+The installer copies only KOS files to `~/.config/opencode/` (or `$XDG_CONFIG_HOME/opencode/`), preserving other global settings. It stops before copying if a destination differs; resolve that file explicitly before rerunning. To refresh after updating KOS, review and remove or relocate only the previous KOS copies first. If you installed an earlier version, remove its obsolete `agent/kos-orchestrator.md` profile so it does not remain in the mode selector. OpenCode loads configuration at startup: **quit and restart OpenCode** after installing or updating agents or skills. Confirm `openai/gpt-6-luna` and `openai/gpt-6-sol` are available from your OpenAI provider and that both executor agents appear in `opencode agent list`. In the new Build session, load `kos-orchestrator`; the `kos-executor` skill is available to delegated executors. A shell's `opencode agent list` does not reload an already-running interactive session.
 
 In the target Git repository, ask the current main agent in Build to load the `kos-orchestrator` skill and work on the next KOS task. Before claiming work, set a stable `KOS_SESSION_ID` unique to this OpenCode session (for example, its OpenCode session ID). Use `KOS_PROJECT` if the Git `origin` cannot identify the project; use `KOS_API_URL` for a nondefault loopback port. Do not reuse a session ID for independent concurrent agents. An active claim belongs to the whole task: use `kos task current --fingerprint` or `kos task claim-next --fingerprint` to obtain a compact route without printing the claim. Delegate only its fingerprint, task ID, step position, project and session ID to the executor. The executor independently calls `kos task step show TASK_ID` and writes results using `kos --session SESSION --claim-fingerprint HASH task artifact put TASK_ID KEY --file PATH --expected-step N`; the CLI retrieves the actual token in memory and the server still validates it. The orchestrator verifies and explicitly advances or completes using the same fingerprint mode. The workflow author chooses the tier for each step: focused documentation or simple development may be `standard`, while work needing more judgment may be `advanced`. Project instructions govern any publication by the main agent.
 
