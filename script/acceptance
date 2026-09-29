@@ -66,7 +66,7 @@ class Acceptance
     log = File.open(@server_log, "w")
     @server_pid = Process.spawn(
       server_environment,
-      "bin/rails", "server", "--environment", "test",
+      "bin/rails", "server", "--environment", "test", "--binding", "127.0.0.1",
       chdir: ROOT,
       out: log,
       err: [ :child, :out ]
