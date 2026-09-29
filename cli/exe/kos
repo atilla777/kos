@@ -1,0 +1,5 @@
+#!/usr/bin/env ruby
+
+require "kos_cli"
+
+exit KosCli::Command.new.run(ARGV)

@@ -1,0 +1,247 @@
+#!/usr/bin/env ruby
+
+require "fileutils"
+require "json"
+require "net/http"
+require "open3"
+require "socket"
+require "tmpdir"
+
+ROOT = File.expand_path("..", __dir__)
+
+class Acceptance
+  def initialize(directory)
+    @directory = directory
+    @database = File.join(directory, "kos.sqlite3")
+    @backup = File.join(directory, "kos-backup.sqlite3")
+    @restored = File.join(directory, "kos-restored.sqlite3")
+    @gem_home = File.join(directory, "gems")
+    @gem_file = File.join(directory, "kos-cli.gem")
+    @server_log = File.join(directory, "server.log")
+    @port = available_port
+    @url = "http://127.0.0.1:#{@port}"
+  end
+
+  def run
+    build_and_install_cli
+    prepare_database
+    ssh_repository, https_repository, outside_repository = prepare_repositories
+    start_server
+
+    verify_main_cycle(ssh_repository, https_repository, outside_repository)
+    create_online_backup
+  ensure
+    stop_server
+    verify_restore if File.exist?(@backup)
+  end
+
+  private
+
+  def build_and_install_cli
+    run!("gem", "build", "kos-cli.gemspec", "--output", @gem_file, chdir: File.join(ROOT, "cli"))
+    run!("gem", "install", "--install-dir", @gem_home, "--no-document", @gem_file)
+    raise "Installed kos executable is missing" unless File.executable?(kos_executable)
+  end
+
+  def prepare_database
+    run!("bin/rails", "db:prepare", env: server_environment)
+  end
+
+  def prepare_repositories
+    ssh_repository = create_repository("ssh-clone", "git@github.com:acceptance/kos-example.git")
+    https_repository = create_repository("https-clone", "https://github.com/acceptance/kos-example.git")
+    outside_repository = File.join(@directory, "outside-repository")
+    FileUtils.mkdir(outside_repository)
+    [ ssh_repository, https_repository, outside_repository ]
+  end
+
+  def create_repository(name, remote)
+    path = File.join(@directory, name)
+    run!("git", "init", "--quiet", path)
+    run!("git", "-C", path, "remote", "add", "origin", remote)
+    path
+  end
+
+  def start_server
+    log = File.open(@server_log, "w")
+    @server_pid = Process.spawn(
+      server_environment,
+      "bin/rails", "server", "--environment", "test",
+      chdir: ROOT,
+      out: log,
+      err: [ :child, :out ]
+    )
+    log.close
+    wait_for_server
+  end
+
+  def wait_for_server
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 15
+    loop do
+      begin
+        http = Net::HTTP.new("127.0.0.1", @port, nil)
+        http.open_timeout = 1
+        http.read_timeout = 1
+        return if http.get("/up").is_a?(Net::HTTPSuccess)
+      rescue Errno::ECONNREFUSED, Net::OpenTimeout, Net::ReadTimeout
+        # The process can be alive before Rails is ready to serve requests.
+      ensure
+        raise "KOS server failed to start" unless process_running?(@server_pid)
+        raise "Timed out waiting for KOS server" if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+      end
+
+      sleep 0.1
+    end
+  end
+
+  def verify_main_cycle(ssh_repository, https_repository, outside_repository)
+    git_state = repository_state(ssh_repository)
+    created = kos(
+      "task", "create",
+      "--kind", "feature",
+      "--title", "Acceptance task",
+      "--description", "Verify the installed CLI against the local server.",
+      chdir: ssh_repository
+    )
+    task_id = created.dig("data", "task", "id") or raise "Task creation returned no ID"
+
+    listed = kos("task", "list", chdir: https_repository)
+    assert(listed.dig("data", "tasks").any? { |task| task["id"] == task_id }, "Equivalent remotes resolved differently")
+    assert(repository_state(ssh_repository) == git_state, "A normal KOS command changed Git state")
+
+    missing_project = kos_result("task", "list", chdir: outside_repository)
+    assert(missing_project.fetch(:status).exitstatus == 2, "Missing Git context did not return a usage error")
+    assert(JSON.parse(missing_project.fetch(:stdout)).dig("error", "code") == "invalid_usage", "Missing Git error was not JSON")
+    kos("--project", "github.com/acceptance/kos-example", "task", "list", chdir: outside_repository)
+
+    claimed = kos("--session", "acceptance-agent", "task", "claim-next", chdir: https_repository)
+    task = claimed.dig("data", "task") or raise "claim-next returned no task"
+    assert(task.fetch("id") == task_id, "claim-next selected an unexpected task")
+    claim_id = task.fetch("claim_id")
+
+    artifact = kos(
+      "--claim", claim_id,
+      "task", "artifact", "put", task_id.to_s, "test_report", "--file", "-",
+      chdir: https_repository,
+      stdin_data: "# Test report\n\nAcceptance passed.\n"
+    )
+    assert(artifact.dig("data", "artifact", "content").include?("Acceptance passed"), "Artifact was not saved")
+
+    completed = kos(
+      "--claim", claim_id,
+      "task", "complete", task_id.to_s, "--work-summary", "Acceptance passed.",
+      chdir: https_repository
+    )
+    assert(completed.dig("data", "task", "status") == "done", "Task was not completed")
+
+    ready = kos("task", "ready", chdir: ssh_repository)
+    assert(ready.dig("data", "tasks").none? { |item| item["id"] == task_id }, "Completed task remained ready")
+  end
+
+  def create_online_backup
+    run!("sqlite3", @database, ".backup '#{@backup}'")
+  end
+
+  def verify_restore
+    FileUtils.rm_f(@restored)
+    run!("sqlite3", @restored, ".restore '#{@backup}'")
+    output, = run!("sqlite3", @restored, "SELECT status FROM tasks WHERE title = 'Acceptance task';")
+    assert(output.strip == "done", "Restored database did not contain the completed task")
+  end
+
+  def kos(*arguments, chdir:, stdin_data: "")
+    result = kos_result(*arguments, chdir: chdir, stdin_data: stdin_data)
+    unless result.fetch(:status).success?
+      parsed = JSON.parse(result.fetch(:stdout))
+      code = parsed.is_a?(Hash) ? parsed.dig("error", "code") : "json_#{parsed.class.name.downcase}"
+      raise "Installed kos command failed with exit #{result.fetch(:status).exitstatus} (#{code || "unknown"})"
+    end
+
+    JSON.parse(result.fetch(:stdout))
+  rescue JSON::ParserError
+    diagnostic = result.fetch(:stderr).lines.first.to_s.strip.gsub(/[0-9a-f]{32,}/, "[REDACTED]")
+    raise "Installed kos command returned non-JSON stdout (#{result.fetch(:stdout).bytesize} bytes; #{diagnostic})"
+  end
+
+  def kos_result(*arguments, chdir:, stdin_data: "")
+    stdout, stderr, status = Open3.capture3(
+      cli_environment,
+      kos_executable,
+      *arguments,
+      chdir: chdir,
+      stdin_data: stdin_data
+    )
+    { stdout: stdout, stderr: stderr, status: status }
+  end
+
+  def repository_state(path)
+    branch, = run!("git", "-C", path, "symbolic-ref", "--short", "HEAD")
+    remote, = run!("git", "-C", path, "remote", "get-url", "origin")
+    status, = run!("git", "-C", path, "status", "--porcelain=v1")
+    [ branch, remote, status ]
+  end
+
+  def run!(*command, chdir: ROOT, env: {}, stdin_data: "")
+    stdout, stderr, status = Open3.capture3(env, *command, chdir: chdir, stdin_data: stdin_data)
+    raise "#{command.first} failed with exit #{status.exitstatus}: #{stderr}" unless status.success?
+
+    [ stdout, stderr ]
+  end
+
+  def server_environment
+    {
+      "RAILS_ENV" => "test",
+      "KOS_TEST_DATABASE" => @database,
+      "PORT" => @port.to_s,
+      "PIDFILE" => File.join(@directory, "server.pid")
+    }
+  end
+
+  def cli_environment
+    {
+      "BUNDLE_BIN_PATH" => nil,
+      "BUNDLE_GEMFILE" => nil,
+      "BUNDLE_PATH" => nil,
+      "GEM_HOME" => @gem_home,
+      "GEM_PATH" => ([ @gem_home ] + Gem.path).uniq.join(File::PATH_SEPARATOR),
+      "KOS_API_URL" => @url,
+      "RUBYLIB" => nil,
+      "RUBYOPT" => nil
+    }
+  end
+
+  def kos_executable
+    File.join(@gem_home, "bin", "kos")
+  end
+
+  def available_port
+    server = TCPServer.new("127.0.0.1", 0)
+    server.addr[1]
+  ensure
+    server&.close
+  end
+
+  def process_running?(pid)
+    Process.kill(0, pid)
+    true
+  rescue Errno::ESRCH
+    false
+  end
+
+  def stop_server
+    return unless @server_pid && process_running?(@server_pid)
+
+    Process.kill("TERM", @server_pid)
+    Process.wait(@server_pid)
+  end
+
+  def assert(condition, message)
+    raise message unless condition
+  end
+end
+
+Dir.mktmpdir("kos-acceptance") do |directory|
+  Acceptance.new(directory).run
+end
+
+puts "KOS acceptance passed: clean CLI install, end-to-end task cycle, and SQLite backup/restore."

@@ -1,0 +1,28 @@
+# MVP Acceptance
+
+Run the complete local verification from the repository root:
+
+```bash
+bin/ci
+```
+
+`bin/ci` runs style and security checks, all Rails and CLI tests, builds the CLI gem, and runs `script/acceptance`. The acceptance script installs the gem into an isolated temporary gem home and exercises the installed executable against a temporary Rails server and SQLite database.
+
+## Scenario Coverage
+
+| Specification | Automated evidence |
+| --- | --- |
+| 15.1 Main cycle | `script/acceptance` creates a task through Git discovery, claims it, writes an artifact, completes it, and confirms it is no longer ready. |
+| 15.2 Independent clones | `script/acceptance` uses equivalent SSH and HTTPS remotes, verifies missing Git context and explicit `--project`; `cli/test/repository_test.rb` covers normalization and credential removal. |
+| 15.3 Group and planning | `test/integration/task_groups_api_test.rb`, `test/models/task_group_test.rb`, and `test/integration/tasks_api_test.rb` cover computed group completion, atomic grouped task creation, blocked readiness, completion, and dependency artifacts in context. |
+| 15.4 Concurrent claim | `test/models/task_claim_concurrency_test.rb` uses the configured SQLite database for competing sessions and parallel requests from one session. |
+| 15.5 Expiry and old owner | `test/integration/tasks_api_test.rb` and `test/integration/task_artifacts_api_test.rb` cover reclaim, a new claim ID, computed expiry, and rejection of every stale write. |
+| 15.6 Renewal | `test/integration/tasks_api_test.rb` covers identity-preserving renewal, reads without renewal, and the exact expiry boundary. |
+| 15.7 Context recovery | `test/integration/restart_persistence_test.rb` starts a fresh application process and verifies persisted lease, summary, artifact, and UTC values; context integration tests verify reads do not alter results. |
+| 15.8 Document conflict | `test/models/task_artifact_concurrency_test.rb` and `test/integration/task_artifacts_api_test.rb` cover stale updates and concurrent creation of one key. |
+| 15.9 Graph correctness | `test/integration/tasks_api_test.rb`, `test/models/task_test.rb`, and `test/models/task_dependency_concurrency_test.rb` cover invalid edges, cycles, concurrent opposite edges, and transaction rollback. |
+| 15.10 Transition protection | `test/integration/tasks_api_test.rb` and `test/integration/task_artifacts_api_test.rb` cover protected fields, claim requirements, explicit transitions, and immutable dependencies after work starts. |
+| 15.11 Network and errors | `cli/test/client_test.rb`, `cli/test/command_test.rb`, and `test/integration/sqlite_contention_test.rb` cover finite timeouts, no mutation retries, ambiguous outcomes, error classes, JSON output, and `database_busy`. |
+| 15.12 Product boundaries | `script/acceptance` verifies normal commands do not change branch, remote, or worktree state. Repository dependencies and runtime code contain no GitHub API, OpenCode, Redis, skill, MCP, UI, or workflow-engine integration. |
+
+The same acceptance script creates an online SQLite backup, restores it into a separate database while the server is stopped, and verifies the completed task. Temporary servers, databases, gems, repositories, and backups are removed after the run.

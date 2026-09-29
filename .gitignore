@@ -1,0 +1,15 @@
+/.bundle
+/.env*
+/config/master.key
+/config/credentials.yml.enc
+/coverage
+/log/*
+/storage/*.sqlite3*
+/tmp/*
+/vendor/bundle
+
+!/log/.keep
+!/storage/.keep
+!/tmp/.keep
+!/tmp/pids/.keep
+!/tmp/storage/.keep
