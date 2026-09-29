@@ -10,6 +10,7 @@ CI.run do
   step "Tests: Rails", "bin/rails test"
   step "Tests: CLI", "ruby -Icli/lib:cli/test cli/test/repository_test.rb && ruby -Icli/lib:cli/test cli/test/command_test.rb && ruby -Icli/lib:cli/test cli/test/client_test.rb"
   step "Tests: OpenCode installation", "ruby script/test_install_opencode.rb"
+  step "Tests: task worktree Git scenarios", "ruby script/test_task_worktree.rb"
   step "Build: CLI gem", "cd cli && gem build kos-cli.gemspec --output /tmp/kos-cli.gem"
   step "Acceptance: installed CLI and backup", "script/acceptance"
   step "Tests: Seeds", "env RAILS_ENV=test bin/rails db:seed:replant"

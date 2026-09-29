@@ -27,6 +27,8 @@ class InstallOpencodeTest < Minitest::Test
         assert_equal File.binread(File.join(SOURCE, "command", "#{name}.md")),
           File.binread(File.join(home, "opencode", "command", "#{name}.md"))
       end
+      assert_equal File.binread(File.join(SOURCE, "task-worktree.md")),
+        File.binread(File.join(home, "opencode", "task-worktree.md"))
       refute File.exist?(File.join(home, "opencode", "agent", "kos-orchestrator.md"))
     end
   end
