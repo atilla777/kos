@@ -15,7 +15,7 @@ class InstallOpencodeTest < Minitest::Test
         assert_includes stdout, "Restart OpenCode"
       end
 
-      %w[kos-setup kos-orchestrator kos-executor kos-git kos-github-cli].each do |name|
+      %w[kos-setup kos-orchestrator kos-executor kos-git kos-github-cli kos-project-docs].each do |name|
         assert_equal File.binread(File.join(SOURCE, "skills", name, "SKILL.md")),
           File.binread(File.join(home, "opencode", "skills", name, "SKILL.md"))
       end
@@ -103,7 +103,7 @@ class InstallOpencodeTest < Minitest::Test
 
       skills, error, status = Open3.capture3(env, "opencode", "debug", "skill", chdir: home)
       assert status.success?, error
-      %w[kos-setup kos-orchestrator kos-executor kos-git kos-github-cli].each { |name| assert_includes skills, name }
+      %w[kos-setup kos-orchestrator kos-executor kos-git kos-github-cli kos-project-docs].each { |name| assert_includes skills, name }
 
       commands, error, status = Open3.capture3(env, "opencode", "debug", "config", chdir: home)
       assert status.success?, error
