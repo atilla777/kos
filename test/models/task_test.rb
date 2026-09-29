@@ -47,8 +47,13 @@ class TaskTest < ActiveSupport::TestCase
     }
 
     assert_raises(ActiveRecord::StatementInvalid) { Task.insert_all!([ attributes ]) }
-    assert_raises(ActiveRecord::InvalidForeignKey) do
+    assert_raises(ActiveRecord::StatementInvalid) do
       Task.insert_all!([ attributes.merge(project_id: 999_999, status: "planned") ])
+    end
+
+    global_workflow = Workflow.create!(name: "Shared", steps: workflow_for(@project).steps)
+    assert_raises(ActiveRecord::InvalidForeignKey) do
+      Task.insert_all!([ attributes.merge(project_id: 999_999, workflow_id: global_workflow.id, status: "planned") ])
     end
 
     assert_raises(ActiveRecord::StatementInvalid) do

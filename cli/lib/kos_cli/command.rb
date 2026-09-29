@@ -177,7 +177,10 @@ module KosCli
       case argv.shift
       when "create"
         values = {}
-        OptionParser.new { |parser| parser.on("--file PATH") { |path| values[:file] = path } }.parse!(argv)
+        OptionParser.new do |parser|
+          parser.on("--file PATH") { |path| values[:file] = path }
+          parser.on("--global") { values[:global] = true }
+        end.parse!(argv)
         ensure_empty!(argv)
         raise OptionParser::ParseError, "Provide --file PATH." unless values[:file]
 
@@ -186,9 +189,10 @@ module KosCli
           raise OptionParser::ParseError, "Workflow file must contain only name and steps."
         end
 
-        client.request(:post, "/workflows", body: {
-          project: resolve_project(global), name: definition.fetch("name"), steps: definition.fetch("steps")
-        })
+        body = { name: definition.fetch("name"), steps: definition.fetch("steps") }
+        body[:global] = true if values[:global]
+        body[:project] = resolve_project(global) unless values[:global]
+        client.request(:post, "/workflows", body: body)
       when "list"
         values = { limit: 50 }
         OptionParser.new do |parser|

@@ -125,6 +125,19 @@ class CommandTest < Minitest::Test
     assert_equal "secret", FakeClient.requests.last[2][:claim_id]
   end
 
+  def test_creates_global_workflow_without_git_project
+    definition = '{"name":"Shared","steps":[{"name":"Do","instructions":"Do it.","executor":"main","inputs":[],"outputs":[]}]}'
+    command_with_input = KosCli::Command.new(
+      stdin: StringIO.new(definition), stdout: @stdout, stderr: @stderr, client_class: FakeClient
+    )
+
+    assert_equal 0, command_with_input.run(%w[workflow create --global --file -])
+    assert_equal [ :post, "/workflows", {
+      global: true, name: "Shared",
+      steps: [ { "name" => "Do", "instructions" => "Do it.", "executor" => "main", "inputs" => [], "outputs" => [] } ]
+    }, nil ], FakeClient.requests.last
+  end
+
   def test_creates_project_from_explicit_repository
     exit_code = command.run(%w[
       --project git@github.com:Owner/Project.git

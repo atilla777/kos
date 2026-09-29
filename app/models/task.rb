@@ -318,7 +318,9 @@ class Task < ApplicationRecord
   end
 
   def workflow_belongs_to_project
-    errors.add(:workflow, "must belong to the same project") if workflow && workflow.project_id != project_id
+    return unless workflow && workflow.project_id && workflow.project_id != project_id
+
+    errors.add(:workflow, "must belong to the same project")
   end
 
   def current_step_in_workflow

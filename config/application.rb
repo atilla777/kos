@@ -35,6 +35,8 @@ module Kos
     #
     config.time_zone = "UTC"
     config.active_record.default_timezone = :utc
+    # SQLite triggers keep project-specific workflows private while global workflows are shared.
+    config.active_record.schema_format = :sql
     # config.eager_load_paths << Rails.root.join("extras")
 
     # Only loads a smaller set of middleware suitable for API only apps.

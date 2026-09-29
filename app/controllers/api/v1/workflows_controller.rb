@@ -8,7 +8,7 @@ module Api
         after_id = params[:after_id] && Integer(params[:after_id].to_s, 10)
         raise ActionController::BadRequest if after_id && after_id <= 0
 
-        relation = scoped_project.workflows.order(:id)
+        relation = Workflow.visible_to(Project.find_by(repository: project_repository)).order(:id)
         relation = relation.where("id > ?", after_id) if after_id
         records = relation.limit(limit + 1).to_a
         more = records.length > limit
@@ -24,12 +24,20 @@ module Api
       end
 
       def create
+        raise ActionController::BadRequest if params.key?(:global) && params[:global] != true
+
         created = nil
         Project.transaction do
-          project = Project.find_or_create_by!(repository: project_repository) do |record|
-            record.name = project_repository.split("/").last
+          if params[:global] == true
+            raise ActionController::BadRequest if params.key?(:project)
+
+            created = Workflow.create!(name: params.require(:name), steps: params.require(:steps))
+          else
+            project = Project.find_or_create_by!(repository: project_repository) do |record|
+              record.name = project_repository.split("/").last
+            end
+            created = project.workflows.create!(name: params.require(:name), steps: params.require(:steps))
           end
-          created = project.workflows.create!(name: params.require(:name), steps: params.require(:steps))
         end
         render_data({ workflow: serialize(created) }, status: :created)
       rescue ActiveRecord::RecordInvalid => error
@@ -58,12 +66,8 @@ module Api
         @project_repository
       end
 
-      def scoped_project
-        @scoped_project ||= Project.find_by!(repository: project_repository)
-      end
-
       def workflow
-        @workflow ||= scoped_project.workflows.find(params[:id])
+        @workflow ||= Workflow.visible_to(Project.find_by(repository: project_repository)).find(params[:id])
       end
 
       def serialize(record)

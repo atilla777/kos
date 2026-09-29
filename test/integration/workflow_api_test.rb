@@ -84,6 +84,57 @@ class WorkflowApiTest < ActionDispatch::IntegrationTest
     assert_not_equal old_claim, new_owner.claim_id
   end
 
+  test "global workflow is visible and usable in multiple projects without creating a project" do
+    steps = [ { name: "Do", instructions: "Do the work.", executor: "main", inputs: [], outputs: [] } ]
+    post "/api/v1/workflows", params: { global: true, name: "Common", steps: steps }, as: :json
+    assert_response :created
+    workflow = response.parsed_body.dig("data", "workflow")
+    assert_nil workflow.fetch("project_id")
+    assert_empty Project.all
+
+    %w[one two].each do |name|
+      repository = "github.com/example/#{name}"
+      get "/api/v1/workflows", params: { project: repository }
+      assert_response :ok
+      assert_equal [ workflow.fetch("id") ], response.parsed_body.dig("data", "workflows").pluck("id")
+      assert_empty Project.where(repository: repository)
+
+      post "/api/v1/tasks", params: { project: repository, workflow_id: workflow.fetch("id"),
+        kind: "feature", title: "Work", description: "Do work." }, as: :json
+      assert_response :created
+      assert_equal workflow.fetch("id"), response.parsed_body.dig("data", "task", "workflow_id")
+    end
+
+    delete "/api/v1/workflows/#{workflow.fetch('id')}", params: { project: "github.com/example/one" }
+    assert_response :conflict
+    assert_equal "workflow_in_use", response.parsed_body.dig("error", "code")
+  end
+
+  test "project workflow stays private and global creation cannot specify project" do
+    workflow = create_workflow
+    get "/api/v1/workflows/#{workflow.id}", params: { project: "github.com/example/other" }
+    assert_response :not_found
+
+    post "/api/v1/workflows", params: { global: true, project: REPOSITORY, name: "Wrong",
+      steps: [ { name: "Do", instructions: "Do it.", executor: "main", inputs: [], outputs: [] } ] }, as: :json
+    assert_response :bad_request
+    assert_equal 1, Workflow.count
+  end
+
+  test "SQLite rejects cross-project workflow reassignment even without model validation" do
+    workflow = create_workflow
+    other_project = Project.create!(repository: "github.com/example/other", name: "Other")
+    task = workflow.project.tasks.create!(workflow: workflow, kind: "task", title: "Work", description: "Work.")
+
+    assert_raises(ActiveRecord::StatementInvalid) do
+      Task.connection.execute("UPDATE tasks SET project_id = #{other_project.id} WHERE id = #{task.id}")
+    end
+    assert_raises(ActiveRecord::StatementInvalid) do
+      Workflow.connection.execute("UPDATE workflows SET project_id = #{other_project.id} WHERE id = #{workflow.id}")
+    end
+    assert_equal workflow.project_id, task.reload.project_id
+  end
+
   test "workflow definitions reject invalid routes, changes, and deletion while used" do
     post "/api/v1/workflows", params: {
       project: REPOSITORY, name: "Invalid", steps: [

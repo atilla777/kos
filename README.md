@@ -44,6 +44,8 @@ sqlite3 'file:storage/development.sqlite3?mode=ro' 'SELECT COUNT(*) FROM project
 
 If the file contains data, preserve it before any migration: review the pending migrations and [make an online backup](#backup-and-restore). In particular, upgrading a database from before the workflow migration can remove its earlier tasks and artifacts. Do not run `db:prepare` on that database until you have reviewed the effect and backed up what you need. For an up-to-date database, start the server without a migration. If the file is missing, use the new-installation instructions above. Never use the test database as the persistent store.
 
+The later global-workflow migration preserves existing project workflows, tasks, dependencies, and artifacts. It switches Rails schema dumps to `db/structure.sql` so SQLite ownership triggers also survive a fresh database load. The new migration still requires the existing-installation backup and separate migration/restart approvals described below.
+
 The server listens only on `http://127.0.0.1:3000`; `PORT` changes the port while retaining loopback-only binding. The persistent development database is `storage/development.sqlite3`. In another terminal, check the listener and API:
 
 ```bash
@@ -73,7 +75,7 @@ WantedBy=default.target
 
 This example assumes `mise` is at `/usr/bin/mise` and Bundler and the Rails dependencies were installed as above; adjust the path if necessary (`command -v mise`). Start only one server on the port. After creating the unit, run `systemctl --user daemon-reload` and `systemctl --user enable --now kos.service`. Check `systemctl --user status kos.service` and the loopback/API commands above; stop it with `systemctl --user stop kos.service`. This user service starts with the user's systemd manager, ordinarily at login; boot-time startup without login is not implied. To use the manual server instead, stop the user service first.
 
-The API is under `/api/v1`. Successful responses use a `data` object; errors use an `error` object with a stable `code` and `message`. Project, task-group, task, and workflow lists default to 50 records, accept at most 100, and return `pagination.next_after_id` for continuation. Group, workflow, and task operations require the canonical repository key in `project`; creating a group or workflow atomically creates a missing project, while reads never do. A task must reference an existing workflow in its project. Group progress is computed from its tasks, and nonempty groups cannot be deleted.
+The API is under `/api/v1`. Successful responses use a `data` object; errors use an `error` object with a stable `code` and `message`. Project, task-group, task, and workflow lists default to 50 records, accept at most 100, and return `pagination.next_after_id` for continuation. Project-scoped operations require the canonical repository key in `project`; creating a group or project workflow atomically creates a missing project, while reads never do. A global workflow is created with `global: true` and no `project`, and is visible in any project's workflow list. A task must reference either a global workflow or a workflow of its own project. Group progress is computed from its tasks, and nonempty groups cannot be deleted.
 
 ## CLI Installation
 
@@ -224,6 +226,7 @@ kos --project github.com/owner/repository group update 1 --title "Task workflows
 kos --project github.com/owner/repository group delete 1
 
 kos --project github.com/owner/repository workflow create --file workflow.json
+kos workflow create --global --file workflow.json
 kos --project github.com/owner/repository workflow list --limit 50
 kos --project github.com/owner/repository workflow show 1
 kos --project github.com/owner/repository workflow delete 1

@@ -1,5 +1,5 @@
 class Workflow < ApplicationRecord
-  belongs_to :project
+  belongs_to :project, optional: true
   has_many :tasks, dependent: :restrict_with_error
 
   validates :name, presence: true
@@ -8,6 +8,10 @@ class Workflow < ApplicationRecord
 
   def step_at(position)
     steps.fetch(position)
+  end
+
+  def self.visible_to(project)
+    where(project_id: [ nil, project&.id ])
   end
 
   private
