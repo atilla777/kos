@@ -76,6 +76,8 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
 
     assert_equal "main", brief.step_at(0).fetch("executor")
     assert_empty brief.step_at(0).fetch("outputs")
+    assert_includes brief.step_at(0).fetch("instructions"), "real Git origin"
+    assert_includes brief.step_at(0).fetch("instructions"), "one digit"
     assert_includes brief.step_at(1).fetch("instructions"), "kos-project-docs"
     assert_equal %w[requirements specification implementation_plan planning_report], brief.step_at(1).fetch("outputs")
     assert_equal [ "publication_report" ], brief.step_at(2).fetch("outputs")
@@ -88,6 +90,8 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
     assert_includes fix.step_at(3).fetch("instructions"), "high and medium findings must be fixed"
     assert_includes execution.step_at(3).fetch("instructions"), "docs/ by default"
     assert_includes fix.step_at(4).fetch("instructions"), "docs/ by default"
+    assert_includes execution.step_at(4).fetch("instructions"), "Only the orchestrator may complete"
+    assert_includes fix.step_at(5).fetch("instructions"), "Only the orchestrator may complete"
 
     post "/api/v1/tasks", params: { project: REPOSITORY, workflow_id: brief.id,
       kind: "decomposition", title: "Approve specification", description: "Agree with human." }, as: :json

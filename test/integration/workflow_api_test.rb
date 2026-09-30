@@ -103,6 +103,7 @@ class WorkflowApiTest < ActionDispatch::IntegrationTest
         kind: "feature", title: "Work", description: "Do work." }, as: :json
       assert_response :created
       assert_equal workflow.fetch("id"), response.parsed_body.dig("data", "task", "workflow_id")
+      assert Project.exists?(repository: repository)
     end
 
     delete "/api/v1/workflows/#{workflow.fetch('id')}", params: { project: "github.com/example/one" }
