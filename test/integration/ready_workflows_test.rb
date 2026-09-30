@@ -64,4 +64,42 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
     assert_equal "standard", fix.step_at(5).fetch("model_tier")
     assert_equal [ "publication_report" ], fix.step_at(5).fetch("outputs")
   end
+
+  test "new brief has a distinct publication gate and exposes its results to execution" do
+    load Rails.root.join("db/seeds.rb")
+    brief = Workflow.find_by!(name: "KOS Brief v2", project_id: nil)
+    execution = Workflow.find_by!(name: "KOS Execution v2", project_id: nil)
+    fix = Workflow.find_by!(name: "KOS Fix v2", project_id: nil)
+
+    assert_equal "main", brief.step_at(0).fetch("executor")
+    assert_empty brief.step_at(0).fetch("outputs")
+    assert_includes brief.step_at(1).fetch("instructions"), "kos-project-docs"
+    assert_equal %w[requirements specification implementation_plan planning_report], brief.step_at(1).fetch("outputs")
+    assert_equal [ "publication_report" ], brief.step_at(2).fetch("outputs")
+    assert_includes brief.step_at(2).fetch("instructions"), "before retrying"
+    assert_includes execution.step_at(0).fetch("inputs"), { "source" => "blockers", "key" => "publication_report" }
+    assert_includes execution.step_at(0).fetch("inputs"), { "source" => "blockers", "key" => "planning_report" }
+    assert_includes fix.step_at(0).fetch("instructions"), "prior Brief is not required"
+
+    post "/api/v1/tasks", params: { project: REPOSITORY, workflow_id: brief.id,
+      kind: "decomposition", title: "Approve specification", description: "Agree with human." }, as: :json
+    assert_response :created
+    brief_id = response.parsed_body.dig("data", "task", "id")
+    post "/api/v1/tasks/#{brief_id}/claim", params: { project: REPOSITORY,
+      session_id: "planner-v2", context: "route" }, as: :json
+    assert_response :ok
+    claim = response.parsed_body.dig("data", "task", "claim_id")
+
+    post "/api/v1/tasks/#{brief_id}/advance", params: { project: REPOSITORY,
+      claim_id: claim, expected_step: 0 }, as: :json
+    assert_response :ok
+    post "/api/v1/tasks/#{brief_id}/complete", params: { project: REPOSITORY, claim_id: claim }, as: :json
+    assert_response :conflict
+    post "/api/v1/tasks/#{brief_id}/advance", params: { project: REPOSITORY,
+      claim_id: claim, expected_step: 1 }, as: :json
+    assert_response :ok
+    get "/api/v1/tasks/#{brief_id}/step", params: { project: REPOSITORY }
+    assert_response :ok
+    assert_equal [ "publication_report" ], response.parsed_body.dig("data", "step", "outputs")
+  end
 end

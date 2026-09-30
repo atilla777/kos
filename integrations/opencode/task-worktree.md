@@ -1,6 +1,6 @@
 # KOS development task worktree
 
-This is a client-side procedure for the KOS orchestrator. It does not change task state or grant permission to publish. Apply it only when the task description or the target project's instructions explicitly call for development; do not infer that from `kind`. Read the target project's rules before selecting a branch, path, base revision or publication route. The task title in KOS is not renamed.
+This is a client-side procedure for the KOS orchestrator. It does not change task state or grant permission to publish. Apply it when the task description or the target project's instructions explicitly call for development, or when a Brief step requires editing and publishing the project's normative specification; do not infer development from `kind`. Read the target project's rules before selecting a branch, path, base revision or publication route. The task title in KOS is not renamed.
 
 ## Prepare or recover
 

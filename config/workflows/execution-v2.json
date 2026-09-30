@@ -1,0 +1,51 @@
+{
+  "name": "KOS Execution v2",
+  "steps": [
+    {
+      "name": "Refine and plan",
+      "instructions": "Inspect the task, its direct blockers, approved Brief artifacts and the linked published project specification. Treat the specification as normative even if its behavior is not implemented yet; inspect task results and current-behavior docs separately for actual progress. Refine this task's concrete acceptance criteria, approach, risks and meaningful checks, referring to applicable Brief requirement/decision/criterion IDs where available. Record how this task's checks cover its criteria and resolve technical details independently when allowed. Ask the orchestrator for a human decision when a product ambiguity or contradiction affects the approved specification; do not silently rewrite it. Save a task-specific implementation_plan; the Brief plan is not a finished implementation design.",
+      "executor": "subagent",
+      "model_tier": "advanced",
+      "inputs": [
+        {"source": "blockers", "key": "requirements"},
+        {"source": "blockers", "key": "specification"},
+        {"source": "blockers", "key": "implementation_plan"},
+        {"source": "blockers", "key": "planning_report"},
+        {"source": "blockers", "key": "publication_report"}
+      ],
+      "outputs": ["implementation_plan"]
+    },
+    {
+      "name": "Implement and test",
+      "instructions": "Implement the task in its verified worktree when development is involved. Follow the approved project specification, project rules and task-specific plan; add meaningful tests and reference applicable criterion IDs in the test report or test names where useful for searching, without tagging every code line. Run relevant checks, fix failures and save test_report with evidence, covered criteria and remaining blockers. Do not assert success while checks fail or silently change the required behavior.",
+      "executor": "subagent",
+      "model_tier": "advanced",
+      "inputs": [{"source": "task", "key": "implementation_plan"}],
+      "outputs": ["test_report"]
+    },
+    {
+      "name": "Review and resolve findings",
+      "instructions": "Independently review the full change against the approved project specification, applicable criterion/decision IDs, project rules, security, tests and diff. Check required, alternative, error and edge scenarios and trace the relevant criteria to implementation and meaningful verification. Distinguish gaps in implementation from a proposed change to the norm; escalate a change in required behavior for human agreement rather than quietly editing the specification. Save review_report with findings, evidence and verdict. If findings remain, tell the orchestrator what to fix; repeat review on this step after corrections and affected checks. Do not approve merely because artifacts exist.",
+      "executor": "subagent",
+      "model_tier": "advanced",
+      "inputs": [{"source": "task", "key": "implementation_plan"}, {"source": "task", "key": "test_report"}],
+      "outputs": ["review_report"]
+    },
+    {
+      "name": "Update project documentation",
+      "instructions": "Load kos-project-docs and follow the target project's documentation rules, path and format for current user-facing behavior. Use the published normative specification and applicable criterion IDs as references; describe what is actually implemented, including relevant normal, alternative and error scenarios and limits. Do not present unfinished required behavior as implemented or quietly weaken the approved specification. If project rules do not require current-behavior documentation or no observable change occurred, record why after checking applicable documents. Save documentation_report with changes, relevant IDs, checks or reason and any blocker; ask for clarification when required documentation lacks a path.",
+      "executor": "subagent",
+      "model_tier": "standard",
+      "inputs": [{"source": "task", "key": "implementation_plan"}, {"source": "task", "key": "review_report"}],
+      "outputs": ["documentation_report"]
+    },
+    {
+      "name": "Publish and verify",
+      "instructions": "Publication is part of this assigned task. Follow the target project's publication rules and verified worktree; inspect status, complete diff, tests, review and current-behavior documentation. Confirm relevant criterion references and that no unapproved changes to the normative specification were introduced. Publish via the project route, confirm the destination and save publication_report with a verifiable revision/link and destination. On conflict or ambiguity retain the worktree and stay on this step. Only the orchestrator may complete the KOS task after verification.",
+      "executor": "subagent",
+      "model_tier": "standard",
+      "inputs": [{"source": "task", "key": "test_report"}, {"source": "task", "key": "review_report"}, {"source": "task", "key": "documentation_report"}],
+      "outputs": ["publication_report"]
+    }
+  ]
+}

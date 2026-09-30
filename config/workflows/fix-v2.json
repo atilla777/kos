@@ -1,0 +1,35 @@
+{
+  "name": "KOS Fix v2",
+  "steps": [
+    {
+      "name": "Diagnose the problem",
+      "instructions": "Start from symptoms and expected behavior in the task description. Inspect the applicable published normative specification, linked requirement/criterion IDs if present, actual behavior and current-behavior docs; a prior Brief is not required. Reproduce where feasible, distinguish evidence from hypotheses, find cause, scope, edge cases and a regression check. If the reported expectation conflicts with the approved specification, ask the orchestrator for a human decision instead of silently changing the norm. Save root_cause_report with evidence and applicable IDs; investigate available facts before requesting a human decision.",
+      "executor": "subagent", "model_tier": "advanced", "inputs": [], "outputs": ["root_cause_report"]
+    },
+    {
+      "name": "Refine and plan the fix",
+      "instructions": "Use the diagnosis and approved required behavior to define the smallest correct fix, task-specific acceptance criteria, regression tests and relevant checks. Carry applicable requirement, decision and criterion IDs into implementation_plan where they exist; for standalone fixes without a Brief do not invent a Brief reference. Ask the orchestrator for a human decision when a genuine product ambiguity changes required behavior.",
+      "executor": "subagent", "model_tier": "advanced", "inputs": [{"source": "task", "key": "root_cause_report"}], "outputs": ["implementation_plan"]
+    },
+    {
+      "name": "Fix and test",
+      "instructions": "Implement the fix in the verified task worktree when development is involved. Add a meaningful regression check where appropriate, run relevant checks, resolve failures and save test_report with evidence and applicable criterion IDs. Do not quietly change the normative specification to match a bug.",
+      "executor": "subagent", "model_tier": "advanced", "inputs": [{"source": "task", "key": "root_cause_report"}, {"source": "task", "key": "implementation_plan"}], "outputs": ["test_report"]
+    },
+    {
+      "name": "Review and resolve findings",
+      "instructions": "Independently review diagnosis, complete diff, relevant specification criteria and decisions, regression coverage, edge cases and project rules. Save review_report with evidence and verdict. Escalate any proposed change to approved required behavior; report fixable findings to the orchestrator, repeat this review after corrections and affected checks, and advance only when findings are resolved.",
+      "executor": "subagent", "model_tier": "advanced", "inputs": [{"source": "task", "key": "root_cause_report"}, {"source": "task", "key": "implementation_plan"}, {"source": "task", "key": "test_report"}], "outputs": ["review_report"]
+    },
+    {
+      "name": "Update project documentation",
+      "instructions": "Load kos-project-docs; follow the target project's rules, path and format. Update actual user-visible behavior and error scenarios, linking relevant specification criterion IDs where useful. Do not present unimplemented behavior as current or silently change the normative specification. If no edit is required, inspect the relevant documents and record why. Save documentation_report with checks and evidence; clarify an undefined required path.",
+      "executor": "subagent", "model_tier": "standard", "inputs": [{"source": "task", "key": "root_cause_report"}, {"source": "task", "key": "review_report"}], "outputs": ["documentation_report"]
+    },
+    {
+      "name": "Publish and verify",
+      "instructions": "Publication is part of the assigned task. Follow target project rules and the verified worktree. Inspect status, complete diff, tests, review and documentation; publish by the project's route and confirm the result at its destination. Save publication_report with verifiable reference and destination. On ambiguity or blocker retain the worktree and stay on this step. Only the orchestrator may complete the task after verification.",
+      "executor": "subagent", "model_tier": "standard", "inputs": [{"source": "task", "key": "test_report"}, {"source": "task", "key": "review_report"}, {"source": "task", "key": "documentation_report"}], "outputs": ["publication_report"]
+    }
+  ]
+}
