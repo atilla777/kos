@@ -38,6 +38,9 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
     get "/api/v1/tasks/ready", params: { project: REPOSITORY }
     assert_empty response.parsed_body.dig("data", "tasks")
 
+    post "/api/v1/tasks/#{brief_id}/advance", params: { project: REPOSITORY,
+      claim_id: claim, expected_step: 1 }, as: :json
+    assert_response :ok
     post "/api/v1/tasks/#{brief_id}/complete", params: { project: REPOSITORY, claim_id: claim }, as: :json
     assert_response :ok
     get "/api/v1/tasks/#{execution_id}/step", params: { project: REPOSITORY }
@@ -65,11 +68,11 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
     assert_equal [ "publication_report" ], fix.step_at(5).fetch("outputs")
   end
 
-  test "new brief has a distinct publication gate and exposes its results to execution" do
+  test "brief has a publication gate and exposes its results to execution" do
     load Rails.root.join("db/seeds.rb")
-    brief = Workflow.find_by!(name: "KOS Brief v2", project_id: nil)
-    execution = Workflow.find_by!(name: "KOS Execution v2", project_id: nil)
-    fix = Workflow.find_by!(name: "KOS Fix v2", project_id: nil)
+    brief = Workflow.find_by!(name: "KOS Brief v1", project_id: nil)
+    execution = Workflow.find_by!(name: "KOS Execution v1", project_id: nil)
+    fix = Workflow.find_by!(name: "KOS Fix v1", project_id: nil)
 
     assert_equal "main", brief.step_at(0).fetch("executor")
     assert_empty brief.step_at(0).fetch("outputs")
@@ -79,14 +82,19 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
     assert_includes brief.step_at(2).fetch("instructions"), "before retrying"
     assert_includes execution.step_at(0).fetch("inputs"), { "source" => "blockers", "key" => "publication_report" }
     assert_includes execution.step_at(0).fetch("inputs"), { "source" => "blockers", "key" => "planning_report" }
-    assert_includes fix.step_at(0).fetch("instructions"), "prior Brief is not required"
+    assert_includes fix.step_at(0).fetch("instructions"), "no Brief is required"
+    assert_includes execution.step_at(0).fetch("instructions"), "consecutively"
+    assert_includes execution.step_at(2).fetch("instructions"), "High and medium findings must be fixed"
+    assert_includes fix.step_at(3).fetch("instructions"), "high and medium findings must be fixed"
+    assert_includes execution.step_at(3).fetch("instructions"), "docs/ by default"
+    assert_includes fix.step_at(4).fetch("instructions"), "docs/ by default"
 
     post "/api/v1/tasks", params: { project: REPOSITORY, workflow_id: brief.id,
       kind: "decomposition", title: "Approve specification", description: "Agree with human." }, as: :json
     assert_response :created
     brief_id = response.parsed_body.dig("data", "task", "id")
     post "/api/v1/tasks/#{brief_id}/claim", params: { project: REPOSITORY,
-      session_id: "planner-v2", context: "route" }, as: :json
+      session_id: "planner", context: "route" }, as: :json
     assert_response :ok
     claim = response.parsed_body.dig("data", "task", "claim_id")
 

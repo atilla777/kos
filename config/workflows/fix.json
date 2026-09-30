@@ -3,65 +3,33 @@
   "steps": [
     {
       "name": "Diagnose the problem",
-      "instructions": "Start from the symptoms and expected behavior in the task description; a prior brief is not required. Reproduce the problem where feasible, find its cause and scope, distinguish evidence from hypotheses, and identify a regression check. Save root_cause_report. If information is missing, investigate available evidence before asking for a human decision; do not move on while the actual blocker remains unknown.",
-      "executor": "subagent",
-      "model_tier": "advanced",
-      "inputs": [],
-      "outputs": ["root_cause_report"]
+      "instructions": "Start from symptoms and expected behavior in the task description. Read project rules, high-level requirements, applicable normative and current-behavior documents and any linked criteria; no Brief is required. Reproduce where feasible; distinguish evidence from hypotheses, find cause, scope and significant alternative, error, edge and security-relevant cases. Identify a regression check. Number significant new questions Q-01, Q-02, ... consecutively across this Fix's results and preserve answers, decisions or unresolved status rather than restarting the sequence per step. If the reported expectation conflicts with approved behavior, ask the orchestrator for a human decision rather than silently changing the norm. Save root_cause_report with evidence, relevant IDs and questions; investigate available facts before escalating.",
+      "executor": "subagent", "model_tier": "advanced", "inputs": [], "outputs": ["root_cause_report"]
     },
     {
       "name": "Refine and plan the fix",
-      "instructions": "Use the diagnosis and task description to define the smallest correct fix, task-specific acceptance criteria, a regression test and relevant checks. Save implementation_plan. Ask for a human decision only if a genuine product ambiguity blocks progress.",
-      "executor": "subagent",
-      "model_tier": "advanced",
-      "inputs": [{"source": "task", "key": "root_cause_report"}],
-      "outputs": ["implementation_plan"]
+      "instructions": "Use the diagnosis, approved normative and high-level requirements, current behavior and project rules to define the smallest correct fix, concrete testable criteria and regression/edge checks. Continue question numbering from the root_cause_report; record answers, decisions and rationale, and locate remaining questions for resolution. Map existing REQ/AC/DEC IDs to tests when available without inventing Brief references. Choose an approach consistent with project architecture, style and security rules. Ask the orchestrator for a human decision when ambiguity or contradiction changes required behavior. Save implementation_plan with criterion-to-check mapping and relevant checks.",
+      "executor": "subagent", "model_tier": "advanced", "inputs": [{"source": "task", "key": "root_cause_report"}], "outputs": ["implementation_plan"]
     },
     {
       "name": "Fix and test",
-      "instructions": "Implement the fix in the verified task worktree when this is development work. Add a meaningful regression test when appropriate, run relevant checks, resolve failures, and save test_report with evidence. Continue unless a real blocker or human decision prevents progress.",
-      "executor": "subagent",
-      "model_tier": "advanced",
-      "inputs": [
-        {"source": "task", "key": "root_cause_report"},
-        {"source": "task", "key": "implementation_plan"}
-      ],
-      "outputs": ["test_report"]
+      "instructions": "Implement the smallest correct fix in its verified worktree, following approved normative/high-level specifications, architecture, style, security and other project rules. Add meaningful regression and error/edge checks when appropriate; for non-code work run applicable checks without artificial code tests. Run relevant project checks, fix failures and save test_report with actual commands, results, covered criteria and blockers. Do not quietly change the approved specification to match a bug.",
+      "executor": "subagent", "model_tier": "advanced", "inputs": [{"source": "task", "key": "root_cause_report"}, {"source": "task", "key": "implementation_plan"}], "outputs": ["test_report"]
     },
     {
       "name": "Review and resolve findings",
-      "instructions": "Independently review diagnosis, fix, regression coverage, complete diff and project rules. Save review_report with findings and verdict. If issues remain, report them to the orchestrator for correction and repeat this review on the same step. Advance only after issues are resolved and affected checks pass.",
-      "executor": "subagent",
-      "model_tier": "advanced",
-      "inputs": [
-        {"source": "task", "key": "root_cause_report"},
-        {"source": "task", "key": "implementation_plan"},
-        {"source": "task", "key": "test_report"}
-      ],
-      "outputs": ["review_report"]
+      "instructions": "As a reviewer distinct from the fix executor, independently inspect the diagnosis, complete diff, task criteria, normative and high-level specifications, architecture, style, security, regression coverage, error/edge cases, checks and other project rules. Save review_report with verdict and findings showing location, evidence, impact and severity: high (unsafe or materially incorrect behavior), medium (significant requirement, quality or coverage gap), low (minor improvement). Tell the orchestrator what to fix; high and medium findings must be fixed, affected checks rerun and independent review repeated on this step. Low findings may remain only with recorded rationale. Escalate changes to approved behavior for human agreement; do not silently approve or fix findings as the reviewer.",
+      "executor": "subagent", "model_tier": "advanced", "inputs": [{"source": "task", "key": "root_cause_report"}, {"source": "task", "key": "implementation_plan"}, {"source": "task", "key": "test_report"}], "outputs": ["review_report"]
     },
     {
       "name": "Update project documentation",
-      "instructions": "Load kos-project-docs and follow the target project's documentation rules, path and format. Update changed user-visible behavior and error scenarios and run applicable checks. If no update is required, inspect relevant rules and record why. Save documentation_report with evidence or reason. Ask for clarification only when required documentation lacks an unambiguous path.",
-      "executor": "subagent",
-      "model_tier": "standard",
-      "inputs": [
-        {"source": "task", "key": "root_cause_report"},
-        {"source": "task", "key": "review_report"}
-      ],
-      "outputs": ["documentation_report"]
+      "instructions": "Explicitly load kos-project-docs. Maintain current user-facing documentation for affected domains at the project-defined path or docs/ by default, in the project's format (OKF where required). Describe actual normal, alternative and error behavior, observable outcomes and limits, with specification criteria where useful; do not portray unfinished required behavior as implemented or weaken the norm. If no user-visible change occurred, inspect affected documents and record why no edit is needed. Save documentation_report with domains, files, checks and evidence; clarify conflicting project rules. Review the documentation change and rerun affected checks.",
+      "executor": "subagent", "model_tier": "standard", "inputs": [{"source": "task", "key": "root_cause_report"}, {"source": "task", "key": "review_report"}], "outputs": ["documentation_report"]
     },
     {
       "name": "Publish and verify",
-      "instructions": "Publication is included in the assigned task; no separate per-step permission is needed. Follow the target project's rules and the verified task worktree. Inspect status, complete diff, tests and review, publish by the project's required route, confirm the result at the destination, and save publication_report with verifiable reference and destination. If publication is blocked or ambiguous, retain the worktree and stay on this step. Only the orchestrator may complete the KOS task after verifying publication.",
-      "executor": "subagent",
-      "model_tier": "standard",
-      "inputs": [
-        {"source": "task", "key": "test_report"},
-        {"source": "task", "key": "review_report"},
-        {"source": "task", "key": "documentation_report"}
-      ],
-      "outputs": ["publication_report"]
+      "instructions": "Publication is part of this assigned task. Follow project rules and the verified worktree. Inspect status, complete diff, tests, independent review and user-facing documentation against normative and high-level requirements. If documentation or late fixes affect reviewed behavior, rerun affected checks and obtain renewed independent review; resolve all high and medium findings. Publish by the project's route and independently confirm the result at its destination. Save publication_report with verifiable reference and destination. On ambiguity or blocker retain the worktree and stay on this step. Only the orchestrator may complete the task after verification.",
+      "executor": "subagent", "model_tier": "standard", "inputs": [{"source": "task", "key": "test_report"}, {"source": "task", "key": "review_report"}, {"source": "task", "key": "documentation_report"}], "outputs": ["publication_report"]
     }
   ]
 }

@@ -103,7 +103,21 @@ class InstallOpencodeTest < Minitest::Test
 
       skills, error, status = Open3.capture3(env, "opencode", "debug", "skill", chdir: home)
       assert status.success?, error
-      %w[kos-setup kos-orchestrator kos-executor kos-git kos-github-cli kos-project-docs].each { |name| assert_includes skills, name }
+      skill_names = %w[kos-setup kos-orchestrator kos-executor kos-git kos-github-cli kos-project-docs]
+      # The debug listing includes skill bodies and may be truncated before all names appear.
+      missing = skill_names.reject { |name| skills.include?(%Q("name": "#{name}")) }
+      missing.each do |name|
+        Dir.mktmpdir do |isolated_home|
+          assert install(isolated_home).last.success?
+          Dir.glob(File.join(isolated_home, "opencode", "skills", "*")).each do |path|
+            FileUtils.rm_rf(path) unless File.basename(path) == name
+          end
+          isolated, error, status = Open3.capture3({ "XDG_CONFIG_HOME" => isolated_home, "OPENCODE_PURE" => "1" },
+            "opencode", "debug", "skill", chdir: isolated_home)
+          assert status.success?, error
+          assert_includes isolated, %Q("name": "#{name}")
+        end
+      end
 
       commands, error, status = Open3.capture3(env, "opencode", "debug", "config", chdir: home)
       assert status.success?, error

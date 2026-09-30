@@ -2,18 +2,30 @@
   "name": "KOS Brief v1",
   "steps": [
     {
-      "name": "Agree high-level direction",
-      "instructions": "As the main agent, discuss the request with the human. Clarify expected outcome, scope, acceptance criteria, dependencies, and whether this is one feature or an epic. Propose high-level decisions and an implementation direction; do not over-specify the implementation here. Show the proposed decisions and plan to the human and wait for explicit agreement before advancing. Ask only questions that need a human decision; otherwise keep making progress. Before approval, do not create a task group, tasks, or KOS artifacts. If approval is withheld or a blocker remains, stay on this step and resume the discussion rather than asserting agreement.",
+      "name": "Agree requirements and direction",
+      "instructions": "As the main agent, read project rules, the high-level project specification and existing normative/current-behavior documents. Discuss the problem, expected user outcome, boundaries, dependencies and testable acceptance criteria with the human. Distinguish facts, assumptions and open questions. Explore proportionate normal, alternative, error and edge scenarios, including security-relevant cases. Number significant questions Q-01, Q-02, ... consecutively throughout this Brief (not anew per message or step); keep their answer, decision or unresolved status and rationale. Compare realistic high-level options when there is a genuine choice; record accepted and rejected approaches with reasons, not invented alternatives. Present the proposed required behavior, criteria, decisions, remaining questions and high-level delivery direction for explicit human approval. Do not decide product ambiguities on the human's behalf; consequential unresolved questions keep this step open. Technical implementation details permitted by project rules may be left to Execution. Before explicit agreement, do not write KOS artifacts, create tasks/groups or edit project files. If agreement cannot be reliably recovered, ask again. Do not advance without it.",
       "executor": "main",
       "inputs": [],
       "outputs": []
     },
     {
-      "name": "Record brief and plan work",
-      "instructions": "As the main agent, confirm that the human explicitly agreed to the high-level decisions and plan in the preceding step. Only after that agreement, save requirements, specification, and implementation_plan as high-level Markdown artifacts; record approved choices and acceptance criteria, leaving detailed design and implementation planning to each execution task. Create at least one planned task using the shared KOS Execution workflow. For an epic, create one epic group and place the new tasks in it. Create every dependent task atomically with blocked_by_ids including this brief task ID so no unfinished work becomes ready before the brief completes; add other explicit dependencies as needed. Check the new tasks, workflow IDs, group and blockers. Save planning_report listing all created task IDs, relationships, and the approved plan. If anything fails, inspect existing records and reconcile without duplicating tasks; stay on this step until the results are complete. Then complete the brief under its active claim; do not claim the dependent work before completion.",
+      "name": "Record specification and decompose",
+      "instructions": "As the main agent, verify explicit human agreement against project rules and existing high-level specifications; resolve contradictory or lost decisions with the human before writing. Save approved high-level requirements, normative specification and implementation_plan in KOS. Keep the consecutive Brief Q numbers across the discussion and documents, with answers or explicit open status. For significant work use stable project/task-qualified REQ, AC and DEC IDs; link requirements, criteria, decisions with alternatives and rationale, questions and tasks, without tagging every code line. Record nonblocking questions with an owner and point of resolution; never silently convert an open product question into an approved requirement. Create at least one planned task using KOS Execution v1; create an epic group if needed. Create each dependent task atomically with blocked_by_ids including this Brief and other required blockers. Specify task outcome, boundaries, relevant criterion IDs and path to the normative specification. Inspect created IDs and dependencies; save planning_report with criterion-to-task coverage, gaps and relationships. Explicitly load kos-project-docs and prepare the approved normative Markdown document in the verified project worktree, at the project-defined path or docs/ by default. Describe what should hold independently of implementation progress. Review the draft and run applicable document checks. Reconcile partial failures against existing artifacts, files and tasks without duplicates; do not advance until results are complete.",
       "executor": "main",
       "inputs": [],
       "outputs": ["requirements", "specification", "implementation_plan", "planning_report"]
+    },
+    {
+      "name": "Publish and verify specification",
+      "instructions": "As the main agent, check the approved normative project file, links, KOS artifacts, criterion-to-task coverage and blocked dependencies. Inspect status, complete diff and project publication rules; run applicable checks and review the final changes. Publish the specification at the project-defined destination and independently verify the published revision there before completing Brief and unblocking its tasks. On prohibition or undefined destination seek a human decision; on ambiguous outcome inspect the destination before retrying. Preserve the worktree and do not create duplicate tasks. Save publication_report with document path, destination and verifiable revision/link; reconcile planning_report if needed. Only then complete Brief under the active claim.",
+      "executor": "main",
+      "inputs": [
+        {"source": "task", "key": "requirements"},
+        {"source": "task", "key": "specification"},
+        {"source": "task", "key": "implementation_plan"},
+        {"source": "task", "key": "planning_report"}
+      ],
+      "outputs": ["publication_report"]
     }
   ]
 }
