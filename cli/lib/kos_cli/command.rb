@@ -16,7 +16,7 @@ module KosCli
   end
 
   class Command
-    DEFAULT_URL = "http://127.0.0.1:3000"
+    DEFAULT_URL = "http://127.0.0.1:3137"
     API_ERROR_EXIT = 1
     USAGE_ERROR_EXIT = 2
     CONNECTION_ERROR_EXIT = 3

@@ -1,0 +1,12 @@
+services:
+  kos:
+    build: .
+    init: true
+    user: "${KOS_UID:-1000}:${KOS_GID:-1000}"
+    environment:
+      KOS_BIND: 0.0.0.0
+      PORT: 3137
+    ports:
+      - "127.0.0.1:3137:3137"
+    volumes:
+      - ./storage:/app/storage

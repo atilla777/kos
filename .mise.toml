@@ -1,0 +1,3 @@
+[tasks.kos]
+description = "Run the local KOS API in Docker until Ctrl+C"
+run = "KOS_UID=$(id -u) KOS_GID=$(id -g) docker compose up --build --force-recreate"

@@ -15,34 +15,30 @@ If the human gave you only this repository URL, use the following route rather t
 
 ## Requirements
 
-- Ruby 3.4.10
-- Bundler 4.0.20
-- SQLite 3
+- Docker with Compose and mise for the local Rails server
+- Ruby 3.4.10 and Bundler 4.0.20 for the CLI and local development checks
+- SQLite 3 for inspecting and backing up the persistent database
 
 Check the installed tools with `ruby --version`, `bundle --version`, and `sqlite3 --version`. If you use mise and `bundle` reports that no version is set for its shim despite Bundler 4.0.20 being installed, run `mise use -g bundler@4.0.20` and check `bundle --version` again. On other Ruby installations, install the required Bundler version with `gem install bundler -v 4.0.20`.
 
 ## Server Setup
 
-Get the source and enter the repository:
+Get the source and enter the repository (or use your existing checkout):
 
 ```bash
 git clone https://github.com/atilla777/kos.git
 cd kos
 ```
 
-```bash
-bundle config set --local path vendor/bundle
-bundle install
-bundle check
-```
-
-For a **new installation with no existing development database**, initialize it and start the server:
+For a **new installation with no existing development database**, initialize the bind-mounted SQLite store and install the shared workflows:
 
 ```bash
-bin/rails db:prepare
-bin/rails db:seed
-bin/rails server -b 127.0.0.1 -p 3000
+KOS_UID=$(id -u) KOS_GID=$(id -g) docker compose run --build --rm kos bin/rails db:prepare
+KOS_UID=$(id -u) KOS_GID=$(id -g) docker compose run --rm kos bin/rails db:seed
+mise run kos
 ```
+
+`mise run kos` builds the image and runs Compose **in the foreground**. Keep that terminal open while using KOS; Ctrl+C stops the container. It does not start automatically at login. Docker must be available to your user. For local Rails development and `bin/ci`, install host dependencies separately with `bundle config set --local path vendor/bundle`, `bundle install`, and `bundle check`.
 
 For an **existing installation**, inspect `storage/development.sqlite3` before running `db:prepare`, upgrading, or restoring anything. The file is persistent, not disposable test data. For example, from the repository root:
 
@@ -54,7 +50,7 @@ sqlite3 'file:storage/development.sqlite3?mode=ro' 'SELECT COUNT(*) FROM project
 
 If the file contains data, preserve it before any migration: review the pending migrations and [make an online backup](#backup-and-restore). In particular, upgrading a database from before the workflow migration can remove its earlier tasks and artifacts. Do not run `db:prepare` on that database until you have reviewed the effect and backed up what you need. For an up-to-date database, start the server without a migration. If the file is missing, use the new-installation instructions above. Never use the test database as the persistent store.
 
-With a compatible existing database, `bin/rails db:seed` installs missing shared workflow definitions and is idempotent when definitions match. It may replace an **unused** shared definition with changed steps; if a differing or obsolete definition is already used by a task, the seed stops without changing any definitions. Run it only after checking the database and, when needed, obtaining separate approval for migration and restart as described below.
+With a compatible existing database, `KOS_UID=$(id -u) KOS_GID=$(id -g) docker compose run --rm kos bin/rails db:seed` installs missing shared workflow definitions and is idempotent when definitions match. It may replace an **unused** shared definition with changed steps; if a differing or obsolete definition is already used by a task, the seed stops without changing any definitions. Run it only after checking the database and, when needed, obtaining separate approval for migration and restart as described below.
 
 The later global-workflow migration preserves existing project workflows, tasks, dependencies, and artifacts. It switches Rails schema dumps to `db/structure.sql` so SQLite ownership triggers also survive a fresh database load. The new migration still requires the existing-installation backup and separate migration/restart approvals described below.
 
@@ -66,34 +62,18 @@ Brief is a conversation with the **main agent**: discuss and obtain human agreem
 
 Brief v1 also publishes an approved **normative specification** in the target repository before completing and unblocking Execution v1. Its file describes what should be true, independently of implementation status; KOS tasks/results track progress, while current-behavior docs describe what actually works. Project rules determine the specification's format and path; `docs/` is the default when no path is specified. The main agent loads `kos-project-docs` for this file, reviews it, confirms its publication at the project-defined destination and saves the reference in `publication_report`. Meaningful requirements, criteria, decisions and consecutively numbered questions may be linked across tasks with IDs based on the project and Brief task ID (for example `shop-task-42/AC-01`). Execution and Fix planning preserve their own question numbering and map criteria to checks. Independent review classifies findings as high, medium or low; high and medium findings must be fixed and re-reviewed. No server/API change or automatic artifact-to-file sync is involved.
 
-The server listens only on `http://127.0.0.1:3000`; `PORT` changes the port while retaining loopback-only binding. The persistent development database is `storage/development.sqlite3`. In another terminal, check the listener and API:
+The container publishes the API only on `http://127.0.0.1:3137`. Its internal listener is reachable through Docker, but Compose binds the host port to loopback only. The persistent database remains `storage/development.sqlite3` on the host; the whole `storage/` directory is mounted so SQLite WAL/SHM files remain with it. Keep the database out of images and never run a host Rails server against it at the same time. In another terminal, check the listener and API:
 
 ```bash
-ss -ltn '( sport = :3000 )'  # 127.0.0.1:3000 only
-curl --noproxy '*' -i http://127.0.0.1:3000/api/v1/projects
+ss -ltn '( sport = :3137 )'  # 127.0.0.1:3137 only
+curl --noproxy '*' -i http://127.0.0.1:3137/api/v1/projects
 ```
 
 An empty `projects` array with HTTP 200 is a healthy server, not an automatically registered KOS development project. Reads do not create projects; register a project explicitly or create its first workflow before expecting `kos task ready` to return work.
 
-### Optional daily startup with systemd (Linux + mise)
+### Switching from the former user service
 
-If you want the local server started at user login, create `~/.config/systemd/user/kos.service` with the **absolute path to your own checkout** in `WorkingDirectory`:
-
-```ini
-[Unit]
-Description=KOS local Rails API
-
-[Service]
-Type=simple
-WorkingDirectory=/absolute/path/to/kos
-ExecStart=/usr/bin/mise exec bundler@4.0.20 -- bin/rails server -b 127.0.0.1 -p 3000
-Restart=on-failure
-
-[Install]
-WantedBy=default.target
-```
-
-This example assumes `mise` is at `/usr/bin/mise` and Bundler and the Rails dependencies were installed as above; adjust the path if necessary (`command -v mise`). Start only one server on the port. After creating the unit, run `systemctl --user daemon-reload` and `systemctl --user enable --now kos.service`. Check `systemctl --user status kos.service` and the loopback/API commands above; stop it with `systemctl --user stop kos.service`. This user service starts with the user's systemd manager, ordinarily at login; boot-time startup without login is not implied. To use the manual server instead, stop the user service first.
+If `kos.service` is still active, verify which checkout and database it uses, inspect the database and create a verified online backup before changing it. After the container image and existing schema are checked, obtain explicit permission to stop and disable the old service, then run `systemctl --user disable --now kos.service` before using `mise run kos` against its database. Do not let both servers write to the same SQLite store. A stopped container can be removed with `docker compose down` without deleting the host database; do not pass `-v` or delete `storage/`.
 
 The API is under `/api/v1`. Successful responses use a `data` object; errors use an `error` object with a stable `code` and `message`. Project, task-group, task, and workflow lists default to 50 records, accept at most 100, and return `pagination.next_after_id` for continuation. Project-scoped operations require the canonical repository key in `project`; creating a group or project workflow atomically creates a missing project, while reads never do. A global workflow is created with `global: true` and no `project`, and is visible in any project's workflow list. A task must reference either a global workflow or a workflow of its own project. Group progress is computed from its tasks, and nonempty groups cannot be deleted.
 
@@ -112,7 +92,7 @@ kos --help
 
 Ensure `$HOME/.local/bin` is in your shell's `PATH` (including new OpenCode sessions); `command -v kos` should resolve to `$HOME/.local/bin/kos` rather than an older installation. If it does not, add that directory to your shell's startup configuration and open a new shell. Rebuild and reinstall after changing the CLI source. The gem version alone does not identify the checkout revision: reinstall with `--force` when updating, then compare installed files as described below. `kos project list --limit 50` checks the installed CLI against the running API without creating records.
 
-The CLI uses `http://127.0.0.1:3000` by default. Set `KOS_API_URL` or pass `--url URL` before the resource name to select another local endpoint. Set `KOS_PROJECT` or pass `--project REPOSITORY` to select a project explicitly. `kos session new` prints `{ "data": { "session_id": "..." } }` locally, without Git or a server; obtain one ID for each independent working conversation and reuse it through `--session SESSION` or `KOS_SESSION_ID` for all its claim/current calls. Existing callers can continue supplying their own ID. Protected writes accept the server-issued claim through `KOS_CLAIM_ID` or `--claim CLAIM`; avoid exposing claim values in logs or shared shell history. Command-line options override environment variables.
+The CLI uses `http://127.0.0.1:3137` by default. Set `KOS_API_URL` or pass `--url URL` before the resource name to select another local endpoint. Set `KOS_PROJECT` or pass `--project REPOSITORY` to select a project explicitly. `kos session new` prints `{ "data": { "session_id": "..." } }` locally, without Git or a server; obtain one ID for each independent working conversation and reuse it through `--session SESSION` or `KOS_SESSION_ID` for all its claim/current calls. Existing callers can continue supplying their own ID. Protected writes accept the server-issued claim through `KOS_CLAIM_ID` or `--claim CLAIM`; avoid exposing claim values in logs or shared shell history. Command-line options override environment variables.
 
 ## OpenCode Integration
 
@@ -167,7 +147,7 @@ Inspect the existing database read-only and compare `schema_migrations` with `db
 
 Separately, show how the currently running server would be stopped and started (manual process or user service) and obtain explicit permission to stop/restart **that server**. When a migration requires a stop, request both permissions before stopping it; then stop the server, migrate only the backed-up database with `bin/rails db:migrate`, and restart only under the separately approved plan. If either permission is refused, leave the database and running process alone and report which components are updated and which are not. If migration fails, do not restart against a possibly inconsistent schema; inspect the error and backup. Restore only after another explicit decision, with the server stopped; do not automatically restore and then rerun `db:prepare`.
 
-Once the schema is compatible (after an approved migration if needed), run `bin/rails db:seed` and verify the shared definitions; do not run it against an old schema. After an approved restart, verify loopback binding, the API response, installed CLI, and OpenCode in a new session. An update is complete only when all intended components pass these checks. If a step fails, state the last successful step and safe next action; do not report success based on a successful fetch or file copy alone.
+Once the schema is compatible (after an approved migration if needed), run `KOS_UID=$(id -u) KOS_GID=$(id -g) docker compose run --build --rm kos bin/rails db:seed` and verify the shared definitions; do not run it against an old schema. After an approved restart with `mise run kos`, verify loopback binding, the API response, installed CLI, and OpenCode in a new session. An update is complete only when all intended components pass these checks. If a step fails, state the last successful step and safe next action; do not report success based on a successful fetch or file copy alone.
 
 ## Working with OpenCode
 

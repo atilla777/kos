@@ -28,8 +28,8 @@
 threads_count = ENV.fetch("RAILS_MAX_THREADS", 3)
 threads threads_count, threads_count
 
-# KOS is intentionally local-only in the MVP.
-bind "tcp://127.0.0.1:#{ENV.fetch("PORT", 3000)}"
+# Containers bind internally to all interfaces; Compose exposes only host loopback.
+bind "tcp://#{ENV.fetch("KOS_BIND", "127.0.0.1")}:#{ENV.fetch("PORT", 3137)}"
 
 # Allow puma to be restarted by `bin/rails restart` command.
 plugin :tmp_restart

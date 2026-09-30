@@ -46,6 +46,13 @@ class CommandTest < Minitest::Test
     FakeClient.responses = nil
   end
 
+  def test_default_url_uses_local_docker_port
+    with_environment("KOS_API_URL", nil) do
+      assert_equal 0, command.run(%w[project list])
+      assert_equal [ :url, "http://127.0.0.1:3137" ], FakeClient.requests.first
+    end
+  end
+
   def test_session_new_is_local_unique_and_works_without_git_or_server
     client_class = Class.new do
       def initialize(*)
