@@ -32,6 +32,70 @@ class TaskArtifactsApiTest < ActionDispatch::IntegrationTest
     assert_not TaskArtifact.exists?(created.fetch("id"))
   end
 
+  test "lists artifacts in bounded pages without skipping records" do
+    artifacts = %w[z a b].map { |key| @task.task_artifacts.create!(key: key, content: key) }
+
+    get "/api/v1/tasks/#{@task.id}/artifacts", params: { project: REPOSITORY, limit: 2 }
+    assert_response :ok
+    first = response.parsed_body.fetch("data")
+    assert_equal artifacts.first(2).map(&:id), first.fetch("artifacts").map { |item| item.fetch("id") }
+    assert_equal artifacts[1].id, first.dig("pagination", "next_after_id")
+
+    get "/api/v1/tasks/#{@task.id}/artifacts", params: {
+      project: REPOSITORY, limit: 2, after_id: first.dig("pagination", "next_after_id")
+    }
+    assert_response :ok
+    assert_equal [ artifacts.last.id ], response.parsed_body.dig("data", "artifacts").map { |item| item.fetch("id") }
+    assert_nil response.parsed_body.dig("data", "pagination", "next_after_id")
+
+    get "/api/v1/tasks/#{@task.id}/artifacts", params: { project: REPOSITORY, limit: 101 }
+    assert_response :bad_request
+    get "/api/v1/tasks/#{@task.id}/artifacts", params: { project: REPOSITORY, after_id: -1 }
+    assert_response :bad_request
+  end
+
+  test "an advanced step rejects an artifact write with the old expected step" do
+    workflow = @project.workflows.create!(name: "Two steps", steps: %w[First Second].map do |name|
+      { "name" => name, "instructions" => name, "executor" => "main", "inputs" => [], "outputs" => [] }
+    end)
+    task = @project.tasks.create!(workflow: workflow, kind: "feature", title: "Two steps", description: "Work")
+    task, = Task.claim_for!(project: @project, task_id: task.id, session_id: "agent-2")
+    task.advance_step!(claim_id: task.claim_id, expected_step: 0)
+
+    put "/api/v1/tasks/#{task.id}/artifacts/report", params: {
+      project: REPOSITORY, claim_id: task.claim_id, content: "Stale", lock_version: nil, expected_step: 0
+    }, as: :json
+    assert_response :conflict
+    assert_equal "step_conflict", response.parsed_body.dig("error", "code")
+    assert_not task.task_artifacts.exists?(key: "report")
+
+    put "/api/v1/tasks/#{task.id}/artifacts/report", params: {
+      project: REPOSITORY, claim_id: task.claim_id, content: "Current", lock_version: nil, expected_step: 1
+    }, as: :json
+    assert_response :ok
+
+    put "/api/v1/tasks/#{task.id}/artifacts/report", params: {
+      project: REPOSITORY, claim_id: task.claim_id, content: "Legacy", lock_version: 0
+    }, as: :json
+    assert_response :ok
+    assert_equal "Legacy", task.task_artifacts.find_by!(key: "report").content
+
+    put "/api/v1/tasks/#{task.id}/artifacts/report", params: {
+      project: REPOSITORY, claim_id: task.claim_id, content: "Invalid", lock_version: 1, expected_step: "1"
+    }, as: :json
+    assert_response :bad_request
+  end
+
+  test "Rails request parameters filter the full claim token" do
+    put artifact_path("report"), params: write_params(content: "Report", lock_version: nil), as: :json
+    assert_response :ok
+
+    filtered = request.filtered_parameters
+    assert_equal "[FILTERED]", filtered.fetch("claim_id")
+    assert_not_includes filtered.inspect, @task.claim_id
+    assert_includes ActiveRecord::Base.filter_attributes, :claim_id
+  end
+
   test "returns version conflicts without overwriting fresher content" do
     artifact = @task.task_artifacts.create!(key: "report", content: "Fresh")
 

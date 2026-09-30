@@ -470,8 +470,13 @@ module KosCli
 
     def list_task_artifacts(client, argv, global)
       id = task_id!(argv.shift)
+      values = { limit: 50 }
+      OptionParser.new do |parser|
+        parser.on("--limit LIMIT", Integer) { |value| values[:limit] = value }
+        parser.on("--after-id ID", Integer) { |value| values[:after_id] = value }
+      end.parse!(argv)
       ensure_empty!(argv)
-      client.request(:get, "/tasks/#{id}/artifacts", query: { project: resolve_project(global) })
+      client.request(:get, "/tasks/#{id}/artifacts", query: { project: resolve_project(global), **values.compact })
     end
 
     def get_task_artifact(client, argv, global)
@@ -503,7 +508,8 @@ module KosCli
         project: resolve_project(global),
         claim_id: resolve_claim_for_task(client, global, id, expected_step: values[:expected_step]),
         content: read_utf8(values.fetch(:file)),
-        lock_version: values[:lock_version]
+        lock_version: values[:lock_version],
+        **(global[:claim_fingerprint] ? { expected_step: values[:expected_step] } : {})
       })
     end
 

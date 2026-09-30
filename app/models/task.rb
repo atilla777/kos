@@ -200,10 +200,11 @@ class Task < ApplicationRecord
     end
   end
 
-  def put_artifact!(key:, content:, claim_id:, expected_lock_version:)
+  def put_artifact!(key:, content:, claim_id:, expected_lock_version:, expected_step: nil)
     result = nil
     with_locked_project do
       ensure_active_claim!(claim_id, Time.current)
+      raise ClaimError, "step_conflict" if expected_step && current_step != expected_step
       artifact = task_artifacts.find_by(key: key)
 
       if artifact

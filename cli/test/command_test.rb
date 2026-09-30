@@ -89,6 +89,7 @@ class CommandTest < Minitest::Test
     assert_equal [ :get, "/tasks/current", nil,
       { project: "github.com/owner/project", session_id: "agent", context: "route" } ], FakeClient.requests[-2]
     assert_equal claim, FakeClient.requests.last[2][:claim_id]
+    assert_equal 0, FakeClient.requests.last[2][:expected_step]
     assert_equal "# Result", FakeClient.requests.last[2][:content]
     refute_includes @stdout.string, claim
   end
@@ -646,7 +647,12 @@ class CommandTest < Minitest::Test
 
   def test_lists_and_gets_task_artifacts
     command.run(%w[--project github.com/owner/project task artifact list 42])
-    assert_equal [ :get, "/tasks/42/artifacts", nil, { project: "github.com/owner/project" } ], FakeClient.requests.last
+    assert_equal [ :get, "/tasks/42/artifacts", nil,
+      { project: "github.com/owner/project", limit: 50 } ], FakeClient.requests.last
+
+    command.run(%w[--project github.com/owner/project task artifact list 42 --limit 2 --after-id 9])
+    assert_equal [ :get, "/tasks/42/artifacts", nil,
+      { project: "github.com/owner/project", limit: 2, after_id: 9 } ], FakeClient.requests.last
 
     command.run([ "--project", "github.com/owner/project", "task", "artifact", "get", "42", "review report" ])
     assert_equal [

@@ -1,8 +1,17 @@
 module Api
   module V1
     class TaskArtifactsController < BaseController
+      DEFAULT_LIMIT = 50
+      MAX_LIMIT = 100
+
       def index
-        render_data({ artifacts: task.task_artifacts.order(:key, :id).map { |artifact| serialize(artifact) } })
+        artifacts = task.task_artifacts.order(:id)
+        artifacts = artifacts.where("id > ?", after_id) if after_id
+        artifacts = artifacts.limit(limit + 1).to_a
+        has_more = artifacts.length > limit
+        artifacts = artifacts.first(limit)
+        render_data({ artifacts: artifacts.map { |artifact| serialize(artifact) },
+          pagination: { limit: limit, next_after_id: has_more ? artifacts.last.id : nil } })
       end
 
       def show
@@ -14,7 +23,8 @@ module Api
           key: artifact_key,
           content: content,
           claim_id: claim_id,
-          expected_lock_version: expected_lock_version(allow_nil: true)
+          expected_lock_version: expected_lock_version(allow_nil: true),
+          expected_step: expected_step
         )
         render_data({ artifact: serialize(saved_artifact) })
       rescue Task::ClaimError => error
@@ -90,6 +100,36 @@ module Api
         value
       end
 
+      def expected_step
+        return unless params.key?(:expected_step)
+
+        value = params[:expected_step]
+        raise ActionController::BadRequest unless value.is_a?(Integer) && value >= 0
+
+        value
+      end
+
+      def limit
+        @limit ||= positive_integer(:limit, default: DEFAULT_LIMIT, maximum: MAX_LIMIT)
+      end
+
+      def after_id
+        return if params[:after_id].blank?
+
+        positive_integer(:after_id)
+      end
+
+      def positive_integer(name, default: nil, maximum: nil)
+        return default if params[name].blank? && default
+
+        value = Integer(params[name], 10)
+        raise ActionController::BadRequest unless value.positive? && (!maximum || value <= maximum)
+
+        value
+      rescue ArgumentError, TypeError
+        raise ActionController::BadRequest
+      end
+
       def serialize(record)
         record.as_json(only: %i[id task_id key content lock_version created_at updated_at])
       end
@@ -98,7 +138,8 @@ module Api
         messages = {
           "claim_mismatch" => "Claim does not own this task.",
           "lease_expired" => "Claim lease has expired.",
-          "invalid_transition" => "Task cannot perform this operation from its current state."
+          "invalid_transition" => "Task cannot perform this operation from its current state.",
+          "step_conflict" => "Task has moved to another step."
         }
         render_error(error.code, messages.fetch(error.code), status: :conflict, details: { task_id: task.id })
       end
