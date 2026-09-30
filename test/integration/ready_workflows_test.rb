@@ -89,8 +89,15 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
     assert_includes execution.step_at(0).fetch("instructions"), "consecutively"
     assert_includes execution.step_at(2).fetch("instructions"), "High and medium findings must be fixed"
     assert_includes fix.step_at(3).fetch("instructions"), "high and medium findings must be fixed"
-    assert_includes execution.step_at(3).fetch("instructions"), "docs/ by default"
-    assert_includes fix.step_at(4).fetch("instructions"), "docs/ by default"
+    assert_includes brief.step_at(1).fetch("instructions"), "OKF v0.2"
+    assert_includes brief.step_at(1).fetch("instructions"), "business domain or game aspect"
+    assert_includes execution.step_at(0).fetch("instructions"), "human approval"
+    assert_includes fix.step_at(1).fetch("instructions"), "human agreement"
+    [ execution.step_at(3), fix.step_at(4) ].each do |step|
+      assert_includes step.fetch("instructions"), "OKF v0.2"
+      assert_includes step.fetch("instructions"), "no edit is needed"
+      assert_includes step.dig("templates", "documentation_report"), "human agreement"
+    end
     assert_includes execution.step_at(4).fetch("instructions"), "Only the orchestrator may complete"
     assert_includes fix.step_at(5).fetch("instructions"), "Only the orchestrator may complete"
 

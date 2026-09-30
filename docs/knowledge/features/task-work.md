@@ -1,5 +1,5 @@
 ---
-type: User Feature
+type: Requirement Specification
 title: Работа с задачами
 description: Как пользователь находит, захватывает, продолжает и завершает задачу KOS.
 tags: [tasks, claims, artifacts]

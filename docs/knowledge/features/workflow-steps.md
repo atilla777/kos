@@ -1,5 +1,5 @@
 ---
-type: User Feature
+type: Requirement Specification
 title: Workflow и шаги задачи
 description: Как оркестратор и исполнитель получают маршрут шага, инструкции и результаты работы.
 tags: [workflows, steps, artifacts]
