@@ -169,18 +169,53 @@ class Acceptance
     created = kos("task", "create", "--workflow-id", workflow_id.to_s, "--kind", "acceptance",
       "--title", "Fingerprint task", "--description", "Write without exposing a claim.", chdir: repository)
     task_id = created.dig("data", "task", "id")
-    claimed = kos("--session", "fingerprint-agent", "task", "claim", task_id.to_s, "--fingerprint", chdir: repository)
+    first_session = kos("session", "new", chdir: @directory).dig("data", "session_id")
+    second_session = kos("session", "new", chdir: @directory).dig("data", "session_id")
+    assert(first_session != second_session, "Independent conversations shared a session ID")
+    claimed = kos("--session", first_session, "task", "claim", task_id.to_s, "--fingerprint", chdir: repository)
     route = claimed.dig("data", "task")
     fingerprint = route.fetch("claim_fingerprint")
     assert(fingerprint.match?(/\A[0-9a-f]{64}\z/), "Invalid claim fingerprint")
     assert(!route.key?("claim_id"), "Fingerprint route exposed claim")
 
-    args = [ "--session", "fingerprint-agent", "--claim-fingerprint", fingerprint ]
+    resumed = kos("--session", first_session, "task", "current", "--fingerprint", chdir: repository)
+    assert(resumed.dig("data", "task", "claim_fingerprint") == fingerprint, "Same conversation did not recover its claim")
+    assert(resumed.dig("data", "task", "current_step") == 0, "Same conversation lost its step")
+    assert(kos("--session", second_session, "task", "current", "--fingerprint", chdir: repository).dig("data", "task").nil?,
+      "Another conversation recovered a claim under the wrong ID")
+    other_claim = kos_result("--session", second_session, "task", "claim", task_id.to_s, "--fingerprint", chdir: repository)
+    assert(other_claim.fetch(:status).exitstatus == 4, "Another conversation claimed a live task")
+    assert(JSON.parse(other_claim.fetch(:stdout)).dig("error", "code") == "task_already_claimed", "Wrong live-claim error")
+    shown = kos("task", "show", task_id.to_s, chdir: repository).dig("data", "task")
+    assert(shown.fetch("session_id") == first_session, "Task view did not identify the previous session")
+    assert(shown.key?("lease_expires_at") && !shown.key?("claim_id"), "Task view exposed the claim or omitted the lease")
+
+    # The human confirmation belongs to the OpenCode procedure. This checks that
+    # the ID exposed by task show can recover the unchanged active claim.
+    assert(kos("--session", shown.fetch("session_id"), "task", "current", "--fingerprint",
+      chdir: repository).dig("data", "task", "claim_fingerprint") == fingerprint, "Confirmed takeover changed the claim")
+    args = [ "--session", first_session, "--claim-fingerprint", fingerprint ]
     kos(*args, "task", "artifact", "put", task_id.to_s, "test_report", "--file", "-",
       "--expected-step", "0", chdir: repository, stdin_data: "# Fingerprint report\n")
     advanced = kos(*args, "task", "advance", task_id.to_s, "--expected-step", "0", chdir: repository)
     assert(!advanced.dig("data", "task").key?("claim_id"), "Fingerprint advance exposed claim")
-    completed = kos(*args, "task", "complete", task_id.to_s, chdir: repository)
+    assert(kos("--session", first_session, "task", "current", "--fingerprint",
+      chdir: repository).dig("data", "task", "current_step") == 1, "Resumed conversation lost the advanced step")
+
+    run!("sqlite3", @database, "UPDATE tasks SET claimed_at = '1999-01-01 00:00:00', lease_expires_at = '2000-01-01 00:00:00' WHERE id = #{task_id};")
+    assert(kos("--session", first_session, "task", "current", "--fingerprint", chdir: repository).dig("data", "task").nil?,
+      "Expired claim still appeared current")
+    reclaimed = kos("--session", second_session, "task", "claim", task_id.to_s, "--fingerprint", chdir: repository)
+    new_fingerprint = reclaimed.dig("data", "task", "claim_fingerprint")
+    assert(new_fingerprint != fingerprint, "Reclaim reused the old claim")
+    assert(reclaimed.dig("data", "task", "current_step") == 1, "Reclaim reset the step")
+    assert(kos("task", "artifact", "get", task_id.to_s, "test_report", chdir: repository)
+      .dig("data", "artifact", "content") == "# Fingerprint report\n", "Reclaim lost the artifact")
+    stale = kos_result(*args, "task", "complete", task_id.to_s, chdir: repository)
+    assert(stale.fetch(:status).exitstatus == 4, "Old fingerprint was allowed to complete after reclaim")
+    assert(JSON.parse(stale.fetch(:stdout)).dig("error", "code") == "claim_mismatch", "Old owner did not get a conflict")
+    completed = kos("--session", second_session, "--claim-fingerprint", new_fingerprint,
+      "task", "complete", task_id.to_s, chdir: repository)
     assert(completed.dig("data", "task", "status") == "done", "Fingerprint task did not complete")
     assert(!completed.dig("data", "task").key?("claim_id"), "Fingerprint completion exposed claim")
   end

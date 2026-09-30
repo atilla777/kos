@@ -1,6 +1,7 @@
 require "json"
 require "digest"
 require "optparse"
+require "securerandom"
 require "uri"
 
 module KosCli
@@ -41,6 +42,14 @@ module KosCli
       }
       parse_global_options(argv, options)
       @secrets = sensitive_values(options)
+      if argv.first == "session"
+        argv.shift
+        raise OptionParser::ParseError, "Expected session new." unless argv.shift == "new"
+
+        ensure_empty!(argv)
+        write_json({ data: { session_id: SecureRandom.uuid } })
+        return 0
+      end
       options[:project] = Repository.normalize(options[:project]) if options[:project]
 
       client = @client_class.new(options[:url])
@@ -49,7 +58,7 @@ module KosCli
       when "group" then run_group(client, argv, options)
       when "workflow" then run_workflow(client, argv, options)
       when "task" then run_task(client, argv, options)
-      else raise OptionParser::ParseError, "Expected: kos project|group|workflow|task COMMAND"
+      else raise OptionParser::ParseError, "Expected: kos session|project|group|workflow|task COMMAND"
       end
       success = status.between?(200, 299)
       response = with_claim_fingerprint(response) if success && (@fingerprint_route || options[:claim_fingerprint])

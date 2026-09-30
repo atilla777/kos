@@ -46,6 +46,31 @@ class CommandTest < Minitest::Test
     FakeClient.responses = nil
   end
 
+  def test_session_new_is_local_unique_and_works_without_git_or_server
+    client_class = Class.new do
+      def initialize(*)
+        raise "Session generation must not construct an API client"
+      end
+    end
+    session_command = ->(out) { KosCli::Command.new(stdout: out, stderr: @stderr, client_class: client_class) }
+    with_environment("KOS_PROJECT", "file:///invalid/remote") do
+      with_environment("KOS_API_URL", "not a URL") do
+        first = StringIO.new
+        second = StringIO.new
+        assert_equal 0, session_command.call(first).run(%w[session new])
+        assert_equal 0, session_command.call(second).run(%w[session new])
+        ids = [ first, second ].map { |out| JSON.parse(out.string).dig("data", "session_id") }
+        assert ids.all? { |id| id.match?(/\A[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}\z/) }
+        refute_equal ids.first, ids.last
+        assert_equal "", @stderr.string
+      end
+    end
+  end
+
+  def test_session_new_rejects_extra_arguments
+    assert_usage_error(command.run(%w[session new unexpected]))
+  end
+
   def test_fingerprint_route_and_protected_write_keep_claim_out_of_output_and_arguments
     claim = "a" * 64
     fingerprint = Digest::SHA256.hexdigest(claim)
