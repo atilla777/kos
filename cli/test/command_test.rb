@@ -136,7 +136,7 @@ class CommandTest < Minitest::Test
   end
 
   def test_creates_workflow_and_routes_subagent_to_a_step_packet
-    definition = '{"name":"Feature","steps":[{"name":"Plan","instructions":"Plan it.","executor":"subagent","model_tier":"advanced","inputs":[],"outputs":["plan"]}]}'
+    definition = '{"name":"Feature","steps":[{"name":"Plan","instructions":"Plan it.","executor":"subagent","model_tier":"advanced","inputs":[],"outputs":["plan"],"templates":{"plan":"# Plan"}}]}'
     command_with_input = KosCli::Command.new(
       stdin: StringIO.new(definition), stdout: @stdout, stderr: @stderr, client_class: FakeClient
     )
@@ -144,14 +144,17 @@ class CommandTest < Minitest::Test
     assert_equal [ :post, "/workflows", {
       project: "github.com/owner/project", name: "Feature",
       steps: [ { "name" => "Plan", "instructions" => "Plan it.", "executor" => "subagent",
-        "model_tier" => "advanced", "inputs" => [], "outputs" => [ "plan" ] } ]
+        "model_tier" => "advanced", "inputs" => [], "outputs" => [ "plan" ],
+        "templates" => { "plan" => "# Plan" } } ]
     }, nil ], FakeClient.requests.last
 
     assert_equal 0, command.run(%w[--project github.com/owner/project --session agent task claim 42 --route])
     assert_equal "route", FakeClient.requests.last[2][:context]
 
+    FakeClient.response = [ 200, { "data" => { "step" => { "templates" => { "plan" => "# Plan" } } } } ]
     assert_equal 0, command.run(%w[--project github.com/owner/project task step show 42])
     assert_equal [ :get, "/tasks/42/step", nil, { project: "github.com/owner/project" } ], FakeClient.requests.last
+    assert_equal "# Plan", JSON.parse(@stdout.string.lines.last).dig("data", "step", "templates", "plan")
 
     assert_equal 0, command.run(%w[--project github.com/owner/project --claim secret task advance 42 --expected-step 0])
     assert_equal 0, FakeClient.requests.last[2][:expected_step]

@@ -29,6 +29,7 @@ class WorkflowApiTest < ActionDispatch::IntegrationTest
     assert_equal "Plan the work.", packet.fetch("instructions")
     assert_equal true, packet.fetch("inputs").first.fetch("missing")
     assert_equal [ "plan" ], packet.fetch("outputs")
+    assert_equal({}, packet.fetch("templates"))
 
     put "/api/v1/tasks/#{task_id}/artifacts/plan", params: {
       project: REPOSITORY, claim_id: claim, content: "# Plan", lock_version: nil
@@ -158,6 +159,35 @@ class WorkflowApiTest < ActionDispatch::IntegrationTest
       project: REPOSITORY, claim_id: "wrong", expected_step: 0
     }, as: :json
     assert_response :conflict
+  end
+
+  test "output templates are returned in the step packet and remain part of the assigned workflow" do
+    post "/api/v1/workflows", params: { project: REPOSITORY, name: "With templates", steps: [
+      { name: "Plan", instructions: "Plan it.", executor: "main", inputs: [], outputs: [ "plan" ],
+        templates: { plan: "# Plan\n\n<Actual approach>" } }
+    ] }, as: :json
+    assert_response :created
+    workflow_id = response.parsed_body.dig("data", "workflow", "id")
+    assert_equal "# Plan\n\n<Actual approach>", Workflow.find(workflow_id).step_at(0).dig("templates", "plan")
+
+    post "/api/v1/tasks", params: { project: REPOSITORY, workflow_id: workflow_id,
+      kind: "feature", title: "Plan", description: "Work." }, as: :json
+    task_id = response.parsed_body.dig("data", "task", "id")
+    get "/api/v1/tasks/#{task_id}/step", params: { project: REPOSITORY }
+    assert_response :ok
+    assert_equal({ "plan" => "# Plan\n\n<Actual approach>" }, response.parsed_body.dig("data", "step", "templates"))
+    assert_equal [ "plan" ], response.parsed_body.dig("data", "step", "outputs")
+  end
+
+  test "rejects blank templates and templates not tied to step outputs" do
+    [ { plan: "  " }, { other: "# Wrong output" }, [ "# Plan" ] ].each do |templates|
+      post "/api/v1/workflows", params: { project: REPOSITORY, name: "Invalid", steps: [
+        { name: "Plan", instructions: "Plan it.", executor: "main", inputs: [], outputs: [ "plan" ],
+          templates: templates }
+      ] }, as: :json
+      assert_response :unprocessable_entity
+    end
+    assert_not Project.exists?(repository: REPOSITORY)
   end
 
   test "invalid compact response option cannot claim a task" do

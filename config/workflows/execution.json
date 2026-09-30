@@ -12,35 +12,50 @@
         {"source": "blockers", "key": "planning_report"},
         {"source": "blockers", "key": "publication_report"}
       ],
-      "outputs": ["implementation_plan"]
+      "outputs": ["implementation_plan"],
+      "templates": {
+        "implementation_plan": "# Task implementation plan\n\n## Outcome, scope and sources\n<Identify task, relevant Brief IDs with source task IDs, published normative document, boundaries and dependencies. Distinguish conflicting or missing inputs.>\n\n## Criteria and scenarios\n<Refine testable criteria; map applicable REQ/AC/DEC IDs to this task's normal, alternative, error, edge and security-relevant cases.>\n\n## Approach and risks\n<Describe minimal project-consistent design, affected areas and risks.>\n\n## Criterion-to-check mapping\n<List each criterion with its intended test or other meaningful verification.>\n\n## Decisions and open questions\n<Use consecutive task Q IDs, answers or open status, rationale, owner and resolution point; escalate changes to approved behavior.>"
+      }
     },
     {
       "name": "Implement and test",
       "instructions": "Implement the approved task in its verified worktree. Follow the normative and high-level project specifications, task plan and target project's architecture, style, security and development rules. Keep the change small and consistent with existing patterns. Write or adjust meaningful tests for changed behavior and relevant error/edge cases; for documentation-only work run applicable documentation checks instead of artificial code tests. Run relevant project checks, fix failures and save test_report with actual commands, results, criterion coverage and any blockers. Reference applicable IDs in the report or test names when useful, without marking every code line. Do not claim success while checks fail or silently change the approved norm.",
       "executor": "subagent", "model_tier": "advanced",
       "inputs": [{"source": "task", "key": "implementation_plan"}],
-      "outputs": ["test_report"]
+      "outputs": ["test_report"],
+      "templates": {
+        "test_report": "# Implementation and test evidence\n\n## Change under test\n<Describe the actual change and revision or diff being checked, if available.>\n\n## Checks and results\n<List commands or document checks actually run, observed outcomes and failures; distinguish not run from passed.>\n\n## Criterion coverage\n<Map plan AC/criterion IDs to actual checks, including normal, error and edge cases; explain gaps.>\n\n## Corrections and reruns\n<After review findings or late changes, update this report with affected checks and the change they verified.>\n\n## Blockers\n<State unresolved failures without claiming success.>"
+      }
     },
     {
       "name": "Review and resolve findings",
       "instructions": "As an independent reviewer distinct from the implementation executor, inspect the complete diff and test evidence against the task plan and criteria, approved normative and high-level project specifications, architecture, style, security and other target-project requirements. Check meaningful coverage of normal, alternative, error and edge cases and trace criteria to implementation and checks. Save review_report with a verdict and each finding's location, evidence, impact and severity: high (unsafe or materially incorrect behavior), medium (significant requirement, quality or coverage gap), low (minor improvement). High and medium findings must be fixed and re-reviewed on this same step with affected checks rerun; low findings may be recorded with rationale for deferral. Tell the orchestrator precisely what to correct; do not implement your own findings as the independent reviewer. Escalate a change to approved behavior for human agreement rather than silently editing the specification. Do not approve solely because artifacts exist.",
       "executor": "subagent", "model_tier": "advanced",
       "inputs": [{"source": "task", "key": "implementation_plan"}, {"source": "task", "key": "test_report"}],
-      "outputs": ["review_report"]
+      "outputs": ["review_report"],
+      "templates": {
+        "review_report": "# Independent review\n\n## Scope and verdict\n<Identify reviewed diff/revision, test evidence, applicable requirements and reviewer; approve only the checked version.>\n\n## Findings\n<For each finding give location, evidence, impact, high/medium/low severity and required correction. State explicitly if none.>\n\n## Corrections and re-review\n<Track high/medium findings through fixes, updated check evidence and renewed independent verdict on the resulting change. Record deferred low findings with rationale.>\n\n## Criterion coverage and residual risks\n<Map criteria to reviewed implementation/checks; note gaps, conflicts with approved behavior and escalation.>"
+      }
     },
     {
       "name": "Update project documentation",
       "instructions": "Explicitly load kos-project-docs. Update the maintained user-facing documentation for all domains affected by this task in the project-defined path or docs/ by default, using the project's format (OKF when required). Describe actual implemented behavior, normal, alternative and error scenarios, observable results and limits; refer to the published normative specification and applicable criterion IDs where useful. Do not portray planned behavior as implemented or weaken the approved norm. If the task has no user-visible effect, inspect relevant documents and explain concretely why no edit is needed. Save documentation_report with affected domains, files, checks and any blocker; clarify conflicting project rules. Review documentation changes and rerun affected checks before publication.",
       "executor": "subagent", "model_tier": "standard",
       "inputs": [{"source": "task", "key": "implementation_plan"}, {"source": "task", "key": "review_report"}],
-      "outputs": ["documentation_report"]
+      "outputs": ["documentation_report"],
+      "templates": {
+        "documentation_report": "# Current-behavior documentation\n\n## Affected domains and behavior\n<List user-visible domains and actual normal, alternative and error outcomes; distinguish published requirements from implemented behavior.>\n\n## Maintained documents\n<List project-defined paths, concept/index changes and applicable criterion IDs, or explain which relevant documents were inspected and why no edit is needed.>\n\n## Verification\n<Actual link, format and documentation checks, diff review and affected test reruns; record failures or blockers.>\n\n## Review impact\n<State whether documentation or late fixes changed reviewed behavior and whether renewed independent review was obtained or remains required.>"
+      }
     },
     {
       "name": "Publish and verify",
       "instructions": "Publication is part of this assigned task. Continue through recoverable errors without routine human approval; escalate only a decision or action the agent cannot safely perform. Follow target-project rules and verified worktree. Inspect status, complete diff, tests, review and documentation against applicable specifications and criteria. If documentation or late fixes affect reviewed behavior, rerun affected checks and obtain renewed independent review before publication; high and medium findings must be resolved. Publish by the project route and independently confirm the destination. Save publication_report with verifiable revision/link and destination. On conflict or ambiguity inspect the destination before retrying, retain the worktree and stay on this step if human action is required. Only the orchestrator may complete the task after verification and report the work, user-visible result, next task and recommended action to the human in their language.",
       "executor": "subagent", "model_tier": "standard",
       "inputs": [{"source": "task", "key": "test_report"}, {"source": "task", "key": "review_report"}, {"source": "task", "key": "documentation_report"}],
-      "outputs": ["publication_report"]
+      "outputs": ["publication_report"],
+      "templates": {
+        "publication_report": "# Execution publication\n\n## Published result\n<Project-defined destination, verifiable revision/link and independently observed result.>\n\n## Final evidence\n<Identify final diff/revision, passing or failed checks, updated test_report, independent review verdict and documentation_report; identify any reruns after late changes.>\n\n## Recovery or completion\n<Note ambiguity or conflicts and inspected destination when applicable; leave task on this step until publication is verified by the orchestrator.>"
+      }
     }
   ]
 }

@@ -70,7 +70,8 @@ module Api
           "task_id" => task.id, "workflow_id" => task.workflow_id, "current_step" => task.current_step,
           "name" => definition.fetch("name"), "executor" => definition.fetch("executor"),
           "model_tier" => definition["model_tier"], "instructions" => definition.fetch("instructions"),
-          "inputs" => inputs, "outputs" => definition.fetch("outputs")
+          "inputs" => inputs, "outputs" => definition.fetch("outputs"),
+          "templates" => definition.fetch("templates", {})
         } })
       end
 

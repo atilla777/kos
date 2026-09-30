@@ -27,7 +27,7 @@ class Workflow < ApplicationRecord
     end
 
     steps.each_with_index do |step, index|
-      unless step.is_a?(Hash) && (step.keys - %w[name instructions executor model_tier inputs outputs]).empty? &&
+      unless step.is_a?(Hash) && (step.keys - %w[name instructions executor model_tier inputs outputs templates]).empty? &&
           step["name"].is_a?(String) && step["name"].strip.present? &&
           step["instructions"].is_a?(String) && step["instructions"].strip.present? &&
           %w[main subagent].include?(step["executor"]) &&
@@ -35,7 +35,10 @@ class Workflow < ApplicationRecord
           step["inputs"].is_a?(Array) && step["outputs"].is_a?(Array) &&
           step["inputs"].all? { |input| valid_input?(input) } &&
           step["outputs"].all? { |output| output.is_a?(String) && output.strip.present? } &&
-          step["outputs"].uniq == step["outputs"]
+          step["outputs"].uniq == step["outputs"] &&
+          (!step.key?("templates") || (step["templates"].is_a?(Hash) &&
+            (step["templates"].keys - step["outputs"]).empty? &&
+            step["templates"].values.all? { |template| template.is_a?(String) && template.strip.present? }))
         errors.add(:steps, "has an invalid step at position #{index}")
       end
     end

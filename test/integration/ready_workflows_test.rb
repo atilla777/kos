@@ -24,6 +24,7 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
       claim_id: claim, expected_step: 0 }, as: :json
     assert_response :ok
     assert_equal %w[requirements specification implementation_plan planning_report], brief.step_at(1).fetch("outputs")
+    assert_equal brief.step_at(1).fetch("outputs").sort, brief.step_at(1).fetch("templates").keys.sort
 
     put "/api/v1/tasks/#{brief_id}/artifacts/specification", params: {
       project: REPOSITORY, claim_id: claim, content: "# Approved high-level brief", lock_version: nil
@@ -113,5 +114,20 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
     get "/api/v1/tasks/#{brief_id}/step", params: { project: REPOSITORY }
     assert_response :ok
     assert_equal [ "publication_report" ], response.parsed_body.dig("data", "step", "outputs")
+    assert_includes response.parsed_body.dig("data", "step", "templates", "publication_report"), "verifiable revision"
+  end
+
+  test "each ready workflow provides a usable template for each declared output" do
+    load Rails.root.join("db/seeds.rb")
+    Workflow.where(project_id: nil).find_each do |workflow|
+      workflow.steps.each do |step|
+        assert_equal step.fetch("outputs").sort, step.fetch("templates", {}).keys.sort
+        step.fetch("templates", {}).each_value do |template|
+          assert_match(/\A# /, template)
+          assert_includes template, "\n\n## "
+        end
+      end
+    end
+    assert_includes Workflow.find_by!(name: "KOS Fix v1").step_at(0).dig("templates", "root_cause_report"), "confirmed cause"
   end
 end
