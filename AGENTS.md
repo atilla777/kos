@@ -10,6 +10,7 @@ Keep the MVP small. The expanded MVP includes server-owned workflow definitions,
 
 ## Development Rules
 
+- In KOS conversations with a person, write questions, progress updates, blockers and final reports in plain, understandable language with enough context and without unnecessary jargon or loanwords. In ordinary chat ask one question at a time; a sequential question wizard may contain several questions. Offer a recommendation with a short reason in parentheses for each question without inventing factual answers. Keep approvals for distinct protected actions separate.
 - Implement in small, working vertical increments and prefer the smallest correct design.
 - Keep business rules and invariants on the Rails server; the CLI must remain a thin client and must not duplicate task-availability or claim algorithms.
 - Enforce critical uniqueness, foreign-key, ownership, lease, version, and dependency invariants in the database and transactional server operations, not only in Rails validations.

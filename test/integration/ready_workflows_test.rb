@@ -79,6 +79,10 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
     assert_empty brief.step_at(0).fetch("outputs")
     assert_includes brief.step_at(0).fetch("instructions"), "real Git origin"
     assert_includes brief.step_at(0).fetch("instructions"), "one digit"
+    assert_includes brief.step_at(0).fetch("instructions"), "ask one question at a time"
+    assert_includes brief.step_at(0).fetch("instructions"), "presents them sequentially"
+    assert_includes brief.step_at(0).fetch("instructions"), "short reason in parentheses"
+    assert_includes brief.step_at(0).fetch("instructions"), "plain, understandable language"
     assert_includes brief.step_at(1).fetch("instructions"), "kos-project-docs"
     assert_equal %w[requirements specification implementation_plan planning_report], brief.step_at(1).fetch("outputs")
     assert_equal [ "publication_report" ], brief.step_at(2).fetch("outputs")
@@ -87,6 +91,10 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
     assert_includes execution.step_at(0).fetch("inputs"), { "source" => "blockers", "key" => "planning_report" }
     assert_includes fix.step_at(0).fetch("instructions"), "no Brief is required"
     assert_includes execution.step_at(0).fetch("instructions"), "consecutively"
+    assert_includes execution.step_at(0).fetch("instructions"), "wait for its answer"
+    assert_includes execution.step_at(0).fetch("instructions"), "reasoned recommendation in parentheses"
+    assert_includes fix.step_at(0).fetch("instructions"), "one at a time"
+    assert_includes fix.step_at(1).fetch("instructions"), "recommendation and short reason in parentheses"
     assert_includes execution.step_at(2).fetch("instructions"), "High and medium findings must be fixed"
     assert_includes fix.step_at(3).fetch("instructions"), "high and medium findings must be fixed"
     assert_includes brief.step_at(1).fetch("instructions"), "OKF v0.2"
