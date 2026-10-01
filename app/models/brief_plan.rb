@@ -22,7 +22,7 @@ class BriefPlan < ApplicationRecord
       brief.reload.lock!
       brief.send(:ensure_active_claim!, claim_id, Time.current)
       raise Task::ClaimError, "step_conflict" unless brief.current_step == expected_step
-      raise PlanError, "not_brief" unless brief.workflow.name.match?(/\AKOS Brief v[1234]\z/)
+      raise PlanError, "not_brief" unless brief.workflow.name.match?(/\AKOS Brief v[12345]\z/)
 
       existing = find_by(brief_task_id: brief.id)
       if existing
