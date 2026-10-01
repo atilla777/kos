@@ -38,7 +38,16 @@ KOS_UID=$(id -u) KOS_GID=$(id -g) docker compose run --rm kos bin/rails db:seed
 mise run kos
 ```
 
-`mise run kos` builds the image and runs Compose **in the foreground**. Keep that terminal open while using KOS; Ctrl+C stops the container. It does not start automatically at login. Docker must be available to your user. For local Rails development and `bin/ci`, install host dependencies separately with `bundle config set --local path vendor/bundle`, `bundle install`, and `bundle check`.
+To run `mise run kos` from other projects under your home directory, add this task to `~/mise.toml`, replacing the example path with the absolute path to your KOS checkout (keep any existing tasks in that file):
+
+```toml
+[tasks.kos]
+description = "Run the local KOS API in Docker until Ctrl+C"
+dir = "/absolute/path/to/kos"
+run = "KOS_UID=$(id -u) KOS_GID=$(id -g) docker compose up --build --force-recreate"
+```
+
+The repository's `.mise.toml` also provides the task when running from the checkout. The home task sets the Compose working directory to the KOS checkout regardless of which project under your home directory you start it from. `mise run kos` builds the image and runs Compose **in the foreground**. Keep that terminal open while using KOS; Ctrl+C stops the container. It does not start automatically at login. Docker must be available to your user. For local Rails development and `bin/ci`, install host dependencies separately with `bundle config set --local path vendor/bundle`, `bundle install`, and `bundle check`.
 
 For an **existing installation**, inspect `storage/development.sqlite3` before running `db:prepare`, upgrading, or restoring anything. The file is persistent, not disposable test data. For example, from the repository root:
 
