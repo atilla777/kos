@@ -1,5 +1,6 @@
 require "minitest/autorun"
 require "fileutils"
+require "json"
 require "open3"
 require "tmpdir"
 
@@ -23,7 +24,7 @@ class InstallOpencodeTest < Minitest::Test
         assert_equal File.binread(File.join(SOURCE, "agent", "#{name}.md")),
           File.binread(File.join(home, "opencode", "agent", "#{name}.md"))
       end
-      %w[kos-init kos-update kos].each do |name|
+      %w[kos-init kos-update kos kos-brief kos-fix].each do |name|
         assert_equal File.binread(File.join(SOURCE, "command", "#{name}.md")),
           File.binread(File.join(home, "opencode", "command", "#{name}.md"))
       end
@@ -123,7 +124,12 @@ class InstallOpencodeTest < Minitest::Test
 
       commands, error, status = Open3.capture3(env, "opencode", "debug", "config", chdir: home)
       assert status.success?, error
-      %w[kos-init kos-update kos].each { |name| assert_includes commands, %Q("#{name}") }
+      %w[kos-init kos-update kos kos-brief kos-fix].each { |name| assert_includes commands, %Q("#{name}") }
+      %w[kos-brief kos-fix].each do |name|
+        template = JSON.parse(commands).fetch("command").fetch(name).fetch("template")
+        assert_includes template, "kos-orchestrator"
+        assert_includes template, "$ARGUMENTS"
+      end
 
       %w[kos-standard kos-advanced].zip(%w[gpt-6-luna gpt-6-sol]).each do |name, model|
         details, error, status = Open3.capture3(env, "opencode", "debug", "agent", name, chdir: home)
