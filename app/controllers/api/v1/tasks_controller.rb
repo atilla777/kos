@@ -21,7 +21,7 @@ module Api
       end
 
       def show
-        render_data({ task: serialize_context(task) })
+        render_data({ task: serialize_context(task, brief: brief_view?) })
       end
 
       def ready
@@ -54,6 +54,7 @@ module Api
       end
 
       def step
+        brief = brief_view?
         definition = task.workflow.step_at(task.current_step)
         inputs = definition.fetch("inputs").map do |input|
           source_tasks = input.fetch("source") == "task" ? [ task ] : task.blocking_tasks.order(:id).to_a
@@ -61,7 +62,8 @@ module Api
             artifact = source.task_artifacts.find_by(key: input.fetch("key"))
             next unless artifact
 
-            artifact.as_json(only: %i[id task_id key content lock_version created_at updated_at])
+            artifact.as_json(only: brief ? %i[id task_id key lock_version created_at updated_at] :
+              %i[id task_id key content lock_version created_at updated_at])
               .merge("source" => { "task_id" => source.id, "task_title" => source.title })
           end
           { "selector" => input, "artifacts" => matches, "missing" => matches.empty? }
@@ -71,7 +73,7 @@ module Api
           "name" => definition.fetch("name"), "executor" => definition.fetch("executor"),
           "model_tier" => definition["model_tier"], "instructions" => definition.fetch("instructions"),
           "inputs" => inputs, "outputs" => definition.fetch("outputs"),
-          "templates" => definition.fetch("templates", {})
+          **(brief ? {} : { "templates" => definition.fetch("templates", {}) })
         } })
       end
 
@@ -312,13 +314,15 @@ module Api
         serialize_detailed(task).merge("claim_id" => task.claim_id)
       end
 
-      def serialize_context(task, owned: false)
-        serialized = serialize_detailed(task).except("blocked_by_ids").merge(
-          "artifacts" => context_artifacts(task),
-          "task_group" => serialize_context_group(task.task_group),
-          "blocked_by" => context_tasks(task.blocking_tasks, :blocked_by_after_id),
-          "dependency_artifacts" => context_dependency_artifacts(task),
-          "blocks" => context_tasks(task.dependent_tasks, :blocks_after_id),
+      def serialize_context(task, owned: false, brief: false)
+        detailed = serialize_detailed(task).except("blocked_by_ids")
+        detailed = detailed.except("description", "work_summary", "session_id") if brief
+        serialized = detailed.merge(
+          "artifacts" => context_artifacts(task, brief: brief),
+          "task_group" => serialize_context_group(task.task_group, brief: brief),
+          "blocked_by" => context_tasks(task.blocking_tasks, :blocked_by_after_id, brief: brief),
+          "dependency_artifacts" => context_dependency_artifacts(task, brief: brief),
+          "blocks" => context_tasks(task.dependent_tasks, :blocks_after_id, brief: brief),
           "availability" => task.availability_at,
           "pagination" => context_pagination
         )
@@ -326,18 +330,18 @@ module Api
         serialized
       end
 
-      def context_artifacts(task)
+      def context_artifacts(task, brief: false)
         records, = paginate_context(task.task_artifacts, :artifacts, :artifact_after_id)
-        records.map { |artifact| serialize_context_artifact(artifact) }
+        records.map { |artifact| serialize_context_artifact(artifact, brief: brief) }
       end
 
-      def context_dependency_artifacts(task)
+      def context_dependency_artifacts(task, brief: false)
         relation = TaskArtifact.where(task_id: task.blocking_tasks.select(:id)).includes(:task)
         records, = paginate_context(relation, :dependency_artifacts, :dependency_artifact_after_id)
         records.map do |artifact|
           {
             "id" => artifact.id,
-            "content" => artifact.content,
+            **(brief ? {} : { "content" => artifact.content }),
             "source" => {
               "task_id" => artifact.task_id,
               "task_title" => artifact.task.title,
@@ -348,24 +352,25 @@ module Api
         end
       end
 
-      def context_tasks(relation, cursor_name)
+      def context_tasks(relation, cursor_name, brief: false)
         collection_name = cursor_name == :blocked_by_after_id ? :blocked_by : :blocks
         records, = paginate_context(relation, collection_name, cursor_name)
         records.map do |related_task|
-          related_task.as_json(only: %i[id kind title status work_summary]).merge(
+          related_task.as_json(only: brief ? %i[id kind title status] : %i[id kind title status work_summary]).merge(
             "lease_expired" => related_task.lease_expired?
           )
         end
       end
 
-      def serialize_context_artifact(artifact)
-        artifact.as_json(only: %i[id task_id key content lock_version created_at updated_at])
+      def serialize_context_artifact(artifact, brief: false)
+        artifact.as_json(only: brief ? %i[id task_id key lock_version created_at updated_at] :
+          %i[id task_id key content lock_version created_at updated_at])
       end
 
-      def serialize_context_group(group)
+      def serialize_context_group(group, brief: false)
         return unless group
 
-        group.as_json(only: %i[id kind title description])
+        group.as_json(only: brief ? %i[id kind title] : %i[id kind title description])
       end
 
       def context_pagination
@@ -417,6 +422,13 @@ module Api
       def compact_context?
         return false if params[:context].blank?
         raise ActionController::BadRequest unless params[:context] == "route"
+
+        true
+      end
+
+      def brief_view?
+        return false unless params.key?(:view)
+        raise ActionController::BadRequest unless params[:view] == "brief"
 
         true
       end

@@ -78,6 +78,62 @@ class CommandTest < Minitest::Test
     assert_usage_error(command.run(%w[session new unexpected]))
   end
 
+  def test_help_at_every_level_needs_neither_project_nor_server_nor_required_arguments
+    offline = Class.new do
+      def initialize(*)
+        raise "Help must not construct an API client"
+      end
+    end
+    with_environment("KOS_PROJECT", "file:///invalid/remote") do
+      with_environment("KOS_API_URL", "invalid URL") do
+        { %w[--help] => "Commands: session, project, group, workflow, task",
+          %w[task --help] => "step, advance, artifact",
+          %w[task artifact --help] => "list, get, put, delete",
+          %w[task artifact put 2 --help] => "TASK_ID KEY --file PATH|-",
+          %w[task step show --help] => "TASK_ID [--brief]",
+          %w[workflow list --help] => "[--limit N] [--after-id ID] [--brief]",
+          %w[--project bad task show --help] => "TASK_ID [--brief]" }.each do |args, expected|
+          out = StringIO.new
+          cmd = KosCli::Command.new(stdout: out, stderr: @stderr, client_class: offline)
+          assert_equal 0, cmd.run(args)
+          assert_includes JSON.parse(out.string).dig("data", "help"), expected
+        end
+        assert_equal "", @stderr.string
+      end
+    end
+  end
+
+  def test_bad_task_command_lists_step_and_advance_as_json
+    assert_usage_error(command.run(%w[task unknown]))
+    message = JSON.parse(@stdout.string).dig("error", "message")
+    assert_includes message, "step"
+    assert_includes message, "advance"
+  end
+
+  def test_brief_queries_and_put_confirmation_are_requested_from_api
+    project = %w[--project github.com/owner/project]
+    assert_equal 0, command.run(project + %w[workflow list --brief --limit 1])
+    assert_equal "brief", FakeClient.requests.last[3][:view]
+    assert_equal 0, command.run(project + %w[task show 42 --brief --context-limit 1])
+    assert_equal "brief", FakeClient.requests.last[3][:view]
+    assert_equal 0, command.run(project + %w[task step show 42 --brief])
+    assert_equal "brief", FakeClient.requests.last[3][:view]
+
+    cmd = KosCli::Command.new(stdin: StringIO.new("# Report"), stdout: @stdout, stderr: @stderr, client_class: FakeClient)
+    FakeClient.response = [ 200, { "data" => { "artifact" => { "id" => 9, "key" => "report", "lock_version" => 0 } } } ]
+    assert_equal 0, cmd.run(project + %w[--claim secret task artifact put 42 report --file - --brief])
+    assert_equal({ view: "brief" }, FakeClient.requests.last[3])
+    assert_equal "# Report", FakeClient.requests.last[2][:content]
+    assert_equal 0, JSON.parse(@stdout.string.lines.last).dig("data", "artifact", "lock_version")
+
+    FakeClient.response = [ 409, { "error" => { "code" => "artifact_version_conflict" } } ]
+    assert_equal 4, cmd.run(project + %w[--claim secret task artifact put 42 report --file - --brief])
+    assert_equal "artifact_version_conflict", JSON.parse(@stdout.string.lines.last).dig("error", "code")
+    FakeClient.response = nil
+    assert_equal 0, command.run(project + %w[workflow list])
+    refute FakeClient.requests.last[3].key?(:view)
+  end
+
   def test_fingerprint_route_and_protected_write_keep_claim_out_of_output_and_arguments
     claim = "a" * 64
     fingerprint = Digest::SHA256.hexdigest(claim)

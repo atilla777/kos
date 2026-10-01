@@ -242,6 +242,7 @@ kos --project github.com/owner/repository group delete 1
 kos --project github.com/owner/repository workflow create --file workflow.json
 kos workflow create --global --file workflow.json
 kos --project github.com/owner/repository workflow list --limit 50
+kos --project github.com/owner/repository workflow list --brief
 kos --project github.com/owner/repository workflow show 1
 kos --project github.com/owner/repository workflow delete 1
 
@@ -261,6 +262,7 @@ kos --project github.com/owner/repository --session agent-1 task claim 1 --route
 kos --project github.com/owner/repository --session agent-1 task current
 kos --project github.com/owner/repository --session agent-1 task current --route
 kos --project github.com/owner/repository task step show 1
+kos --project github.com/owner/repository task step show 1 --brief
 kos --project github.com/owner/repository --claim "$KOS_CLAIM_ID" task advance 1 --expected-step 0
 kos --project github.com/owner/repository --claim "$KOS_CLAIM_ID" task renew 1
 kos --project github.com/owner/repository --claim "$KOS_CLAIM_ID" task update 1 --work-summary "Implementation in progress."
@@ -268,6 +270,7 @@ kos --project github.com/owner/repository --claim "$KOS_CLAIM_ID" task release 1
 kos --project github.com/owner/repository --claim "$KOS_CLAIM_ID" task complete 1 --work-summary "Implemented and verified."
 kos --project github.com/owner/repository task reopen 1
 kos --project github.com/owner/repository task show 1
+kos --project github.com/owner/repository task show 1 --brief
 kos --project github.com/owner/repository task update 1 --blocked-by-ids ""
 kos --project github.com/owner/repository task update 1 --no-group
 kos --project github.com/owner/repository task delete 1
@@ -285,6 +288,8 @@ kos --project github.com/owner/repository --claim "$KOS_CLAIM_ID" \
 Without `--project`, repository-sensitive commands derive the canonical project key from the current Git repository's `origin`. GitHub SSH and HTTPS remotes such as `git@github.com:owner/repository.git` and `https://github.com/owner/repository.git` resolve to `github.com/owner/repository`. Unsupported or absent remotes require explicit `--project`. New tasks start in `planned` at step `0` of their workflow; ordinary create and update commands cannot set status, claim, lease, or step fields. A claim lasts 30 minutes. `claim-next` atomically selects work on the server and returns the session's existing active task before selecting another; `current` reads that task without extending its lease. `renew` extends only a current lease, while `release` and `complete` atomically preserve an optional summary and clear ownership. `complete` requires the final step; `advance` moves to the next step only with the active claim and matching `--expected-step`. At `lease_expires_at <= now`, the old claim loses all write access. `reopen` is explicit and is rejected after dependent work has started or completed.
 
 By default, `task show`, `task current`, and successful `claim`/`claim-next` responses contain the same detailed context: the task and its artifacts, optional group, immediate blockers, blocker artifacts with explicit source metadata, dependent tasks, and computed availability reasons. With `--route`, claim/current return only compact step routing metadata and the owner's `claim_id`, without documents. `task step show ID` returns the instruction, expected outputs, and matching input artifacts with source and version; missing inputs are explicit. Workflow definitions cannot be edited, and deleting an in-use workflow is rejected. Context collections default to 50 records and accept at most 100 through `--context-limit`; an incomplete collection has `pagination.<collection>.complete: false`, its continuation flag in `after_parameter`, and its cursor in `next_after_id`. The CLI supports `--artifact-after-id`, `--blocked-by-after-id`, `--dependency-artifact-after-id`, and `--blocks-after-id` on all four context-returning commands.
+
+Opt-in `--brief` on `workflow list`, `task show ID`, and `task step show ID` asks the API for metadata without long workflow definitions or document contents; the step instruction stays visible. The list and task cursors still work, and every matching step input still includes its source and version or an explicit missing marker. `task artifact put ... --brief` confirms the ID, key and new version without repeating the submitted content; the normal response remains full. `kos --help`, `kos task artifact --help`, and `kos task artifact put 1 --help` return JSON help without Git, a server or required arguments.
 
 Artifact reads do not require a claim. Creating, updating, and deleting an artifact require the task's active claim. A `put` without `--version` sends `lock_version: null` and creates only an absent key; updating requires the version returned by `artifact get` through `--version N`. Deletion also requires the current version. A stale expectation returns `artifact_version_conflict` without overwriting or deleting the newer document. Use `--file -` to read UTF-8 Markdown from stdin. Release, lease expiry, and reclaim preserve artifacts; completed-task artifacts remain readable but cannot be changed.
 

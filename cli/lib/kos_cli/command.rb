@@ -22,6 +22,38 @@ module KosCli
     CONNECTION_ERROR_EXIT = 3
     CONFLICT_EXIT = 4
     AMBIGUOUS_RESULT_EXIT = 5
+    COMMANDS = {
+      "session" => %w[new], "project" => %w[create list show update delete],
+      "group" => %w[create list show update delete], "workflow" => %w[create list show delete],
+      "task" => %w[create list ready claim-next claim current renew release complete reopen show update delete step advance artifact],
+      "task step" => %w[show], "task artifact" => %w[list get put delete]
+    }.freeze
+    HELP_OPTIONS = {
+      "session new" => "",
+      "project create" => "[--name NAME] [--repository REPOSITORY]", "project list" => "[--limit N] [--after-id ID]",
+      "project show" => "[ID|REPOSITORY]", "project update" => "[ID|REPOSITORY] [--name NAME] [--repository REPOSITORY]",
+      "project delete" => "[ID|REPOSITORY]",
+      "group create" => "--kind KIND --title TITLE --description TEXT", "group list" => "[--limit N] [--after-id ID]",
+      "group show" => "GROUP_ID", "group update" => "GROUP_ID [--kind KIND] [--title TITLE] [--description TEXT]", "group delete" => "GROUP_ID",
+      "workflow create" => "--file PATH [--global]",
+      "workflow list" => "[--limit N] [--after-id ID] [--brief]",
+      "workflow show" => "WORKFLOW_ID", "workflow delete" => "WORKFLOW_ID",
+      "task create" => "--kind KIND --title TITLE --description TEXT --workflow-id ID [OPTIONS]",
+      "task list" => "[--limit N] [--after-id ID]", "task ready" => "[--limit N] [--after-id ID] [--kind KIND] [--group-id ID]",
+      "task claim-next" => "[--kind KIND] [--group-id ID] [--route|--fingerprint] [--context-limit N]",
+      "task claim" => "TASK_ID [--route|--fingerprint] [--context-limit N]",
+      "task current" => "[--route|--fingerprint] [--context-limit N]", "task renew" => "TASK_ID",
+      "task release" => "TASK_ID [--work-summary TEXT]", "task complete" => "TASK_ID [--work-summary TEXT]",
+      "task reopen" => "TASK_ID",
+      "task show" => "TASK_ID [--brief] [--context-limit N] [--artifact-after-id ID] [--blocked-by-after-id ID] [--dependency-artifact-after-id ID] [--blocks-after-id ID]",
+      "task update" => "TASK_ID [--kind KIND] [--title TITLE] [--description TEXT] [--work-summary SUMMARY] [--group-id ID|--no-group] [--blocked-by-ids IDS]",
+      "task delete" => "TASK_ID", "task advance" => "TASK_ID --expected-step N",
+      "task step show" => "TASK_ID [--brief]",
+      "task artifact list" => "TASK_ID [--limit N] [--after-id ID]",
+      "task artifact get" => "TASK_ID KEY",
+      "task artifact put" => "TASK_ID KEY --file PATH|- [--version N] [--expected-step N] [--brief]",
+      "task artifact delete" => "TASK_ID KEY --version N"
+    }.freeze
 
     def initialize(stdout: $stdout, stderr: $stderr, stdin: $stdin, client_class: Client)
       @stdout = stdout
@@ -32,6 +64,8 @@ module KosCli
     end
 
     def run(argv)
+      return show_help(argv) if argv.include?("--help") || argv.include?("-h")
+
       @fingerprint_route = false
       options = {
         url: ENV.fetch("KOS_API_URL", DEFAULT_URL),
@@ -58,7 +92,7 @@ module KosCli
       when "group" then run_group(client, argv, options)
       when "workflow" then run_workflow(client, argv, options)
       when "task" then run_task(client, argv, options)
-      else raise OptionParser::ParseError, "Expected: kos session|project|group|workflow|task COMMAND"
+      else raise OptionParser::ParseError, "Expected: kos #{COMMANDS.keys.take(5).join('|')} COMMAND"
       end
       success = status.between?(200, 299)
       response = with_claim_fingerprint(response) if success && (@fingerprint_route || options[:claim_fingerprint])
@@ -83,6 +117,32 @@ module KosCli
     end
 
     private
+
+    def show_help(argv)
+      words = argv.take_while { |word| word != "--help" && word != "-h" }
+      index = 0
+      index += 2 while %w[--url --project --session --claim --claim-fingerprint].include?(words[index])
+      words = words.drop(index)
+      section = words.first
+      path = if COMMANDS.key?(section)
+        parts = [ section ]
+        parts << words[1] if COMMANDS.fetch(section).include?(words[1])
+        parts << words[2] if COMMANDS.key?(parts.join(" ")) && COMMANDS.fetch(parts.join(" ")).include?(words[2])
+        parts.join(" ")
+      end
+      lines = if path.nil?
+        [ "Usage: kos [--url URL] [--project REPOSITORY] [--session SESSION] [--claim CLAIM | --claim-fingerprint SHA256] COMMAND",
+          "Commands: #{COMMANDS.keys.take(5).join(', ')}", "Use kos COMMAND --help for details." ]
+      elsif COMMANDS.key?(path)
+        [ "Usage: kos #{path} COMMAND", "Commands: #{COMMANDS.fetch(path).join(', ')}",
+          "Use kos #{path} COMMAND --help for details." ]
+      else
+        [ "Usage: kos #{path} #{HELP_OPTIONS.fetch(path, '[OPTIONS]')}",
+          "Global options: --url URL, --project REPOSITORY, --session SESSION, --claim CLAIM, --claim-fingerprint SHA256" ]
+      end
+      write_json({ data: { help: lines.join("\n") } })
+      0
+    end
 
     def parse_global_options(argv, options)
       OptionParser.new do |parser|
@@ -178,7 +238,7 @@ module KosCli
       when "artifact" then run_task_artifact(client, argv, global)
       when "step" then run_task_step(client, argv, global)
       when "advance" then advance_task(client, argv, global)
-      else raise OptionParser::ParseError, "Expected task create, list, ready, claim-next, claim, current, renew, release, complete, reopen, show, update, delete, or artifact."
+      else raise OptionParser::ParseError, "Expected task #{COMMANDS.fetch('task').join(', ')}."
       end
     end
 
@@ -207,6 +267,7 @@ module KosCli
         OptionParser.new do |parser|
           parser.on("--limit LIMIT", Integer) { |value| values[:limit] = value }
           parser.on("--after-id ID", Integer) { |value| values[:after_id] = value }
+          parser.on("--brief") { values[:view] = "brief" }
         end.parse!(argv)
         ensure_empty!(argv)
         client.request(:get, "/workflows", query: { project: resolve_project(global), **values })
@@ -229,8 +290,10 @@ module KosCli
       raise OptionParser::ParseError, "Expected task step show." unless argv.shift == "show"
 
       id = task_id!(argv.shift)
+      values = {}
+      OptionParser.new { |parser| parser.on("--brief") { values[:view] = "brief" } }.parse!(argv)
       ensure_empty!(argv)
-      client.request(:get, "/tasks/#{id}/step", query: { project: resolve_project(global) })
+      client.request(:get, "/tasks/#{id}/step", query: { project: resolve_project(global), **values })
     end
 
     def advance_task(client, argv, global)
@@ -437,7 +500,10 @@ module KosCli
     def show_task(client, argv, global)
       id = task_id!(argv.shift)
       values = {}
-      OptionParser.new { |parser| parse_context_options(parser, values) }.parse!(argv)
+      OptionParser.new do |parser|
+        parse_context_options(parser, values)
+        parser.on("--brief") { values[:view] = "brief" }
+      end.parse!(argv)
       ensure_empty!(argv)
       client.request(:get, "/tasks/#{id}", query: { project: resolve_project(global), **values })
     end
@@ -494,6 +560,7 @@ module KosCli
         parser.on("--file PATH") { |value| values[:file] = value }
         parser.on("--version VERSION", Integer) { |value| values[:lock_version] = nonnegative_version!(value) }
         parser.on("--expected-step N", Integer) { |value| values[:expected_step] = nonnegative_version!(value) }
+        parser.on("--brief") { values[:view] = "brief" }
       end.parse!(argv)
       ensure_empty!(argv)
       raise OptionParser::ParseError, "Provide --file PATH or --file -." unless values.key?(:file)
@@ -504,7 +571,7 @@ module KosCli
         raise OptionParser::ParseError, "--expected-step requires --claim-fingerprint."
       end
 
-      client.request(:put, artifact_path(id, key), body: {
+      client.request(:put, artifact_path(id, key), query: values[:view] ? { view: values[:view] } : nil, body: {
         project: resolve_project(global),
         claim_id: resolve_claim_for_task(client, global, id, expected_step: values[:expected_step]),
         content: read_utf8(values.fetch(:file)),

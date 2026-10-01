@@ -2,6 +2,7 @@ module Api
   module V1
     class WorkflowsController < BaseController
       def index
+        brief = brief_view?
         limit = Integer(params.fetch(:limit, 50).to_s, 10)
         raise ActionController::BadRequest unless limit.between?(1, 100)
 
@@ -13,7 +14,7 @@ module Api
         records = relation.limit(limit + 1).to_a
         more = records.length > limit
         records = records.first(limit)
-        render_data({ workflows: records.map { |workflow| serialize(workflow) },
+        render_data({ workflows: records.map { |workflow| serialize(workflow, brief: brief) },
           pagination: { limit: limit, next_after_id: more ? records.last.id : nil } })
       rescue ArgumentError, TypeError
         raise ActionController::BadRequest
@@ -70,8 +71,15 @@ module Api
         @workflow ||= Workflow.visible_to(Project.find_by(repository: project_repository)).find(params[:id])
       end
 
-      def serialize(record)
-        record.as_json(only: %i[id project_id name steps created_at updated_at])
+      def serialize(record, brief: false)
+        record.as_json(only: brief ? %i[id project_id name] : %i[id project_id name steps created_at updated_at])
+      end
+
+      def brief_view?
+        return false unless params.key?(:view)
+        raise ActionController::BadRequest unless params[:view] == "brief"
+
+        true
       end
     end
   end

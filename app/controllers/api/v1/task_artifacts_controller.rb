@@ -19,6 +19,7 @@ module Api
       end
 
       def update
+        brief = brief_view?
         saved_artifact = task.put_artifact!(
           key: artifact_key,
           content: content,
@@ -26,7 +27,7 @@ module Api
           expected_lock_version: expected_lock_version(allow_nil: true),
           expected_step: expected_step
         )
-        render_data({ artifact: serialize(saved_artifact) })
+        render_data({ artifact: serialize(saved_artifact, brief: brief) })
       rescue Task::ClaimError => error
         render_claim_error(error)
       rescue TaskArtifact::VersionConflict
@@ -130,8 +131,15 @@ module Api
         raise ActionController::BadRequest
       end
 
-      def serialize(record)
-        record.as_json(only: %i[id task_id key content lock_version created_at updated_at])
+      def serialize(record, brief: false)
+        record.as_json(only: brief ? %i[id key lock_version] : %i[id task_id key content lock_version created_at updated_at])
+      end
+
+      def brief_view?
+        return false unless params.key?(:view)
+        raise ActionController::BadRequest unless params[:view] == "brief"
+
+        true
       end
 
       def render_claim_error(error)

@@ -9,6 +9,24 @@ class TaskArtifactsApiTest < ActionDispatch::IntegrationTest
     @task, = Task.claim_for!(project: @project, task_id: @task.id, session_id: "agent-1")
   end
 
+  test "brief put confirms key and version without returning content or weakening version checks" do
+    put "#{artifact_path('report')}?view=unknown", params: write_params(content: "Must not save", lock_version: nil), as: :json
+    assert_response :bad_request
+    assert_not @task.task_artifacts.exists?(key: "report")
+    put "#{artifact_path('report')}?view=brief", params: write_params(content: "Secret report", lock_version: nil), as: :json
+    assert_response :ok
+    artifact = response.parsed_body.dig("data", "artifact")
+    assert_equal %w[id key lock_version], artifact.keys.sort
+    assert_equal "report", artifact.fetch("key")
+    assert_equal 0, artifact.fetch("lock_version")
+    put "#{artifact_path('report')}?view=brief", params: write_params(content: "Stale", lock_version: nil), as: :json
+    assert_version_conflict
+    get artifact_path("report"), params: { project: REPOSITORY }
+    assert_equal "Secret report", response.parsed_body.dig("data", "artifact", "content")
+    put artifact_path("report"), params: write_params(content: "Full response", lock_version: 0), as: :json
+    assert_equal "Full response", response.parsed_body.dig("data", "artifact", "content")
+  end
+
   test "creates, lists, gets, updates, and deletes an artifact" do
     put artifact_path("specification"), params: write_params(content: "# Specification", lock_version: nil), as: :json
     assert_response :ok

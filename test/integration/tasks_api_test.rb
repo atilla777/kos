@@ -3,6 +3,40 @@ require "test_helper"
 class TasksApiTest < ActionDispatch::IntegrationTest
   REPOSITORY = "github.com/atilla777/kos"
 
+  test "brief task context retains paginated sources and versions without long texts" do
+    project = Project.create!(name: "KOS", repository: REPOSITORY)
+    workflow = workflow_for(project)
+    blocker = project.tasks.create!(workflow: workflow, kind: "task", title: "Blocker", description: "Blocker secret")
+    blocker.task_artifacts.create!(key: "source", content: "Blocker document")
+    task = project.tasks.create!(workflow: workflow, kind: "task", title: "Target", description: "Task secret")
+    task.task_dependencies.create!(project: project, blocking_task: blocker)
+    first, second = %w[first second].map { |key| task.task_artifacts.create!(key: key, content: "Secret #{key}") }
+
+    get "/api/v1/tasks/#{task.id}", params: { project: REPOSITORY, view: "brief", context_limit: 1 }
+    assert_response :ok
+    short = response.parsed_body.dig("data", "task")
+    assert_equal "planned", short.fetch("status")
+    assert_equal 0, short.fetch("current_step")
+    assert_equal blocker.id, short.dig("blocked_by", 0, "id")
+    assert_equal first.id, short.dig("artifacts", 0, "id")
+    assert_equal "first", short.dig("artifacts", 0, "key")
+    assert_equal 0, short.dig("artifacts", 0, "lock_version")
+    assert_equal blocker.id, short.dig("dependency_artifacts", 0, "source", "task_id")
+    assert_equal "source", short.dig("dependency_artifacts", 0, "source", "key")
+    assert_equal first.id, short.dig("pagination", "artifacts", "next_after_id")
+    assert_not short.key?("description")
+    assert_not short.key?("work_summary")
+    assert_not_includes response.body, "Secret"
+    assert_not_includes response.body, "Blocker document"
+
+    get "/api/v1/tasks/#{task.id}", params: { project: REPOSITORY, view: "brief", context_limit: 1,
+      artifact_after_id: first.id }
+    assert_equal second.id, response.parsed_body.dig("data", "task", "artifacts", 0, "id")
+    get "/api/v1/tasks/#{task.id}", params: { project: REPOSITORY }
+    assert_equal "Task secret", response.parsed_body.dig("data", "task", "description")
+    assert_equal "Blocker document", response.parsed_body.dig("data", "task", "dependency_artifacts", 0, "content")
+  end
+
   test "creates, lists, shows, updates, and deletes a task in its project" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
     post "/api/v1/tasks", params: {

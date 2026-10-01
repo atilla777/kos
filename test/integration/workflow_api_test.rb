@@ -227,6 +227,55 @@ class WorkflowApiTest < ActionDispatch::IntegrationTest
     assert_not Workflow.exists?(second.id)
   end
 
+  test "brief workflow list omits steps and retains scope and cursor" do
+    first = create_workflow
+    second = first.project.workflows.create!(name: "Second", steps: first.steps)
+    get "/api/v1/workflows", params: { project: REPOSITORY, view: "brief", limit: 1 }
+    assert_response :ok
+    assert_equal [ { "id" => first.id, "project_id" => first.project_id, "name" => first.name } ],
+      response.parsed_body.dig("data", "workflows")
+    assert_equal first.id, response.parsed_body.dig("data", "pagination", "next_after_id")
+
+    get "/api/v1/workflows", params: { project: REPOSITORY, after_id: first.id, view: "brief" }
+    assert_equal [ second.id ], response.parsed_body.dig("data", "workflows").pluck("id")
+    get "/api/v1/workflows", params: { project: REPOSITORY }
+    assert_equal "Plan the work.", response.parsed_body.dig("data", "workflows", 0, "steps", 0, "instructions")
+    get "/api/v1/workflows", params: { project: REPOSITORY, view: "other" }
+    assert_response :bad_request
+    assert_equal "invalid_request", response.parsed_body.dig("error", "code")
+  end
+
+  test "brief step includes every source and missing input without document contents or templates" do
+    project = Project.create!(name: "Example", repository: REPOSITORY)
+    workflow = project.workflows.create!(name: "Reading", steps: [
+      { "name" => "Review", "instructions" => "Review sources", "executor" => "main",
+        "inputs" => [ { "source" => "blockers", "key" => "report" }, { "source" => "task", "key" => "missing" } ],
+        "outputs" => [ "review" ], "templates" => { "review" => "# Private template" } }
+    ])
+    blockers = 2.times.map do |n|
+      source = project.tasks.create!(workflow: workflow, kind: "task", title: "Source #{n}", description: "Source")
+      source.task_artifacts.create!(key: "report", content: "Long secret #{n}")
+      source
+    end
+    task = project.tasks.create!(workflow: workflow, kind: "task", title: "Review", description: "Review")
+    blockers.each { |source| task.task_dependencies.create!(blocking_task: source, project: project) }
+    get "/api/v1/tasks/#{task.id}/step", params: { project: REPOSITORY, view: "brief" }
+    assert_response :ok
+    step = response.parsed_body.dig("data", "step")
+    assert_equal "Review sources", step.fetch("instructions")
+    assert_equal [ "review" ], step.fetch("outputs")
+    assert_not step.key?("templates")
+    assert_equal blockers.map(&:id), step.dig("inputs", 0, "artifacts").pluck("task_id")
+    assert_equal blockers.map(&:id), step.dig("inputs", 0, "artifacts").map { |item| item.dig("source", "task_id") }
+    assert_equal [ 0, 0 ], step.dig("inputs", 0, "artifacts").pluck("lock_version")
+    assert_not step.dig("inputs", 0, "artifacts", 0).key?("content")
+    assert_equal true, step.dig("inputs", 1, "missing")
+    assert_equal [], step.dig("inputs", 1, "artifacts")
+    get "/api/v1/tasks/#{task.id}/step", params: { project: REPOSITORY }
+    assert_equal "Long secret 0", response.parsed_body.dig("data", "step", "inputs", 0, "artifacts", 0, "content")
+    assert_equal "# Private template", response.parsed_body.dig("data", "step", "templates", "review")
+  end
+
   private
 
   def create_workflow
