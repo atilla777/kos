@@ -134,6 +134,26 @@ class CommandTest < Minitest::Test
     refute FakeClient.requests.last[3].key?(:view)
   end
 
+  def test_brief_plan_create_uses_fingerprint_and_read_needs_no_claim
+    claim = "a" * 64
+    fingerprint = Digest::SHA256.hexdigest(claim)
+    FakeClient.responses = [
+      [ 200, { "data" => { "task" => { "id" => 42, "current_step" => 1, "claim_id" => claim } } } ],
+      [ 201, { "data" => { "plan" => { "key" => "run-1", "tasks" => {} } } } ]
+    ]
+    cmd = KosCli::Command.new(stdin: StringIO.new('[{"name":"first"}]'), stdout: @stdout, stderr: @stderr,
+      client_class: FakeClient)
+    args = [ "--project", "github.com/example/project", "--session", "agent", "--claim-fingerprint", fingerprint ]
+    assert_equal 0, cmd.run(args + %w[task plan create 42 --key run-1 --file - --expected-step 1])
+    assert_equal claim, FakeClient.requests.last[2][:claim_id]
+    assert_equal [ { "name" => "first" } ], FakeClient.requests.last[2][:tasks]
+    refute_includes @stdout.string, claim
+
+    assert_equal 0, command.run(%w[--project github.com/example/project task plan show 42 run-1])
+    assert_equal [ :get, "/tasks/42/brief-plan/run-1", nil,
+      { project: "github.com/example/project" } ], FakeClient.requests.last
+  end
+
   def test_fingerprint_route_and_protected_write_keep_claim_out_of_output_and_arguments
     claim = "a" * 64
     fingerprint = Digest::SHA256.hexdigest(claim)

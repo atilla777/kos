@@ -88,6 +88,7 @@ module KosCli
 
     def verification_command(path)
       case path
+      when %r{\A/tasks/(\d+)/brief-plan\z} then "kos task plan show #{Regexp.last_match(1)} KEY"
       when %r{\A/tasks/\d+/artifacts/} then "kos task artifact get TASK_ID KEY"
       when %r{\A/tasks/(?:claim-next|\d+/claim)\z} then "kos task current"
       when %r{\A/tasks/(\d+)} then "kos task show #{Regexp.last_match(1)}"

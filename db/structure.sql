@@ -71,7 +71,38 @@ BEGIN
   SELECT RAISE(ABORT, 'workflow project cannot change');
 END;
 CREATE UNIQUE INDEX "index_global_workflows_on_name" ON "workflows" ("name") WHERE project_id IS NULL;
+CREATE TABLE "brief_plans" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "brief_task_id" integer NOT NULL, "request_key" varchar NOT NULL, "request_digest" varchar NOT NULL, "result" json NOT NULL, "created_at" datetime(6) NOT NULL, "updated_at" datetime(6) NOT NULL, CONSTRAINT "fk_rails_eb1f6dcab2"
+FOREIGN KEY ("brief_task_id")
+  REFERENCES "tasks" ("id")
+ ON DELETE RESTRICT, CONSTRAINT brief_plans_key_present CHECK (length(trim(request_key)) > 0));
+CREATE UNIQUE INDEX "index_brief_plans_on_brief_task_id" ON "brief_plans" ("brief_task_id");
+CREATE TRIGGER protect_brief_plan_blocker_delete
+BEFORE DELETE ON task_dependencies
+WHEN EXISTS (
+  SELECT 1 FROM brief_plans plans, json_each(plans.result) children
+  INNER JOIN tasks briefs ON briefs.id = plans.brief_task_id
+  WHERE CAST(json_extract(children.value, '$.id') AS INTEGER) = OLD.task_id
+    AND plans.brief_task_id = OLD.blocking_task_id
+    AND briefs.status != 'done'
+)
+BEGIN
+  SELECT RAISE(ABORT, 'brief blocker cannot be removed before completion');
+END;
+CREATE TRIGGER protect_brief_plan_blocker_update
+BEFORE UPDATE ON task_dependencies
+WHEN EXISTS (
+  SELECT 1 FROM brief_plans plans, json_each(plans.result) children
+  INNER JOIN tasks briefs ON briefs.id = plans.brief_task_id
+  WHERE CAST(json_extract(children.value, '$.id') AS INTEGER) = OLD.task_id
+    AND plans.brief_task_id = OLD.blocking_task_id
+    AND briefs.status != 'done'
+)
+BEGIN
+  SELECT RAISE(ABORT, 'brief blocker cannot be removed before completion');
+END;
 INSERT INTO "schema_migrations" (version) VALUES
+('20261001000012'),
+('20261001000011'),
 ('20260929000010'),
 ('20260929000009'),
 ('20260929000008'),

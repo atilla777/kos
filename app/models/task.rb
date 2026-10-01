@@ -24,6 +24,7 @@ class Task < ApplicationRecord
     inverse_of: :blocking_task
   has_many :dependent_tasks, through: :dependent_task_dependencies, source: :task
   has_many :task_artifacts, dependent: :destroy
+  has_one :brief_plan, foreign_key: :brief_task_id, dependent: :restrict_with_error
 
   before_validation :initialize_planned_state, on: :create
 
@@ -194,7 +195,9 @@ class Task < ApplicationRecord
   def destroy_safely!
     with_locked_project do
       raise ClaimError, "task_already_claimed" if status == "in_progress" && lease_expires_at > Time.current
-      raise ClaimError, "task_has_dependents" if dependent_tasks.exists?
+      raise ClaimError, "task_has_dependents" if dependent_tasks.exists? || brief_plan
+      plan = BriefPlan.where("EXISTS (SELECT 1 FROM json_each(brief_plans.result) WHERE json_extract(value, '$.id') = ?)", id).first
+      raise ClaimError, "task_has_dependents" if plan && plan.brief_task.status != "done"
 
       destroy!
     end
@@ -344,6 +347,9 @@ class Task < ApplicationRecord
       errors.add(:blocked_by_ids, "must contain tasks from the same project")
     elsif status != "planned"
       errors.add(:blocked_by_ids, "can only be changed while the task is planned")
+    elsif (plan = BriefPlan.where("EXISTS (SELECT 1 FROM json_each(brief_plans.result) WHERE json_extract(value, '$.id') = ?)", id).first) &&
+        plan.brief_task.status != "done" && !ids.include?(plan.brief_task_id)
+      errors.add(:blocked_by_ids, "must include the unfinished Brief")
     end
 
     raise ActiveRecord::RecordInvalid, self if errors.any?

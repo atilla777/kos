@@ -25,8 +25,8 @@ module KosCli
     COMMANDS = {
       "session" => %w[new], "project" => %w[create list show update delete],
       "group" => %w[create list show update delete], "workflow" => %w[create list show delete],
-      "task" => %w[create list ready claim-next claim current renew release complete reopen show update delete step advance artifact],
-      "task step" => %w[show], "task artifact" => %w[list get put delete]
+      "task" => %w[create list ready claim-next claim current renew release complete reopen show update delete step advance artifact plan],
+      "task step" => %w[show], "task artifact" => %w[list get put delete], "task plan" => %w[create show]
     }.freeze
     HELP_OPTIONS = {
       "session new" => "",
@@ -52,7 +52,9 @@ module KosCli
       "task artifact list" => "TASK_ID [--limit N] [--after-id ID]",
       "task artifact get" => "TASK_ID KEY",
       "task artifact put" => "TASK_ID KEY --file PATH|- [--version N] [--expected-step N] [--brief]",
-      "task artifact delete" => "TASK_ID KEY --version N"
+      "task artifact delete" => "TASK_ID KEY --version N",
+      "task plan create" => "BRIEF_ID --key KEY --file PATH|- --expected-step N",
+      "task plan show" => "BRIEF_ID KEY"
     }.freeze
 
     def initialize(stdout: $stdout, stderr: $stderr, stdin: $stdin, client_class: Client)
@@ -238,6 +240,7 @@ module KosCli
       when "artifact" then run_task_artifact(client, argv, global)
       when "step" then run_task_step(client, argv, global)
       when "advance" then advance_task(client, argv, global)
+      when "plan" then run_task_plan(client, argv, global)
       else raise OptionParser::ParseError, "Expected task #{COMMANDS.fetch('task').join(', ')}."
       end
     end
@@ -294,6 +297,38 @@ module KosCli
       OptionParser.new { |parser| parser.on("--brief") { values[:view] = "brief" } }.parse!(argv)
       ensure_empty!(argv)
       client.request(:get, "/tasks/#{id}/step", query: { project: resolve_project(global), **values })
+    end
+
+    def run_task_plan(client, argv, global)
+      operation = argv.shift
+      id = task_id!(argv.shift)
+      case operation
+      when "show"
+        key = artifact_key!(argv.shift)
+        ensure_empty!(argv)
+        client.request(:get, "/tasks/#{id}/brief-plan/#{URI.encode_uri_component(key)}", query: { project: resolve_project(global) })
+      when "create"
+        values = {}
+        OptionParser.new do |parser|
+          parser.on("--key KEY") { |value| values[:key] = value }
+          parser.on("--file PATH") { |value| values[:file] = value }
+          parser.on("--expected-step N", Integer) { |value| values[:expected_step] = nonnegative_version!(value) }
+        end.parse!(argv)
+        ensure_empty!(argv)
+        raise OptionParser::ParseError, "Provide --key KEY, --file PATH, and --expected-step N." unless %i[key file expected_step].all? { |field| values.key?(field) }
+
+        entries = JSON.parse(read_utf8(values.fetch(:file)))
+        raise OptionParser::ParseError, "Plan file must contain a JSON array of tasks." unless entries.is_a?(Array)
+
+        client.request(:post, "/tasks/#{id}/brief-plan", body: {
+          project: resolve_project(global), claim_id: resolve_claim_for_task(client, global, id, expected_step: values[:expected_step]),
+          expected_step: values[:expected_step], key: values[:key], tasks: entries
+        })
+      else
+        raise OptionParser::ParseError, "Expected task plan create or show."
+      end
+    rescue JSON::ParserError
+      raise OptionParser::ParseError, "Plan file must contain valid JSON."
     end
 
     def advance_task(client, argv, global)

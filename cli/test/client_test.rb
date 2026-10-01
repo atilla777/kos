@@ -95,4 +95,16 @@ class ClientTest < Minitest::Test
 
     assert_equal "kos task artifact get TASK_ID KEY", error.verification_command
   end
+
+  def test_lost_brief_plan_response_directs_reader_to_saved_key
+    FakeHttp.error = Net::ReadTimeout.new
+    client = KosCli::Client.new("http://127.0.0.1:3000", http_class: FakeHttp)
+
+    error = assert_raises(KosCli::AmbiguousResultError) do
+      client.request(:post, "/tasks/42/brief-plan", body: { key: "run-1", tasks: [] })
+    end
+
+    assert_equal "kos task plan show 42 KEY", error.verification_command
+    assert_equal 1, FakeHttp.requests
+  end
 end
