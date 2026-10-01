@@ -10,7 +10,7 @@ class Task < ApplicationRecord
   end
 
   STATUSES = %w[planned in_progress done].freeze
-  LEASE_DURATION = 30.minutes
+  LEASE_DURATION = 1.hour
 
   belongs_to :project
   belongs_to :workflow

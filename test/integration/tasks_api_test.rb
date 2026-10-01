@@ -483,7 +483,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     assert_equal "in_progress", claimed.fetch("status")
     assert_equal "agent-1", claimed.fetch("session_id")
     assert_match(/\A[0-9a-f]{64}\z/, claimed.fetch("claim_id"))
-    assert_in_delta 30.minutes, Time.iso8601(claimed.fetch("lease_expires_at")) - Time.iso8601(claimed.fetch("claimed_at")), 0.001
+    assert_in_delta 1.hour, Time.iso8601(claimed.fetch("lease_expires_at")) - Time.iso8601(claimed.fetch("claimed_at")), 0.001
     assert_operator Time.iso8601(claimed.fetch("claimed_at")), :>=, before_claim - 1.second
 
     get "/api/v1/tasks/#{task.id}", params: { project: REPOSITORY }
@@ -740,7 +740,7 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     task.reload
     assert_equal "current-claim", task.claim_id
     assert_equal original_claimed_at, task.claimed_at
-    assert_operator task.lease_expires_at, :>=, before_renew + 30.minutes
+    assert_in_delta 1.hour, task.lease_expires_at - before_renew, 2.seconds
     assert_equal task.lease_expires_at.iso8601(3), response.parsed_body.dig("data", "task", "lease_expires_at")
   end
 
