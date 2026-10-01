@@ -5,8 +5,8 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
 
   test "seeded brief creates blocked execution work and passes on high-level documents" do
     load Rails.root.join("db/seeds.rb")
-    brief = Workflow.find_by!(name: "KOS Brief v1", project_id: nil)
-    execution = Workflow.find_by!(name: "KOS Execution v1", project_id: nil)
+    brief = Workflow.find_by!(name: "KOS Brief v2", project_id: nil)
+    execution = Workflow.find_by!(name: "KOS Execution v2", project_id: nil)
 
     post "/api/v1/tasks", params: { project: REPOSITORY, workflow_id: brief.id,
       kind: "decomposition", title: "Plan feature", description: "Agree a feature with the human." }, as: :json
@@ -55,7 +55,7 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
 
   test "seeded fix begins with diagnosis without a brief" do
     load Rails.root.join("db/seeds.rb")
-    fix = Workflow.find_by!(name: "KOS Fix v1", project_id: nil)
+    fix = Workflow.find_by!(name: "KOS Fix v2", project_id: nil)
     post "/api/v1/tasks", params: { project: REPOSITORY, workflow_id: fix.id,
       kind: "fix", title: "Broken feature", description: "Reproduce these symptoms." }, as: :json
     assert_response :created
@@ -71,9 +71,9 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
 
   test "brief has a publication gate and exposes its results to execution" do
     load Rails.root.join("db/seeds.rb")
-    brief = Workflow.find_by!(name: "KOS Brief v1", project_id: nil)
-    execution = Workflow.find_by!(name: "KOS Execution v1", project_id: nil)
-    fix = Workflow.find_by!(name: "KOS Fix v1", project_id: nil)
+    brief = Workflow.find_by!(name: "KOS Brief v2", project_id: nil)
+    execution = Workflow.find_by!(name: "KOS Execution v2", project_id: nil)
+    fix = Workflow.find_by!(name: "KOS Fix v2", project_id: nil)
 
     assert_equal "main", brief.step_at(0).fetch("executor")
     assert_empty brief.step_at(0).fetch("outputs")
@@ -143,6 +143,6 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
         end
       end
     end
-    assert_includes Workflow.find_by!(name: "KOS Fix v1").step_at(0).dig("templates", "root_cause_report"), "confirmed cause"
+    assert_includes Workflow.find_by!(name: "KOS Fix v2").step_at(0).dig("templates", "root_cause_report"), "confirmed cause"
   end
 end
