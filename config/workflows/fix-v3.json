@@ -1,0 +1,41 @@
+{
+  "name": "KOS Fix v3",
+  "steps": [
+    {
+      "name": "Diagnose the problem", "executor": "subagent", "model_tier": "advanced",
+      "instructions": "Read symptoms, expected behavior, project rules, approved OKF v0.2 concepts including those prepared outside KOS, code and tests; no Brief is required. Reproduce where possible; distinguish evidence from hypotheses, find cause, scope, alternative/error/edge/security cases and a regression check. Number significant Fix questions Q-01 onward across steps and retain answers or open status. Relay necessary human questions to the orchestrator one at a time with context and a recommendation with short reason in parentheses, in plain language; sequential wizard is allowed. Never invent factual answers or turn a technical hypothesis into required behavior. If expectation contradicts approved norm ask for human decision. Save root_cause_report with evidence and open questions.",
+      "inputs": [], "outputs": ["root_cause_report"],
+      "templates": {"root_cause_report": "# Root cause and scope\n\n## Symptom and evidence\n<Expected versus observed behavior, reproduction and confirmed cause versus hypotheses.>\n\n## Impact and regression\n<Affected cases, normative source and proposed regression check.>\n\n## Decisions and questions\n<Consecutive Fix Q IDs, answers or open status, owner and resolution point.>"}
+    },
+    {
+      "name": "Refine and plan the fix", "executor": "subagent", "model_tier": "advanced",
+      "instructions": "Use diagnosis, approved domain concepts, actual code and project rules for the smallest correct fix. Refine testable criteria, regressions and edge cases; continue Fix Q numbering, record decisions, answers and open questions. Relay necessary questions one at a time to the orchestrator with context and reasoned recommendation in parentheses, plain language and no invented facts; sequential wizard is allowed. Resolve permitted technical choices independently. For missing or changed required behavior explicitly load kos-project-docs, obtain separate human agreement and update the concept before implementation. Save criterion-to-check mapping; no Brief references unless one exists.",
+      "inputs": [{"source":"task","key":"root_cause_report"}], "outputs": ["implementation_plan"],
+      "templates": {"implementation_plan": "# Fix implementation plan\n\n## Approved sources and scope\n<Diagnosis, normative concepts, limits and discrepancies.>\n\n## Approach and criteria\n<Minimal fix, regression and error/edge cases, relevant IDs.>\n\n## Checks and questions\n<Criteria-to-check mapping, consecutive Fix Q IDs and open resolution points.>"}
+    },
+    {
+      "name": "Fix and test", "executor": "subagent", "model_tier": "advanced",
+      "instructions": "Implement the smallest approved fix in the verified worktree under project rules and approved concepts. Add meaningful regression and error/edge checks where appropriate; for non-code work use document checks. Run relevant checks and save actual outcomes, criteria coverage, corrections and blockers; do not quietly change the norm to fit a bug.",
+      "inputs": [{"source":"task","key":"root_cause_report"},{"source":"task","key":"implementation_plan"}], "outputs": ["test_report"],
+      "templates": {"test_report": "# Fix and regression evidence\n\n## Change and cause\n<Actual fix, revision/diff and confirmed cause.>\n\n## Checks and coverage\n<Commands, outcomes, regression/error/edge criteria and gaps.>\n\n## Corrections and blockers\n<Failed checks, fixes and reruns or unresolved obstacles.>"}
+    },
+    {
+      "name": "Review and resolve findings", "executor": "subagent", "model_tier": "advanced",
+      "instructions": "As a reviewer distinct from the fix executor, inspect diagnosis, full diff, tests, criteria, approved concepts and project architecture, style, security and rules. Record each concrete finding with location, evidence, impact, high/medium/low severity and correction, or explicitly say none. High and medium require correction by the implementer, affected check reruns and independent re-review on this step; defer low only with reason. Escalate changes to approved behavior, do not fix your own findings or approve solely from report existence.",
+      "inputs": [{"source":"task","key":"root_cause_report"},{"source":"task","key":"implementation_plan"},{"source":"task","key":"test_report"}], "outputs": ["review_report"],
+      "templates": {"review_report": "# Independent fix review\n\n## Scope and verdict\n<Reviewer, diagnosis, full diff, normative criteria and test evidence.>\n\n## Findings\n<Concrete locations, evidence, impact, severity and correction; explicitly state none if applicable.>\n\n## Corrections and renewed review\n<Fixes, rerun checks, independent verdict and deferred low rationale.>\n\n## Regression coverage\n<Verified criteria and residual risk.>"}
+    },
+    {
+      "name": "Update project documentation", "executor": "subagent", "model_tier": "standard",
+      "instructions": "Explicitly load kos-project-docs and inspect affected approved OKF v0.2 domain concepts. Record separate human approval for any changed requirement, or explain why no normative edit is needed; never rewrite norm to fit a bug. Save documentation_report with concrete documentation review findings, location, impact and verified corrections, or explicitly state no findings. Review links, frontmatter, navigation and diff, rerun affected checks and obtain renewed independent review if later edits affect checked behavior.",
+      "inputs": [{"source":"task","key":"root_cause_report"},{"source":"task","key":"review_report"}], "outputs": ["documentation_report"],
+      "templates": {"documentation_report": "# Fix normative documentation check\n\n## Domains and approval\n<Affected concepts, approved changes or why the norm is unchanged.>\n\n## Findings and corrections\n<Concrete documentation findings, locations, effect and verified fix, or explicitly no findings.>\n\n## Checks and review impact\n<Actual document checks, diff review, reruns and need for renewed independent review.>"}
+    },
+    {
+      "name": "Publish and verify", "executor": "subagent", "model_tier": "standard",
+      "instructions": "Publication is part of the task. Inspect status, complete diff, tests, independent review and normative documentation under project rules. Resolve high/medium findings and rerun affected checks; renew review if late changes affect checked behavior. Publish by the project route and independently verify destination and revision. Record concrete outstanding findings or explicit absence, verified corrections and final checks in publication_report. For ambiguous results inspect destination before retrying; retain worktree and remain on this step. Only the orchestrator may complete and report in plain language.",
+      "inputs": [{"source":"task","key":"test_report"},{"source":"task","key":"review_report"},{"source":"task","key":"documentation_report"}], "outputs": ["publication_report"],
+      "templates": {"publication_report": "# Fix publication\n\n## Published result\n<Destination, independently verified revision/link and observed outcome.>\n\n## Final checks and findings\n<Final diff, actual checks, concrete remaining findings or explicitly none, verified corrections and renewed review if needed.>\n\n## Recovery or completion\n<Destination inspection if uncertain, or confirmed publication for orchestrator.>"}
+    }
+  ]
+}

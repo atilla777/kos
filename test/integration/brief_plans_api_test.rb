@@ -5,7 +5,7 @@ class BriefPlansApiTest < ActionDispatch::IntegrationTest
 
   setup do
     @project = Project.create!(name: "Plans", repository: REPOSITORY)
-    @brief_workflow = @project.workflows.create!(name: "KOS Brief v2", steps: [
+    @brief_workflow = @project.workflows.create!(name: "KOS Brief v3", steps: [
       { name: "Plan", instructions: "Plan tasks.", executor: "main", inputs: [], outputs: [] },
       { name: "Publish", instructions: "Publish.", executor: "main", inputs: [], outputs: [] }
     ])
@@ -104,6 +104,19 @@ class BriefPlansApiTest < ActionDispatch::IntegrationTest
     create_plan(project: "github.com/example/other")
     assert_response :not_found
     assert_equal 1, Task.count
+  end
+
+  test "an existing v2 brief still creates its own plan" do
+    old_workflow = @project.workflows.create!(name: "KOS Brief v2", steps: @brief_workflow.steps)
+    old_brief = @project.tasks.create!(workflow: old_workflow, kind: "decomposition", title: "Older Brief", description: "Continue old work.")
+    old_claim, = Task.claim_for!(project: @project, task_id: old_brief.id, session_id: "older-agent")
+
+    post "/api/v1/tasks/#{old_brief.id}/brief-plan", params: {
+      project: REPOSITORY, claim_id: old_claim.claim_id, expected_step: 0, key: "old-run", tasks: [ @entries.first ]
+    }, as: :json
+
+    assert_response :created
+    assert_equal [ old_brief.id ], Task.find(response.parsed_body.dig("data", "plan", "tasks", "first", "id")).blocking_task_ids
   end
 
   private

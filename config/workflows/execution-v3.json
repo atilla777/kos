@@ -1,0 +1,36 @@
+{
+  "name": "KOS Execution v3",
+  "steps": [
+    {
+      "name": "Refine and plan", "executor": "subagent", "model_tier": "advanced",
+      "instructions": "Read project rules, task and direct blockers, approved Brief snapshot and published project OKF v0.2 concepts, including specifications prepared outside KOS; code/tests show actual behavior. Treat project concepts as the maintained required behavior and Brief artifacts as a dated, self-contained snapshot, not another full normative copy. Compare their revisions and boundaries; if they differ materially or a requirement is missing, relay the question to the orchestrator rather than silently choosing. Refine task outcome, criteria, dependencies and normal, alternative, error, edge and security cases. Number task questions Q-01 onward across steps with answers or open status, owner and resolution point. Relay necessary human questions one at a time with context, a reasoned recommendation in parentheses and plain language; a wizard may show several only sequentially. Do not invent factual answers or adopt an unapproved proposal as a requirement. Resolve permitted technical choices independently. For changed required behavior explicitly load kos-project-docs, get separate human agreement and update the affected domain concept before implementation. Save a task-specific minimal plan with AC-to-check mapping and risks; do not repeat the full Brief scenarios.",
+      "inputs": [{"source":"blockers","key":"requirements"},{"source":"blockers","key":"specification"},{"source":"blockers","key":"implementation_plan"},{"source":"blockers","key":"planning_report"},{"source":"blockers","key":"publication_report"}],
+      "outputs": ["implementation_plan"],
+      "templates": {"implementation_plan": "# Task implementation plan\n\n## Approved sources and scope\n<Task, Brief IDs and snapshot, published project path/revision and discrepancies or open decisions.>\n\n## Approach and criteria\n<Minimal design, relevant AC IDs, normal/error/edge cases, dependencies and risks.>\n\n## Checks and questions\n<Map criteria to meaningful checks; consecutive task Q IDs with answers or open status, owner and resolution point.>"}
+    },
+    {
+      "name": "Implement and test", "executor": "subagent", "model_tier": "advanced",
+      "instructions": "Implement approved work in the verified worktree following project rules and normative concepts. Write meaningful tests for changed behavior and error/edge cases; for documentation-only changes use applicable document checks. Run relevant project checks and save actual commands, outcomes and AC coverage in test_report. Fix failures and rerun affected checks; do not silently change required behavior to fit code.",
+      "inputs": [{"source":"task","key":"implementation_plan"}], "outputs": ["test_report"],
+      "templates": {"test_report": "# Implementation and checks\n\n## Change\n<Actual change and revision or diff.>\n\n## Checks and coverage\n<Commands, observed results and AC coverage, including failures and not-run checks.>\n\n## Corrections and blockers\n<Fixes, reruns and unresolved obstacles.>"}
+    },
+    {
+      "name": "Review and resolve findings", "executor": "subagent", "model_tier": "advanced",
+      "instructions": "As an independent reviewer, inspect the complete diff, checks, task criteria, Brief snapshot, approved project concepts, project rules, architecture and security. Record each concrete finding's location, evidence, impact, correction and high/medium/low severity, or explicitly state no findings. High and medium findings must be corrected by the implementation executor and independently re-reviewed with affected checks rerun on this step; low findings may remain with rationale. Escalate changes to approved behavior for human agreement; do not approve solely because reports exist.",
+      "inputs": [{"source":"task","key":"implementation_plan"},{"source":"task","key":"test_report"}], "outputs": ["review_report"],
+      "templates": {"review_report": "# Independent review\n\n## Scope and verdict\n<Reviewer, full diff, criteria and actual check evidence.>\n\n## Findings\n<Concrete location, evidence, impact, severity and correction for each; explicitly state none if applicable.>\n\n## Corrections and renewed review\n<Fixes, rerun evidence, new verdict and rationale for deferred low findings.>\n\n## Coverage\n<AC coverage and unresolved risks.>"}
+    },
+    {
+      "name": "Update project documentation", "executor": "subagent", "model_tier": "standard",
+      "instructions": "Explicitly load kos-project-docs and inspect affected domain concepts in the project's OKF v0.2 bundle. Only change required behavior after separate human approval; code and tests describe actual behavior. For unchanged norm record inspected concepts and why no edit was needed. Save documentation_report with concrete review findings about project documentation, locations, effects and verified corrections, or explicitly say no findings. Review links, frontmatter, navigation and full document diff; rerun affected checks. If late changes affect reviewed behavior, obtain renewed independent review before publication.",
+      "inputs": [{"source":"task","key":"implementation_plan"},{"source":"task","key":"review_report"}], "outputs": ["documentation_report"],
+      "templates": {"documentation_report": "# Normative documentation check\n\n## Domains and decisions\n<Affected concepts and explicit human agreement for changed requirements, or why norm is unchanged.>\n\n## Review findings and corrections\n<Each concrete documentation finding, location, effect and verified fix, or explicitly state no findings.>\n\n## Checks and review impact\n<Actual link/frontmatter/diff checks, reruns and whether renewed independent review is needed or obtained.>"}
+    },
+    {
+      "name": "Publish and verify", "executor": "subagent", "model_tier": "standard",
+      "instructions": "Publication is part of the assigned task. Inspect status, full diff, tests, review, documentation and project rules. Resolve high and medium findings; rerun affected checks and renew independent review when later edits change reviewed behavior. Publish by the project route and independently verify destination and revision; if ambiguous inspect before retrying, retain the worktree and stay on this step. Record specific remaining documentation/review findings or explicit absence, verified corrections and final check evidence in publication_report. Only the orchestrator may complete after verification and report result and next task in plain language.",
+      "inputs": [{"source":"task","key":"test_report"},{"source":"task","key":"review_report"},{"source":"task","key":"documentation_report"}], "outputs": ["publication_report"],
+      "templates": {"publication_report": "# Execution publication\n\n## Published result\n<Destination, independently verified revision/link and observed outcome.>\n\n## Final checks and findings\n<Final diff, actual test and document check evidence; concrete remaining findings or explicitly none, verified corrections and renewed review if needed.>\n\n## Recovery or completion\n<Uncertainty and destination inspection, or confirmed publication for orchestrator.>"}
+    }
+  ]
+}
