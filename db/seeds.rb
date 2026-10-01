@@ -4,11 +4,21 @@ require "json"
 Workflow.transaction do
   definitions = Dir[Rails.root.join("config/workflows/*-v3.json")].sort.map do |path|
     definition = JSON.parse(File.read(path))
-    [ definition.fetch("name"), definition.fetch("steps") ]
+    steps = definition.fetch("steps")
+    case definition.fetch("name")
+    when "KOS Brief v3"
+      steps[1]["instructions"] = steps[1].fetch("instructions").sub("Execution v3 tasks", "Execution v4 tasks")
+    when "KOS Execution v3", "KOS Fix v3"
+      planning = steps[definition.fetch("name") == "KOS Fix v3" ? 1 : 0]
+      planning["instructions"] += " Send product questions to the orchestrator, who obtains separate explicit human agreement and relays the decision back. You may save a technical plan with an open product question, its owner and resolution point, but saving it does not approve or resolve the question: do not update the norm or implement behavior depending on that answer until the human agrees. Then update the affected concept before implementation."
+      implementation = steps[definition.fetch("name") == "KOS Fix v3" ? 2 : 1]
+      implementation["instructions"] += " After a correction rerun affected checks; rerun full CI if project rules require it or the earlier result no longer covers the change."
+    end
+    [ definition.fetch("name").sub(" v3", " v4"), steps ]
   end
 
   # Retain older shared editions while tasks use them; remove only unused ones.
-  obsolete_names = %w[Brief Execution Fix].flat_map { |kind| [ "KOS #{kind} v1", "KOS #{kind} v2" ] }
+  obsolete_names = %w[Brief Execution Fix].flat_map { |kind| %w[v1 v2 v3].map { |edition| "KOS #{kind} #{edition}" } }
   obsolete = Workflow.where(project_id: nil, name: obsolete_names).reject { |workflow| workflow.tasks.exists? }
   replacements = definitions.filter_map do |name, steps|
     existing = Workflow.where(project_id: nil, name: name).to_a

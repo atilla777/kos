@@ -5,8 +5,8 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
 
   test "seeded brief creates blocked execution work and passes on high-level documents" do
     load Rails.root.join("db/seeds.rb")
-    brief = Workflow.find_by!(name: "KOS Brief v3", project_id: nil)
-    execution = Workflow.find_by!(name: "KOS Execution v3", project_id: nil)
+    brief = Workflow.find_by!(name: "KOS Brief v4", project_id: nil)
+    execution = Workflow.find_by!(name: "KOS Execution v4", project_id: nil)
 
     post "/api/v1/tasks", params: { project: REPOSITORY, workflow_id: brief.id,
       kind: "decomposition", title: "Plan feature", description: "Agree a feature with the human." }, as: :json
@@ -58,7 +58,7 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
 
   test "seeded fix begins with diagnosis without a brief" do
     load Rails.root.join("db/seeds.rb")
-    fix = Workflow.find_by!(name: "KOS Fix v3", project_id: nil)
+    fix = Workflow.find_by!(name: "KOS Fix v4", project_id: nil)
     post "/api/v1/tasks", params: { project: REPOSITORY, workflow_id: fix.id,
       kind: "fix", title: "Broken feature", description: "Reproduce these symptoms." }, as: :json
     assert_response :created
@@ -74,9 +74,9 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
 
   test "brief has a publication gate and exposes its results to execution" do
     load Rails.root.join("db/seeds.rb")
-    brief = Workflow.find_by!(name: "KOS Brief v3", project_id: nil)
-    execution = Workflow.find_by!(name: "KOS Execution v3", project_id: nil)
-    fix = Workflow.find_by!(name: "KOS Fix v3", project_id: nil)
+    brief = Workflow.find_by!(name: "KOS Brief v4", project_id: nil)
+    execution = Workflow.find_by!(name: "KOS Execution v4", project_id: nil)
+    fix = Workflow.find_by!(name: "KOS Fix v4", project_id: nil)
 
     assert_equal "main", brief.step_at(0).fetch("executor")
     assert_empty brief.step_at(0).fetch("outputs")
@@ -103,6 +103,16 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
     assert_includes brief.step_at(1).fetch("instructions"), "domain-organized"
     assert_includes execution.step_at(0).fetch("instructions"), "human agreement"
     assert_includes fix.step_at(1).fetch("instructions"), "human agreement"
+    [ execution.step_at(0), fix.step_at(1) ].each do |step|
+      assert_includes step.fetch("instructions"), "orchestrator, who obtains separate explicit human agreement"
+      assert_includes step.fetch("instructions"), "saving it does not approve or resolve the question"
+      assert_includes step.fetch("instructions"), "Then update the affected concept before implementation"
+    end
+    [ execution.step_at(1), fix.step_at(2) ].each do |step|
+      assert_includes step.fetch("instructions"), "rerun affected checks"
+      assert_includes step.fetch("instructions"), "project rules require it"
+    end
+    assert_includes brief.step_at(1).fetch("instructions"), "Execution v4 tasks"
     [ execution.step_at(3), fix.step_at(4) ].each do |step|
       assert_includes step.fetch("instructions"), "OKF v0.2"
       assert_includes step.fetch("instructions"), "no normative edit is needed" if step == fix.step_at(4)
@@ -145,12 +155,12 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
         end
       end
     end
-    assert_includes Workflow.find_by!(name: "KOS Fix v3").step_at(0).dig("templates", "root_cause_report"), "confirmed cause"
+    assert_includes Workflow.find_by!(name: "KOS Fix v4").step_at(0).dig("templates", "root_cause_report"), "confirmed cause"
   end
 
   test "new brief separates approval from proposals and preserves a compact self-contained snapshot" do
     load Rails.root.join("db/seeds.rb")
-    brief = Workflow.find_by!(name: "KOS Brief v3")
+    brief = Workflow.find_by!(name: "KOS Brief v4")
     agreement = brief.step_at(0).fetch("instructions")
     assert_includes agreement, "proposals not yet approved"
     assert_includes agreement, "questions awaiting answers"
@@ -166,9 +176,9 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
     assert_includes snapshot.fetch("planning_report"), "explicitly record gaps"
     assert_includes brief.step_at(2).fetch("templates").fetch("publication_report"), "no findings"
 
-    execution = Workflow.find_by!(name: "KOS Execution v3")
+    execution = Workflow.find_by!(name: "KOS Execution v4")
     assert_includes execution.step_at(0).fetch("instructions"), "if they differ materially"
-    [ execution, Workflow.find_by!(name: "KOS Fix v3") ].each do |workflow|
+    [ execution, Workflow.find_by!(name: "KOS Fix v4") ].each do |workflow|
       documentation = workflow.steps.find { |step| step.fetch("name") == "Update project documentation" }
       assert_includes documentation.dig("templates", "documentation_report"), "no findings"
       assert_includes documentation.fetch("instructions"), "verified corrections"
