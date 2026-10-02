@@ -7,7 +7,7 @@ Workflow.transaction do
     steps = definition.fetch("steps")
     case definition.fetch("name")
     when "KOS Brief v3"
-      steps[1]["instructions"] = steps[1].fetch("instructions").sub("Execution v3 tasks", "Execution v5 tasks")
+      steps[1]["instructions"] = steps[1].fetch("instructions").sub("Execution v3 tasks", "Execution v6 tasks")
     when "KOS Execution v3", "KOS Fix v3"
       planning = steps[definition.fetch("name") == "KOS Fix v3" ? 1 : 0]
       planning["instructions"] += " Send product questions to the orchestrator, who obtains separate explicit human agreement and relays the decision back. You may save a technical plan with an open product question, its owner and resolution point, but saving it does not approve or resolve the question: do not update the norm or implement behavior depending on that answer until the human agrees. Then update the affected concept before implementation."
@@ -24,12 +24,16 @@ Workflow.transaction do
       publication = steps.last
       publication["instructions"] += " Compare final base revision and uncommitted change set including untracked files to those in test_report and review_report; cite their lock_versions. If files changed, rerun affected checks and renew independent review when reviewed behavior changed. Repeat full CI only when project rules require it or previous evidence no longer covers the final change. Report what was rerun and why, without copying the full test list."
       publication["templates"]["publication_report"] += "\n\n## Evidence at publication\n<Final base revision and uncommitted change set, test_report and review_report lock_versions, changes since review, affected reruns or why no rerun was needed; verified destination.>"
+      implementation["instructions"] += " When a review flags an untrusted input, check the applicable defect class, not only the reported literal: consider type, encoding, empty values, control characters and a subsequent valid request. Do not build an exhaustive input matrix. On overwriting test_report, keep a concise self-contained summary of earlier verified checks and their file state, then identify changed files, the new file state, affected reruns and why full CI was or was not repeated. A lock_version identifies the current artifact edition, not a readable history of overwritten text."
+      implementation["templates"]["test_report"] += "\n\n## Current evidence after corrections\n<Concise self-contained summary of earlier checks, outcomes and verified Git base and uncommitted contents; changed files and current base/contents; affected reruns and results; reason full CI was required or earlier evidence still covers unchanged work. Do not rely on a prior lock_version to recover overwritten text. For an input defect, note applicable neighboring forms and a subsequent valid request.>"
+      review["instructions"] += " After high or medium findings, require an independent new review of the corrected complete diff. On overwriting review_report, retain a concise self-contained summary of prior findings and verified evidence, the reviewed base and uncommitted contents before and after corrections, changed files, affected reruns and their results, remaining findings and the new independent verdict. A lock_version alone does not preserve previous report text."
+      review["templates"]["review_report"] += "\n\n## Current independent verdict after corrections\n<Concise self-contained summary of earlier findings and evidence; reviewed Git base and uncommitted contents before and after changes, changed files, affected reruns and outcomes; open findings by severity and new independent review of the complete corrected diff. Do not cite a prior lock_version as if its text remained available.>"
     end
-    [ definition.fetch("name").sub(" v3", " v5"), steps ]
+    [ definition.fetch("name").sub(" v3", " v6"), steps ]
   end
 
   # Retain older shared editions while tasks use them; remove only unused ones.
-  obsolete_names = %w[Brief Execution Fix].flat_map { |kind| %w[v1 v2 v3 v4].map { |edition| "KOS #{kind} #{edition}" } }
+  obsolete_names = %w[Brief Execution Fix].flat_map { |kind| %w[v1 v2 v3 v4 v5].map { |edition| "KOS #{kind} #{edition}" } }
   obsolete = Workflow.where(project_id: nil, name: obsolete_names).reject { |workflow| workflow.tasks.exists? }
   replacements = definitions.filter_map do |name, steps|
     existing = Workflow.where(project_id: nil, name: name).to_a
