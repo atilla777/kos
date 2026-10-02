@@ -28,6 +28,18 @@ class CommandTest < Minitest::Test
     end
   end
 
+  class RefusedHttp
+    def self.start(*)
+      raise Errno::ECONNREFUSED
+    end
+  end
+
+  class RefusedConnectionClient < KosCli::Client
+    def initialize(url)
+      super(url, http_class: RefusedHttp)
+    end
+  end
+
   class AmbiguousFailureClient
     def initialize(_url); end
 
@@ -308,6 +320,31 @@ class CommandTest < Minitest::Test
     result = JSON.parse(@stdout.string)
     assert_equal "ambiguous_result", result.dig("error", "code")
     assert_equal "kos task current", result.dig("error", "details", "verification_command")
+  end
+
+  def test_local_refusal_is_json_with_a_safe_start_hint_and_stable_exit_code
+    refused_command = KosCli::Command.new(
+      stdout: @stdout, stderr: @stderr, client_class: RefusedConnectionClient
+    )
+
+    assert_equal KosCli::Command::CONNECTION_ERROR_EXIT,
+      refused_command.run(%w[--url http://127.0.0.1:3137 project list])
+    error = JSON.parse(@stdout.string).fetch("error")
+    assert_equal "connection_error", error.fetch("code")
+    assert_includes error.fetch("message"), "mise run kos"
+    assert_equal "", @stderr.string
+
+    setup
+    refused_command = KosCli::Command.new(
+      stdout: @stdout, stderr: @stderr, client_class: RefusedConnectionClient
+    )
+    assert_equal KosCli::Command::CONNECTION_ERROR_EXIT,
+      refused_command.run(%w[--url http://username:password@127.0.0.1:3137 project list])
+    assert_equal "connection_error", JSON.parse(@stdout.string).dig("error", "code")
+    refute_includes @stdout.string, "username"
+    refute_includes @stdout.string, "password"
+    refute_includes @stdout.string, "mise run kos"
+    assert_equal "", @stderr.string
   end
 
   def test_successful_no_ready_tasks_is_json_and_exits_zero

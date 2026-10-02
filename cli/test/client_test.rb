@@ -63,9 +63,43 @@ class ClientTest < Minitest::Test
     end
   end
 
+  def test_default_local_refusal_suggests_starting_the_existing_server
+    client = KosCli::Client.new("http://127.0.0.1:3137", http_class: RefusedHttp)
+
+    error = assert_raises(KosCli::ConnectionError) do
+      client.request(:get, "/projects")
+    end
+
+    assert_includes error.message, "http://127.0.0.1:3137"
+    assert_includes error.message, "mise run kos"
+    refute_includes error.message, "db:prepare"
+  end
+
+  def test_custom_url_refusal_does_not_expose_url_or_suggest_default_start_command
+    client = KosCli::Client.new("http://user:password@localhost:3137/private", http_class: RefusedHttp)
+
+    error = assert_raises(KosCli::ConnectionError) do
+      client.request(:get, "/projects")
+    end
+
+    assert_equal "Unable to receive a valid response from KOS API.", error.message
+  end
+
   def test_mutating_request_failure_after_connect_is_ambiguous_and_not_retried
     FakeHttp.error = EOFError.new
     client = KosCli::Client.new("http://127.0.0.1:3000", http_class: FakeHttp)
+
+    error = assert_raises(KosCli::AmbiguousResultError) do
+      client.request(:post, "/tasks/42/claim", body: { session_id: "agent" })
+    end
+
+    assert_equal "kos task current", error.verification_command
+    assert_equal 1, FakeHttp.requests
+  end
+
+  def test_refusal_after_a_mutation_may_have_been_sent_stays_ambiguous
+    FakeHttp.error = Errno::ECONNREFUSED.new
+    client = KosCli::Client.new("http://127.0.0.1:3137", http_class: FakeHttp)
 
     error = assert_raises(KosCli::AmbiguousResultError) do
       client.request(:post, "/tasks/42/claim", body: { session_id: "agent" })
@@ -79,10 +113,22 @@ class ClientTest < Minitest::Test
     FakeHttp.error = Net::ReadTimeout.new
     client = KosCli::Client.new("http://127.0.0.1:3000", http_class: FakeHttp)
 
-    assert_raises(KosCli::ConnectionError) do
+    error = assert_raises(KosCli::ConnectionError) do
       client.request(:get, "/tasks/42")
     end
+    refute_includes error.message, "mise run kos"
     assert_equal 1, FakeHttp.requests
+  end
+
+  def test_invalid_read_response_does_not_suggest_the_server_is_stopped
+    FakeHttp.response = Response.new("200", "not json")
+    client = KosCli::Client.new("http://127.0.0.1:3137", http_class: FakeHttp)
+
+    error = assert_raises(KosCli::ConnectionError) do
+      client.request(:get, "/projects")
+    end
+
+    refute_includes error.message, "mise run kos"
   end
 
   def test_invalid_mutating_response_is_ambiguous

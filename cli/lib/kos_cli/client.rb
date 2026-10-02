@@ -20,6 +20,7 @@ module KosCli
     READ_TIMEOUT = 15
     WRITE_TIMEOUT = 15
     MAX_RETRIES = 0
+    LOCAL_API_URL = "http://127.0.0.1:3137"
     MUTATING_METHODS = %i[post put patch delete].freeze
 
     def initialize(base_url, http_class: Net::HTTP)
@@ -58,6 +59,8 @@ module KosCli
       [ response.code.to_i, JSON.parse(response.body) ]
     rescue JSON::ParserError
       raise_transport_error(method, path, request_may_have_been_sent: true)
+    rescue Errno::ECONNREFUSED
+      raise_transport_error(method, path, request_may_have_been_sent: connected, connection_refused: true)
     rescue IOError, SocketError, SystemCallError, Timeout::Error,
       Net::HTTPBadResponse, Net::ProtocolError, OpenSSL::SSL::SSLError
       raise_transport_error(method, path, request_may_have_been_sent: connected)
@@ -75,12 +78,17 @@ module KosCli
       }.fetch(method)
     end
 
-    def raise_transport_error(method, path, request_may_have_been_sent:)
+    def raise_transport_error(method, path, request_may_have_been_sent:, connection_refused: false)
       if MUTATING_METHODS.include?(method) && request_may_have_been_sent
         raise AmbiguousResultError.new(
           "The request may have completed, but KOS did not receive a valid response. Verify server state before retrying.",
           verification_command: verification_command(path)
         )
+      end
+
+      if connection_refused && @base_uri.to_s == LOCAL_API_URL
+        raise ConnectionError,
+          "Cannot connect to KOS API at #{LOCAL_API_URL}. Check the existing local server; run `mise run kos` in a terminal to start it."
       end
 
       raise ConnectionError, "Unable to receive a valid response from KOS API."

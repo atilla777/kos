@@ -49,6 +49,8 @@ run = "KOS_UID=$(id -u) KOS_GID=$(id -g) docker compose up --build --force-recre
 
 The repository's `.mise.toml` also provides the task when running from the checkout. The home task sets the Compose working directory to the KOS checkout regardless of which project under your home directory you start it from. `mise run kos` builds the image and runs Compose **in the foreground**. Keep that terminal open while using KOS; Ctrl+C stops the container. It does not start automatically at login. Docker must be available to your user. For local Rails development and `bin/ci`, install host dependencies separately with `bundle config set --local path vendor/bundle`, `bundle install`, and `bundle check`.
 
+If the CLI reports `connection_error` with a refusal at `http://127.0.0.1:3137`, check that the existing local server is running; start it with `mise run kos` in a terminal. Do not initialize or replace the SQLite database to resolve a connection refusal. Timeouts, malformed responses and custom API URLs do not receive this start hint; inspect the actual error and configured address instead.
+
 For an **existing installation**, inspect `storage/development.sqlite3` before running `db:prepare`, upgrading, or restoring anything. The file is persistent, not disposable test data. For example, from the repository root:
 
 ```bash
