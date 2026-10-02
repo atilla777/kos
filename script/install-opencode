@@ -9,6 +9,28 @@ config = File.join(ENV.fetch("XDG_CONFIG_HOME", File.join(Dir.home, ".config")),
 files = Dir.glob(File.join(source, "**", "*.md")).sort
 replacements = []
 
+abort "Usage: ruby script/install-opencode [--check]" unless ARGV.empty? || ARGV == [ "--check" ]
+
+if ARGV == [ "--check" ]
+  problems = files.filter_map do |file|
+    relative = file.delete_prefix("#{source}/")
+    target = File.join(config, relative)
+    if !File.file?(target) || File.symlink?(target)
+      "#{relative}: missing or not a regular file"
+    elsif File.binread(target) != File.binread(file)
+      "#{relative}: differs from checkout"
+    end
+  end
+  if problems.empty?
+    puts "All #{files.length} KOS OpenCode files match #{config}. Restart OpenCode if this session predates the installation; this check cannot inspect a running session."
+  else
+    warn problems.join("\n")
+    warn "Installed KOS OpenCode files do not match this checkout. Inspect differences before running ruby script/install-opencode."
+    exit 1
+  end
+  exit 0
+end
+
 def previous_kos_copy?(root, relative, content)
   commits, status = Open3.capture2("git", "-C", root, "log", "--format=%H", "HEAD", "--", relative)
   return false unless status.success?

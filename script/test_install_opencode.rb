@@ -48,6 +48,32 @@ class InstallOpencodeTest < Minitest::Test
     end
   end
 
+  def test_check_distinguishes_outdated_and_missing_files_without_writing
+    Dir.mktmpdir do |home|
+      config = File.join(home, "opencode")
+      target = File.join(config, "skills", "kos-setup", "SKILL.md")
+      stdout, stderr, status = install(home, "--check")
+      refute status.success?
+      assert_empty stdout
+      assert_includes stderr, "skills/kos-setup/SKILL.md: missing"
+      refute File.exist?(config)
+
+      assert install(home).last.success?
+      File.binwrite(target, previous_setup_skill)
+      before = File.binread(target)
+      stdout, stderr, status = install(home, "--check")
+      refute status.success?
+      assert_empty stdout
+      assert_includes stderr, "skills/kos-setup/SKILL.md: differs from checkout"
+      assert_equal before, File.binread(target)
+
+      assert install(home).last.success?
+      stdout, stderr, status = install(home, "--check")
+      assert status.success?, stderr
+      assert_includes stdout, "cannot inspect a running session"
+    end
+  end
+
   def test_installed_skills_contain_both_procedures_without_external_file_references
     Dir.mktmpdir do |home|
       assert install(home).last.success?
@@ -169,6 +195,24 @@ class InstallOpencodeTest < Minitest::Test
     end
   end
 
+  def test_updated_skill_is_discoverable_in_a_fresh_opencode_process
+    skip "OpenCode executable is not installed" unless ENV.fetch("PATH").split(File::PATH_SEPARATOR).any? { |path| File.executable?(File.join(path, "opencode")) }
+
+    Dir.mktmpdir do |home|
+      target = File.join(home, "opencode", "skills", "kos-orchestrator", "SKILL.md")
+      FileUtils.mkdir_p(File.dirname(target))
+      File.binwrite(target, previous_orchestrator_skill)
+      assert install(home).last.success?
+      assert install(home, "--check").last.success?
+
+      skills, error, status = Open3.capture3({ "XDG_CONFIG_HOME" => home, "OPENCODE_PURE" => "1" },
+        "opencode", "debug", "skill", chdir: home)
+      assert status.success?, error
+      assert_includes skills, '"name": "kos-orchestrator"'
+      assert_includes skills, "KOS Brief v6"
+    end
+  end
+
   private
 
   def previous_setup_skill
@@ -182,7 +226,18 @@ class InstallOpencodeTest < Minitest::Test
     flunk "No previous KOS setup skill revision found"
   end
 
-  def install(home)
-    Open3.capture3({ "XDG_CONFIG_HOME" => home }, "ruby", File.join(ROOT, "script", "install-opencode"))
+  def previous_orchestrator_skill
+    relative = "integrations/opencode/skills/kos-orchestrator/SKILL.md"
+    commits, error, status = Open3.capture3("git", "log", "--format=%H", "HEAD", "--", relative, chdir: ROOT)
+    assert status.success?, error
+    commits.each_line do |commit|
+      old, _error, result = Open3.capture3("git", "show", "#{commit.strip}:#{relative}", chdir: ROOT)
+      return old if result.success? && old.include?("KOS Brief v5") && !old.include?("KOS Brief v6")
+    end
+    flunk "No previous v5 orchestrator revision found"
+  end
+
+  def install(home, *args)
+    Open3.capture3({ "XDG_CONFIG_HOME" => home }, "ruby", File.join(ROOT, "script", "install-opencode"), *args)
   end
 end
