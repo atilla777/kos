@@ -5,8 +5,8 @@ class WorkflowSeedTest < ActiveSupport::TestCase
     seed = Rails.root.join("db/seeds.rb")
     load seed
     definitions = Workflow.where(project_id: nil).order(:name)
-    assert_equal [ "KOS Brief v6", "KOS Execution v6", "KOS Fix v6" ], definitions.pluck(:name)
-    assert_equal [ 3, 5, 6 ], definitions.map { |workflow| workflow.steps.length }
+    assert_equal [ "KOS Brief v7", "KOS Execution v7", "KOS Fix v7" ], definitions.pluck(:name)
+    assert_equal [ 3, 4, 5 ], definitions.map { |workflow| workflow.steps.length }
     assert definitions.all?(&:valid?)
 
     ids = definitions.pluck(:id)
@@ -23,10 +23,10 @@ class WorkflowSeedTest < ActiveSupport::TestCase
 
   test "seed refuses to replace a workflow in use and rolls back all changes" do
     load Rails.root.join("db/seeds.rb")
-    brief = Workflow.find_by!(name: "KOS Brief v6", project_id: nil)
+    brief = Workflow.find_by!(name: "KOS Brief v7", project_id: nil)
     Task.create!(project: Project.create!(repository: "github.com/workflow/seed", name: "Seed"),
       workflow: brief, title: "Keep existing route", description: "Do not replace this workflow", kind: "feature")
-    obsolete = Workflow.create!(name: "KOS Fix v2", steps: Workflow.find_by!(name: "KOS Fix v6").steps)
+    obsolete = Workflow.create!(name: "KOS Fix v2", steps: Workflow.find_by!(name: "KOS Fix v7").steps)
     brief.update_columns(steps: [ { "name" => "Legacy" } ])
 
     error = assert_raises(RuntimeError) { load Rails.root.join("db/seeds.rb") }
@@ -56,9 +56,9 @@ class WorkflowSeedTest < ActiveSupport::TestCase
     assert_equal 0, brief_task.current_step
     assert_equal 1, execution_task.reload.current_step
     assert_equal "# Existing plan", artifact.reload.content
-    assert Workflow.exists?(name: "KOS Brief v6", project_id: nil)
-    assert Workflow.exists?(name: "KOS Execution v6", project_id: nil)
-    assert Workflow.exists?(name: "KOS Fix v6", project_id: nil)
+    assert Workflow.exists?(name: "KOS Brief v7", project_id: nil)
+    assert Workflow.exists?(name: "KOS Execution v7", project_id: nil)
+    assert Workflow.exists?(name: "KOS Fix v7", project_id: nil)
   end
 
   test "seed preserves used v1 and v2 and removes unused prior editions" do
@@ -77,10 +77,10 @@ class WorkflowSeedTest < ActiveSupport::TestCase
 
     assert_equal [ "KOS Brief v1", "KOS Execution v2" ], tasks.map { |task| task.reload.workflow.name }
     assert_equal original_steps, tasks.map { |task| task.workflow.reload.steps }
-    assert_equal [ "KOS Brief v1", "KOS Brief v6", "KOS Execution v2", "KOS Execution v6", "KOS Fix v6" ], Workflow.where(project_id: nil).order(:name).pluck(:name)
+    assert_equal [ "KOS Brief v1", "KOS Brief v7", "KOS Execution v2", "KOS Execution v7", "KOS Fix v7" ], Workflow.where(project_id: nil).order(:name).pluck(:name)
   end
 
-  test "seed preserves assigned v3 while installing v6 and removes only unused v3" do
+  test "seed preserves assigned v3 while installing v7 and removes only unused v3" do
     brief_v3 = Workflow.find_or_create_by!(name: "KOS Brief v3", project_id: nil) { |workflow| workflow.steps = JSON.parse(Rails.root.join("config/workflows/brief-v3.json").read).fetch("steps") }
     execution_v3 = Workflow.find_or_create_by!(name: "KOS Execution v3", project_id: nil) { |workflow| workflow.steps = JSON.parse(Rails.root.join("config/workflows/execution-v3.json").read).fetch("steps") }
     fix_v3 = Workflow.find_or_create_by!(name: "KOS Fix v3", project_id: nil) { |workflow| workflow.steps = JSON.parse(Rails.root.join("config/workflows/fix-v3.json").read).fetch("steps") }
@@ -98,11 +98,11 @@ class WorkflowSeedTest < ActiveSupport::TestCase
     assert_equal "# Existing checks", artifact.reload.content
     assert_not Workflow.exists?(brief_v3.id)
     assert_not Workflow.exists?(fix_v3.id)
-    assert_equal [ "KOS Brief v6", "KOS Execution v3", "KOS Execution v6", "KOS Fix v6" ],
+    assert_equal [ "KOS Brief v7", "KOS Execution v3", "KOS Execution v7", "KOS Fix v7" ],
       Workflow.where(project_id: nil).order(:name).pluck(:name)
   end
 
-  test "seed preserves assigned v4 steps and artifacts when installing v6" do
+  test "seed preserves assigned v4 steps and artifacts when installing v7" do
     load Rails.root.join("db/seeds.rb")
     v4 = Workflow.create!(name: "KOS Execution v4", steps: JSON.parse(Rails.root.join("config/workflows/execution-v3.json").read).fetch("steps"))
     unused_v4 = Workflow.create!(name: "KOS Fix v4", steps: JSON.parse(Rails.root.join("config/workflows/fix-v3.json").read).fetch("steps"))
@@ -117,7 +117,7 @@ class WorkflowSeedTest < ActiveSupport::TestCase
     assert_equal old_steps, v4.reload.steps
     assert_equal "# Prior checks", artifact.reload.content
     assert_not Workflow.exists?(unused_v4.id)
-    assert Workflow.exists?(name: "KOS Execution v6", project_id: nil)
+    assert Workflow.exists?(name: "KOS Execution v7", project_id: nil)
   end
 
   test "seed keeps assigned v5 including reports and removes unused v5" do
@@ -138,7 +138,26 @@ class WorkflowSeedTest < ActiveSupport::TestCase
     assert_equal old_steps, [ old_brief.reload.steps, used.reload.steps ]
     assert_equal "# Prior evidence", report.reload.content
     assert_not Workflow.exists?(unused.id)
-    assert Workflow.exists?(name: "KOS Brief v6", project_id: nil)
-    assert Workflow.exists?(name: "KOS Execution v6", project_id: nil)
+    assert Workflow.exists?(name: "KOS Brief v7", project_id: nil)
+    assert Workflow.exists?(name: "KOS Execution v7", project_id: nil)
+  end
+
+  test "seed preserves a used v6 route and removes an unused v6 while adding v7" do
+    project = Project.create!(repository: "github.com/workflow/v6", name: "V6")
+    prior_steps = JSON.parse(Rails.root.join("config/workflows/execution-v3.json").read).fetch("steps")
+    used = Workflow.create!(name: "KOS Execution v6", steps: prior_steps)
+    unused = Workflow.create!(name: "KOS Fix v6", steps: JSON.parse(Rails.root.join("config/workflows/fix-v3.json").read).fetch("steps"))
+    task = Task.create!(project: project, workflow: used, title: "Ongoing work", description: "Keep its step", kind: "feature")
+    task.update_columns(current_step: 3)
+    report = TaskArtifact.create!(task: task, key: "documentation_report", content: "# Prior document check")
+
+    2.times { load Rails.root.join("db/seeds.rb") }
+
+    assert_equal used.id, task.reload.workflow_id
+    assert_equal 3, task.current_step
+    assert_equal prior_steps, used.reload.steps
+    assert_equal "# Prior document check", report.reload.content
+    assert_not Workflow.exists?(unused.id)
+    assert Workflow.exists?(name: "KOS Execution v7", project_id: nil)
   end
 end

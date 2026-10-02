@@ -7,7 +7,7 @@ Workflow.transaction do
     steps = definition.fetch("steps")
     case definition.fetch("name")
     when "KOS Brief v3"
-      steps[1]["instructions"] = steps[1].fetch("instructions").sub("Execution v3 tasks", "Execution v6 tasks")
+      steps[1]["instructions"] = steps[1].fetch("instructions").sub("Execution v3 tasks", "Execution v7 tasks")
     when "KOS Execution v3", "KOS Fix v3"
       planning = steps[definition.fetch("name") == "KOS Fix v3" ? 1 : 0]
       planning["instructions"] += " Send product questions to the orchestrator, who obtains separate explicit human agreement and relays the decision back. You may save a technical plan with an open product question, its owner and resolution point, but saving it does not approve or resolve the question: do not update the norm or implement behavior depending on that answer until the human agrees. Then update the affected concept before implementation."
@@ -29,11 +29,27 @@ Workflow.transaction do
       review["instructions"] += " After high or medium findings, require an independent new review of the corrected complete diff. On overwriting review_report, retain a concise self-contained summary of prior findings and verified evidence, the reviewed base and uncommitted contents before and after corrections, changed files, affected reruns and their results, remaining findings and the new independent verdict. A lock_version alone does not preserve previous report text."
       review["templates"]["review_report"] += "\n\n## Current independent verdict after corrections\n<Concise self-contained summary of earlier findings and evidence; reviewed Git base and uncommitted contents before and after changes, changed files, affected reruns and outcomes; open findings by severity and new independent review of the complete corrected diff. Do not cite a prior lock_version as if its text remained available.>"
     end
-    [ definition.fetch("name").sub(" v3", " v6"), steps ]
+    if definition.fetch("name") != "KOS Brief v3"
+      implementation = steps[definition.fetch("name") == "KOS Fix v3" ? 2 : 1]
+      implementation["instructions"] += " During a sequence of small edits use focused checks; run the project's required complete checks once on the settled change before independent review. After later edits repeat affected checks, and full CI only if project rules require it or previous evidence no longer covers the result. Account for mandatory commit hooks without presenting skipped hooks as passed."
+      implementation["templates"]["test_report"] = "# Implementation and checks\n\n## Checked state\n<Git base and one identifier for uncommitted contents including untracked files, changed files, current outcome.>\n\n## Checks and corrections\n<Actual commands and results with criterion coverage; brief earlier outcomes and findings, affected reruns, reason full CI was required or earlier evidence still covers unchanged work. For input defects note applicable neighboring forms and a subsequent valid request.>"
+      review = steps[definition.fetch("name") == "KOS Fix v3" ? 3 : 2]
+      review["instructions"] += " Keep the current report concise: previous findings and their resolution, current checked state, open findings and independent verdict; avoid copying previous check inventories or repeating state identifiers in every section."
+      review["templates"]["review_report"] = "# Independent review\n\n## Checked state and verdict\n<Reviewed Git base and uncommitted contents, test_report lock_version, complete diff and independent current verdict.>\n\n## Findings and corrections\n<Earlier findings and evidence in brief, changed files and affected reruns, open findings by severity, new independent review after corrections; do not copy complete earlier inventories.>"
+      documentation = steps[-2]
+      publication = steps[-1]
+      publication["name"] = "Check documentation, publish and verify"
+      publication["instructions"] = "First perform the documentation check and save documentation_report under the active claim; then inspect its result, final diff and earlier independent review before publishing. " + documentation.fetch("instructions") + " " + publication.fetch("instructions") + " If documentation edits affect reviewed behavior, stop before publication and ask the orchestrator for affected checks and an independent review; resume this same step afterward. Verify git status after saving each report; remove only your own temporary report file and preserve all other files."
+      publication["inputs"] = (documentation.fetch("inputs") + publication.fetch("inputs")).uniq.reject { |input| input["key"] == "documentation_report" }
+      publication["outputs"] = documentation.fetch("outputs") + publication.fetch("outputs")
+      publication["templates"] = documentation.fetch("templates").merge(publication.fetch("templates"))
+      steps.delete_at(-2)
+    end
+    [ definition.fetch("name").sub(" v3", " v7"), steps ]
   end
 
   # Retain older shared editions while tasks use them; remove only unused ones.
-  obsolete_names = %w[Brief Execution Fix].flat_map { |kind| %w[v1 v2 v3 v4 v5].map { |edition| "KOS #{kind} #{edition}" } }
+  obsolete_names = %w[Brief Execution Fix].flat_map { |kind| %w[v1 v2 v3 v4 v5 v6].map { |edition| "KOS #{kind} #{edition}" } }
   obsolete = Workflow.where(project_id: nil, name: obsolete_names).reject { |workflow| workflow.tasks.exists? }
   replacements = definitions.filter_map do |name, steps|
     existing = Workflow.where(project_id: nil, name: name).to_a

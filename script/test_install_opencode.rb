@@ -209,7 +209,7 @@ class InstallOpencodeTest < Minitest::Test
         "opencode", "debug", "skill", chdir: home)
       assert status.success?, error
       assert_includes skills, '"name": "kos-orchestrator"'
-      assert_includes skills, "KOS Brief v6"
+      assert_includes skills, "KOS Brief v7"
     end
   end
 
