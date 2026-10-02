@@ -104,7 +104,7 @@ class CommandTest < Minitest::Test
           %w[task artifact put 2 --help] => "TASK_ID KEY --file PATH|-",
           %w[task step show --help] => "TASK_ID [--brief]",
           %w[workflow list --help] => "[--limit N] [--after-id ID] [--brief]",
-          %w[--project bad task show --help] => "TASK_ID [--brief]" }.each do |args, expected|
+          %w[--project bad task show --help] => "TASK_ID [--brief | --state]" }.each do |args, expected|
           out = StringIO.new
           cmd = KosCli::Command.new(stdout: out, stderr: @stderr, client_class: offline)
           assert_equal 0, cmd.run(args)
@@ -128,6 +128,9 @@ class CommandTest < Minitest::Test
     assert_equal "brief", FakeClient.requests.last[3][:view]
     assert_equal 0, command.run(project + %w[task show 42 --brief --context-limit 1])
     assert_equal "brief", FakeClient.requests.last[3][:view]
+    assert_equal 0, command.run(project + %w[task show 42 --state --context-limit 1 --artifact-after-id 4])
+    assert_equal({ project: "github.com/owner/project", context_limit: 1, artifact_after_id: 4, view: "state" },
+      FakeClient.requests.last[3])
     assert_equal 0, command.run(project + %w[task step show 42 --brief])
     assert_equal "brief", FakeClient.requests.last[3][:view]
 
@@ -144,6 +147,10 @@ class CommandTest < Minitest::Test
     FakeClient.response = nil
     assert_equal 0, command.run(project + %w[workflow list])
     refute FakeClient.requests.last[3].key?(:view)
+  end
+
+  def test_task_show_rejects_conflicting_views
+    assert_usage_error(command.run(%w[--project github.com/owner/project task show 42 --brief --state]))
   end
 
   def test_brief_plan_create_uses_fingerprint_and_read_needs_no_claim

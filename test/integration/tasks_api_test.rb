@@ -3,6 +3,38 @@ require "test_helper"
 class TasksApiTest < ActionDispatch::IntegrationTest
   REPOSITORY = "github.com/atilla777/kos"
 
+  test "state view gives availability and paginated own versions without loading dependency context" do
+    project = Project.create!(name: "KOS", repository: REPOSITORY)
+    workflow = workflow_for(project)
+    task = project.tasks.create!(workflow: workflow, kind: "task", title: "Target", description: "Private text")
+    12.times do |index|
+      blocker = project.tasks.create!(workflow: workflow, kind: "task", title: "Blocker #{index}", description: "Dependency")
+      blocker.task_artifacts.create!(key: "report", content: "Blocker secret #{index}")
+      task.task_dependencies.create!(project: project, blocking_task: blocker)
+    end
+    first, second = %w[first second].map { |key| task.task_artifacts.create!(key: key, content: "Own secret") }
+
+    get "/api/v1/tasks/#{task.id}", params: { project: REPOSITORY, view: "state", context_limit: 1 }
+    assert_response :ok
+    state = response.parsed_body.dig("data", "task")
+    assert_equal %w[artifacts availability current_step id pagination status title], state.keys.sort
+    assert_equal [ task.id, "Target", "planned", 0 ], state.values_at("id", "title", "status", "current_step")
+    assert_equal false, state.dig("availability", "available")
+    assert_equal [ { "key" => "first", "lock_version" => first.lock_version } ], state.fetch("artifacts")
+    assert_equal({ "limit" => 1, "complete" => false, "after_parameter" => "artifact_after_id",
+      "next_after_id" => first.id }, state.fetch("pagination"))
+    assert_operator response.body.bytesize, :<, begin
+      get "/api/v1/tasks/#{task.id}", params: { project: REPOSITORY, view: "brief", context_limit: 1 }
+      response.body.bytesize
+    end
+    get "/api/v1/tasks/#{task.id}", params: { project: REPOSITORY, view: "state", context_limit: 1,
+      artifact_after_id: first.id }
+    assert_equal [ { "key" => "second", "lock_version" => second.lock_version } ],
+      response.parsed_body.dig("data", "task", "artifacts")
+    assert_equal true, response.parsed_body.dig("data", "task", "pagination", "complete")
+    assert_not_includes response.body, "secret"
+  end
+
   test "brief task context retains paginated sources and versions without long texts" do
     project = Project.create!(name: "KOS", repository: REPOSITORY)
     workflow = workflow_for(project)

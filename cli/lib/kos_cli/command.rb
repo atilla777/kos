@@ -45,7 +45,7 @@ module KosCli
       "task current" => "[--route|--fingerprint] [--context-limit N]", "task renew" => "TASK_ID",
       "task release" => "TASK_ID [--work-summary TEXT]", "task complete" => "TASK_ID [--work-summary TEXT]",
       "task reopen" => "TASK_ID",
-      "task show" => "TASK_ID [--brief] [--context-limit N] [--artifact-after-id ID] [--blocked-by-after-id ID] [--dependency-artifact-after-id ID] [--blocks-after-id ID]",
+      "task show" => "TASK_ID [--brief | --state] [--context-limit N] [--artifact-after-id ID] [--blocked-by-after-id ID] [--dependency-artifact-after-id ID] [--blocks-after-id ID]",
       "task update" => "TASK_ID [--kind KIND] [--title TITLE] [--description TEXT] [--work-summary SUMMARY] [--group-id ID|--no-group] [--blocked-by-ids IDS]",
       "task delete" => "TASK_ID", "task advance" => "TASK_ID --expected-step N",
       "task step show" => "TASK_ID [--brief]",
@@ -535,11 +535,16 @@ module KosCli
     def show_task(client, argv, global)
       id = task_id!(argv.shift)
       values = {}
+      views = []
       OptionParser.new do |parser|
         parse_context_options(parser, values)
-        parser.on("--brief") { values[:view] = "brief" }
+        parser.on("--brief") { views << "brief" }
+        parser.on("--state") { views << "state" }
       end.parse!(argv)
       ensure_empty!(argv)
+      raise OptionParser::ParseError, "Choose either --brief or --state." if views.uniq.length > 1
+
+      values[:view] = views.first if views.any?
       client.request(:get, "/tasks/#{id}", query: { project: resolve_project(global), **values })
     end
 

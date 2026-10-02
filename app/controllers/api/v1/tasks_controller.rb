@@ -21,7 +21,8 @@ module Api
       end
 
       def show
-        render_data({ task: serialize_context(task, brief: brief_view?) })
+        view = show_view
+        render_data({ task: view == "state" ? serialize_state(task) : serialize_context(task, brief: view == "brief") })
       end
 
       def ready
@@ -330,6 +331,16 @@ module Api
         serialized
       end
 
+      def serialize_state(task)
+        records, = paginate_context(task.task_artifacts.select(:id, :key, :lock_version), :artifacts, :artifact_after_id)
+        {
+          "id" => task.id, "title" => task.title, "status" => task.status,
+          "current_step" => task.current_step, "availability" => task.availability_at,
+          "artifacts" => records.map { |artifact| artifact.as_json(only: %i[key lock_version]) },
+          "pagination" => context_pagination.fetch(:artifacts)
+        }
+      end
+
       def context_artifacts(task, brief: false)
         records, = paginate_context(task.task_artifacts, :artifacts, :artifact_after_id)
         records.map { |artifact| serialize_context_artifact(artifact, brief: brief) }
@@ -431,6 +442,13 @@ module Api
         raise ActionController::BadRequest unless params[:view] == "brief"
 
         true
+      end
+
+      def show_view
+        return unless params.key?(:view)
+        raise ActionController::BadRequest unless %w[brief state].include?(params[:view])
+
+        params[:view]
       end
 
       def render_claim_error(error, task_id)
