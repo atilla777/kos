@@ -1,3 +1,8 @@
+---
+name: kos-project-onboarding
+description: Use ONLY when connecting a selected target project to KOS or starting a new project and Brief from an empty directory or without a directory. Contains the complete repository onboarding and recovery procedure.
+---
+
 # Connect a target project to KOS
 
 Use this procedure when installing KOS for a **selected** project, or when the human asks to start a new project and Brief from an empty directory or without a directory. Installing global OpenCode skills alone does not select or modify any target repository. KOS identifies a project by its Git repository key, not by its directory name or display name.

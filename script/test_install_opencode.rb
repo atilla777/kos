@@ -16,7 +16,7 @@ class InstallOpencodeTest < Minitest::Test
         assert_includes stdout, "Restart OpenCode"
       end
 
-      %w[kos-setup kos-orchestrator kos-executor kos-git kos-github-cli kos-project-docs].each do |name|
+      %w[kos-setup kos-orchestrator kos-executor kos-git kos-github-cli kos-project-docs kos-project-onboarding kos-task-worktree].each do |name|
         assert_equal File.binread(File.join(SOURCE, "skills", name, "SKILL.md")),
           File.binread(File.join(home, "opencode", "skills", name, "SKILL.md"))
       end
@@ -28,10 +28,8 @@ class InstallOpencodeTest < Minitest::Test
         assert_equal File.binread(File.join(SOURCE, "command", "#{name}.md")),
           File.binread(File.join(home, "opencode", "command", "#{name}.md"))
       end
-      assert_equal File.binread(File.join(SOURCE, "task-worktree.md")),
-        File.binread(File.join(home, "opencode", "task-worktree.md"))
-      assert_equal File.binread(File.join(SOURCE, "project-onboarding.md")),
-        File.binread(File.join(home, "opencode", "project-onboarding.md"))
+      refute File.exist?(File.join(home, "opencode", "task-worktree.md"))
+      refute File.exist?(File.join(home, "opencode", "project-onboarding.md"))
       refute File.exist?(File.join(home, "opencode", "agent", "kos-orchestrator.md"))
     end
   end
@@ -47,6 +45,38 @@ class InstallOpencodeTest < Minitest::Test
       assert status.success?, stderr
       assert_includes stdout, "1 updated"
       assert_equal File.binread(File.join(SOURCE, "skills", "kos-setup", "SKILL.md")), File.binread(target)
+    end
+  end
+
+  def test_installed_skills_contain_both_procedures_without_external_file_references
+    Dir.mktmpdir do |home|
+      assert install(home).last.success?
+      config = File.join(home, "opencode")
+      onboarding = File.read(File.join(config, "skills", "kos-project-onboarding", "SKILL.md"))
+      worktree = File.read(File.join(config, "skills", "kos-task-worktree", "SKILL.md"))
+      assert_includes onboarding, "## Details and recovery"
+      assert_includes onboarding, "**separate explicit approvals**"
+      assert_includes worktree, "## Prepare or recover"
+      assert_includes worktree, "## Publish and clean up"
+
+      Dir.glob(File.join(config, "{skills,command,agent}", "**", "*.md")).each do |path|
+        refute_match %r{(?:\.\./)*\.\./(?:project-onboarding|task-worktree)\.md}, File.read(path), path
+      end
+    end
+  end
+
+  def test_update_preserves_legacy_standalone_files
+    Dir.mktmpdir do |home|
+      config = File.join(home, "opencode")
+      FileUtils.mkdir_p(config)
+      %w[project-onboarding.md task-worktree.md].each do |name|
+        File.write(File.join(config, name), "existing local file")
+      end
+
+      assert install(home).last.success?
+      %w[project-onboarding.md task-worktree.md].each do |name|
+        assert_equal "existing local file", File.read(File.join(config, name))
+      end
     end
   end
 
@@ -106,7 +136,7 @@ class InstallOpencodeTest < Minitest::Test
 
       skills, error, status = Open3.capture3(env, "opencode", "debug", "skill", chdir: home)
       assert status.success?, error
-      skill_names = %w[kos-setup kos-orchestrator kos-executor kos-git kos-github-cli kos-project-docs]
+      skill_names = %w[kos-setup kos-orchestrator kos-executor kos-git kos-github-cli kos-project-docs kos-project-onboarding kos-task-worktree]
       # The debug listing includes skill bodies and may be truncated before all names appear.
       missing = skill_names.reject { |name| skills.include?(%Q("name": "#{name}")) }
       missing.each do |name|
