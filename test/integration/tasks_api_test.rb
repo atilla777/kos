@@ -284,6 +284,85 @@ class TasksApiTest < ActionDispatch::IntegrationTest
     assert_nil response.parsed_body.dig("data", "pagination", "next_after_id")
   end
 
+  test "filters task lists by completion and unfinished dependencies before pagination" do
+    project = Project.create!(name: "KOS", repository: REPOSITORY)
+    workflow = workflow_for(project)
+    blocker = project.tasks.create!(workflow: workflow, kind: "feature", title: "Blocker", description: "Finish first.")
+    blocked_first = project.tasks.create!(workflow: workflow, kind: "feature", title: "Blocked first", description: "Wait.")
+    done = project.tasks.create!(workflow: workflow, kind: "feature", title: "Done", description: "Finished.")
+    blocked_second = project.tasks.create!(workflow: workflow, kind: "feature", title: "Blocked second", description: "Wait.")
+    active = project.tasks.create!(workflow: workflow, kind: "feature", title: "Active", description: "Claimed.")
+    expired = project.tasks.create!(workflow: workflow, kind: "feature", title: "Expired", description: "Reclaimable.")
+    [ blocked_first, blocked_second ].each { |task| task.replace_blockers!([ blocker.id ]) }
+    done.update_columns(status: "done")
+    [ active, expired ].each do |task|
+      task.update_columns(status: "in_progress", session_id: "session-#{task.id}", claim_id: "claim-#{task.id}",
+        claimed_at: 2.hours.ago, lease_expires_at: task == active ? 1.hour.from_now : 1.hour.ago)
+    end
+    other = Project.create!(name: "Other", repository: "github.com/example/other-filtered")
+    other.tasks.create!(workflow: workflow_for(other), kind: "feature", title: "Other", description: "Unrelated.")
+
+    get "/api/v1/tasks", params: { project: REPOSITORY }
+    assert_equal [ blocker, blocked_first, done, blocked_second, active, expired ].map(&:id),
+      response.parsed_body.dig("data", "tasks").map { |task| task.fetch("id") }
+
+    get "/api/v1/tasks", params: { project: REPOSITORY, filter: "done" }
+    assert_equal [ done.id ], response.parsed_body.dig("data", "tasks").map { |task| task.fetch("id") }
+
+    get "/api/v1/tasks", params: { project: REPOSITORY, filter: "unfinished" }
+    assert_equal [ blocker, blocked_first, blocked_second, active, expired ].map(&:id),
+      response.parsed_body.dig("data", "tasks").map { |task| task.fetch("id") }
+
+    get "/api/v1/tasks", params: { project: REPOSITORY, filter: "blocked", limit: 1 }
+    assert_response :ok
+    first_page = response.parsed_body.fetch("data")
+    assert_equal [ blocked_first.id ], first_page.fetch("tasks").map { |task| task.fetch("id") }
+    assert_equal blocked_first.id, first_page.dig("pagination", "next_after_id")
+
+    get "/api/v1/tasks", params: { project: REPOSITORY, filter: "blocked", limit: 1,
+      after_id: first_page.dig("pagination", "next_after_id") }
+    assert_equal [ blocked_second.id ], response.parsed_body.dig("data", "tasks").map { |task| task.fetch("id") }
+    assert_nil response.parsed_body.dig("data", "pagination", "next_after_id")
+
+    blocker.update_columns(status: "done")
+    get "/api/v1/tasks", params: { project: REPOSITORY, filter: "blocked" }
+    assert_empty response.parsed_body.dig("data", "tasks")
+    get "/api/v1/tasks/ready", params: { project: REPOSITORY }
+    assert_includes response.parsed_body.dig("data", "tasks").map { |task| task.fetch("id") }, expired.id
+    assert_not_includes response.parsed_body.dig("data", "tasks").map { |task| task.fetch("id") }, active.id
+  end
+
+  test "rejects invalid task list filters" do
+    Project.create!(name: "KOS", repository: REPOSITORY)
+    [ "", "ready", "unknown", "Done" ].each do |filter|
+      get "/api/v1/tasks", params: { project: REPOSITORY, filter: filter }
+      assert_response :bad_request, "filter=#{filter.inspect}"
+      assert_equal "invalid_request", response.parsed_body.dig("error", "code")
+    end
+  end
+
+  test "finished task pages do not hide new work" do
+    project = Project.create!(name: "KOS", repository: REPOSITORY)
+    workflow = workflow_for(project)
+    completed = 3.times.map do |index|
+      task = project.tasks.create!(workflow: workflow, kind: "feature", title: "Past #{index}", description: "Finished.")
+      task.update_columns(status: "done")
+      task
+    end
+    current = project.tasks.create!(workflow: workflow, kind: "feature", title: "Next", description: "Work.")
+
+    get "/api/v1/tasks", params: { project: REPOSITORY, filter: "done", limit: 1 }
+    assert_equal [ completed.first.id ], response.parsed_body.dig("data", "tasks").map { |task| task.fetch("id") }
+    assert_equal completed.first.id, response.parsed_body.dig("data", "pagination", "next_after_id")
+
+    get "/api/v1/tasks", params: { project: REPOSITORY, filter: "unfinished", limit: 1 }
+    assert_equal [ current.id ], response.parsed_body.dig("data", "tasks").map { |task| task.fetch("id") }
+    assert_nil response.parsed_body.dig("data", "pagination", "next_after_id")
+
+    get "/api/v1/tasks/ready", params: { project: REPOSITORY, limit: 1 }
+    assert_equal [ current.id ], response.parsed_body.dig("data", "tasks").map { |task| task.fetch("id") }
+  end
+
   test "rejects missing project and invalid pagination" do
     get "/api/v1/tasks"
     assert_response :bad_request

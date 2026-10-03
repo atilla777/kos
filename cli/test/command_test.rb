@@ -395,6 +395,19 @@ class CommandTest < Minitest::Test
     assert_equal "github.com/owner/project", FakeClient.requests.last[3][:project]
   end
 
+  def test_task_list_passes_only_supported_filters_and_keeps_pagination
+    %w[done unfinished blocked].each do |filter|
+      assert_equal 0, command.run([ "--project", "github.com/owner/project", "task", "list",
+        "--filter", filter, "--limit", "1", "--after-id", "12" ])
+      assert_equal({ project: "github.com/owner/project", limit: 1, after_id: 12, filter: filter },
+        FakeClient.requests.last[3])
+    end
+
+    assert_equal 2, command.run(%w[--project github.com/owner/project task list --filter ready])
+    assert_equal "invalid_usage", JSON.parse(@stdout.string.lines.last).dig("error", "code")
+    refute FakeClient.requests.any? { |request| request.first == :get }
+  end
+
   def test_redacts_claim_from_api_error_output
     FakeClient.response = [
       409,

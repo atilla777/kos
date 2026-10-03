@@ -5,7 +5,16 @@ module Api
       MAX_LIMIT = 100
 
       def index
-        tasks = scoped_project.tasks.order(:id)
+        tasks = scoped_project.tasks
+        if params.key?(:filter)
+          tasks = case params[:filter]
+          when "done" then tasks.where(status: "done")
+          when "unfinished" then tasks.where.not(status: "done")
+          when "blocked" then tasks.blocked_by_unfinished
+          else raise ActionController::BadRequest
+          end
+        end
+        tasks = tasks.order(:id)
         tasks = tasks.where("id > ?", after_id) if after_id
         tasks = tasks.limit(limit + 1).to_a
         has_more = tasks.length > limit

@@ -11,6 +11,13 @@ class Task < ApplicationRecord
 
   STATUSES = %w[planned in_progress done].freeze
   LEASE_DURATION = 1.hour
+  UNFINISHED_BLOCKER_SQL = <<~SQL.squish.freeze
+    EXISTS (
+      SELECT 1 FROM task_dependencies dependencies
+      INNER JOIN tasks blockers ON blockers.id = dependencies.blocking_task_id
+      WHERE dependencies.task_id = tasks.id AND blockers.status != 'done'
+    )
+  SQL
 
   belongs_to :project
   belongs_to :workflow
@@ -39,15 +46,9 @@ class Task < ApplicationRecord
 
   scope :ready_at, ->(time) {
     where("tasks.status = 'planned' OR (tasks.status = 'in_progress' AND tasks.lease_expires_at <= ?)", time)
-      .where(<<~SQL.squish)
-        NOT EXISTS (
-          SELECT 1
-          FROM task_dependencies dependencies
-          INNER JOIN tasks blockers ON blockers.id = dependencies.blocking_task_id
-          WHERE dependencies.task_id = tasks.id AND blockers.status != 'done'
-        )
-      SQL
+      .where("NOT #{UNFINISHED_BLOCKER_SQL}")
   }
+  scope :blocked_by_unfinished, -> { where.not(status: "done").where(UNFINISHED_BLOCKER_SQL) }
 
   def self.current_for(project:, session_id:, time: Time.current)
     project.tasks

@@ -39,7 +39,7 @@ module KosCli
       "workflow list" => "[--limit N] [--after-id ID] [--brief]",
       "workflow show" => "WORKFLOW_ID", "workflow delete" => "WORKFLOW_ID",
       "task create" => "--kind KIND --title TITLE --description TEXT --workflow-id ID [OPTIONS]",
-      "task list" => "[--limit N] [--after-id ID]", "task ready" => "[--limit N] [--after-id ID] [--kind KIND] [--group-id ID]",
+      "task list" => "[--limit N] [--after-id ID] [--filter done|unfinished|blocked]", "task ready" => "[--limit N] [--after-id ID] [--kind KIND] [--group-id ID]",
       "task claim-next" => "[--kind KIND] [--group-id ID] [--route|--fingerprint] [--context-limit N]",
       "task claim" => "TASK_ID [--route|--fingerprint] [--context-limit N]",
       "task current" => "[--route|--fingerprint] [--context-limit N]", "task renew" => "TASK_ID",
@@ -441,6 +441,7 @@ module KosCli
       OptionParser.new do |parser|
         parser.on("--limit LIMIT", Integer) { |value| values[:limit] = value }
         parser.on("--after-id ID", Integer) { |value| values[:after_id] = value }
+        parser.on("--filter FILTER", %w[done unfinished blocked]) { |value| values[:filter] = value }
       end.parse!(argv)
       ensure_empty!(argv)
       client.request(:get, "/tasks", query: { project: resolve_project(global), **values.compact })
