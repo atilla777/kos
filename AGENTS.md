@@ -6,6 +6,8 @@ KOS is a local task tracker for AI agents. The first MVP consists of a Rails app
 
 The agreed MVP scope and baseline contract are in [docs/mvp-specification.md](docs/mvp-specification.md). Approved required user-facing behavior is specified by domain in the [OKF v0.2 bundle](docs/knowledge/index.md). Code and tests show actual behavior; do not change the specification merely to match them. Read both before planning or changing behavior. Resolve contradictions with the human before implementation; section 17 of the MVP specification contains proposed defaults that are not yet approved requirements.
 
+The [development rules index](rules/index.md) links applicable project rules. Existing rules in this file remain in force; significant technical decisions may be recorded as OKF ADRs in `docs/adr/` when needed.
+
 Keep the MVP small. The expanded MVP includes server-owned workflow definitions, a current step and step context, but not agent launching or automatic quality assessment. Do not introduce agent orchestration, harness-specific skills or configuration, Git automation, UI, MCP, distributed infrastructure, or generalized extension systems unless the specification is explicitly changed.
 
 ## Development Rules

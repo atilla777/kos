@@ -3,6 +3,7 @@ require "fileutils"
 require "json"
 require "open3"
 require "tmpdir"
+require "yaml"
 
 class InstallOpencodeTest < Minitest::Test
   ROOT = File.expand_path("..", __dir__)
@@ -88,6 +89,30 @@ class InstallOpencodeTest < Minitest::Test
       Dir.glob(File.join(config, "{skills,command,agent}", "**", "*.md")).each do |path|
         refute_match %r{(?:\.\./)*\.\./(?:project-onboarding|task-worktree)\.md}, File.read(path), path
       end
+    end
+  end
+
+  def test_onboarding_templates_are_installed_and_cover_new_and_existing_projects
+    Dir.mktmpdir do |home|
+      assert install(home).last.success?
+      source = File.join(SOURCE, "skills", "kos-project-onboarding")
+      installed = File.join(home, "opencode", "skills", "kos-project-onboarding")
+      %w[AGENTS.template.md rules-index.template.md].each do |name|
+        assert_equal File.binread(File.join(source, "references", name)),
+          File.binread(File.join(installed, "references", name))
+      end
+
+      agents = File.read(File.join(installed, "references", "AGENTS.template.md"))
+      rules = File.read(File.join(installed, "references", "rules-index.template.md"))
+      onboarding = File.read(File.join(installed, "SKILL.md"))
+      assert_includes agents, "(rules/index.md)"
+      assert_includes agents, "{{SPEC_BUNDLE_INDEX}}"
+      assert_equal({ "okf_version" => "0.2" }, YAML.safe_load(rules.split("---", 3)[1]))
+      assert_includes rules, "(../AGENTS.md)"
+      assert_includes onboarding, "Replace `{{SPEC_BUNDLE_INDEX}}`"
+      assert_includes onboarding, "Existing rules stay in `AGENTS.md`"
+      assert_includes onboarding, "On repeat entry"
+      assert_includes onboarding, "Ask the human to resolve contradictory requirements"
     end
   end
 
@@ -204,6 +229,10 @@ class InstallOpencodeTest < Minitest::Test
       File.binwrite(target, previous_orchestrator_skill)
       assert install(home).last.success?
       assert install(home, "--check").last.success?
+
+      Dir.glob(File.join(home, "opencode", "skills", "*")).each do |path|
+        FileUtils.rm_rf(path) unless File.basename(path) == "kos-orchestrator"
+      end
 
       skills, error, status = Open3.capture3({ "XDG_CONFIG_HOME" => home, "OPENCODE_PURE" => "1" },
         "opencode", "debug", "skill", chdir: home)
