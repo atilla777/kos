@@ -1,8 +1,12 @@
 class Workflow < ApplicationRecord
   belongs_to :project, optional: true
   has_many :tasks, dependent: :restrict_with_error
+  belongs_to :base_workflow, class_name: "Workflow", optional: true
+  has_many :project_copies, class_name: "Workflow", foreign_key: :base_workflow_id, dependent: :restrict_with_error
 
   validates :name, presence: true
+  validates :edition, numericality: { only_integer: true, greater_than: 0 }, if: :base_workflow_id?
+  validate :valid_origin
   validate :valid_steps
   before_update :reject_changes
 
@@ -15,6 +19,14 @@ class Workflow < ApplicationRecord
   end
 
   private
+
+  def valid_origin
+    return if base_workflow_id.nil? && edition.nil?
+
+    unless project_id && base_workflow_id && edition && base_workflow && base_workflow.project_id.nil? && base_workflow.base_workflow_id.nil?
+      errors.add(:base_workflow, "must identify a shared base and a project edition")
+    end
+  end
 
   def reject_changes
     raise ActiveRecord::ReadOnlyError, "Workflow definitions cannot be changed; create a new workflow."

@@ -1,0 +1,59 @@
+{
+  "name": "KOS Base Brief v1",
+  "steps": [
+    {
+      "name": "Agree requirements and direction",
+      "instructions": "As the main agent, read project rules, high-level requirements and approved domain-organized OKF v0.2 concepts, including those prepared outside KOS. For a new project verify the real Git origin and publication route separately before creating Brief. Discuss problem, outcome, boundaries, dependencies, testable criteria and proportionate normal, alternative, error, edge and security cases. Number significant questions Q-01 onward across this Brief; retain answers, reasons and open status. In ordinary chat ask one question at a time, wait for its answer, give context and a reasoned recommendation in parentheses; a wizard may present several only sequentially. For genuine choices number options 1., 2., ... and ask for one digit; keep option numbers separate from Q IDs. Record accepted and rejected real options and reasons. Use the human's language or AGENTS.md language and plain words in all questions, progress and reports. Do not invent facts or alternatives. Before any Brief artifacts, dependent tasks or normative file edits, present a concise boundary of explicitly agreed behavior and plan, proposals not yet approved, questions awaiting answers and technical choices left to execution. Identify the publication destination and whether access is local/trusted or external; if either is unknown or consequential, ask instead of inventing a rule. Do not turn technical assumptions such as cursor behavior, concurrent list changes or security boundaries into approved scenarios. Resolve product questions that affect required behavior; record other open questions with an owner and point of resolution. After showing these boundaries, ask the human first to approve required behavior, then separately to approve the high-level plan; earlier answers, repository setup and switching modes are not approval. If either approval cannot be recovered, ask again. Keep agreement in the conversation until both are approved, then proceed to writing.",
+      "executor": "main",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "name": "Record specification and decompose",
+      "instructions": "Verify the separately approved requirements and plan against project rules and existing specifications before writing; resolve contradictions and lost decisions with the human. Use stable project/task-qualified REQ, AC and DEC IDs where helpful and keep Brief Q numbers consecutive. Explicitly load kos-project-docs. In the verified project worktree write the complete approved user-facing normal, alternative and error scenarios, outcomes and limits in domain-organized OKF v0.2 concepts inside docs/ or its selected subdirectory; maintain navigation. Do not include unapproved proposals or implementation guesses. Save compact KOS snapshots: requirements maps approved decisions, approval evidence, IDs and testable criteria (plus clearly labelled open items); specification gives the project path and verifiable revision or draft revision when not yet published, plus a self-contained short snapshot of approved boundaries, important limits and open questions so later tasks retain context if the project file changes; implementation_plan describes direction, ordering and dependencies without repeating task IDs or full scenarios. Create one agreed set of planned tasks using the verified current project Execution edition ID, with the atomic Brief plan operation and its retry key and current step where available; add a group when appropriate. Every task depends on Brief and uses verified workflow IDs. On uncertain results read the existing plan by key before retrying; do not create duplicates. Save planning_report with created IDs, dependencies and AC-to-task coverage including gaps, not another full specification. Review the project document and run applicable checks. Reconcile artifacts, files and records before advancing.",
+      "executor": "main",
+      "inputs": [],
+      "outputs": [
+        "requirements",
+        "specification",
+        "implementation_plan",
+        "planning_report"
+      ],
+      "templates": {
+        "requirements": "# Approved requirements map\n\n## Approval and boundaries\n<Who explicitly approved which required behavior and high-level plan, when; separate unapproved proposals and technical choices.>\n\n## IDs and criteria\n<Compact REQ/AC/DEC map with testable outcomes and rationale; link to project concept rather than duplicate full scenarios.>\n\n## Questions\n<Consecutive Q IDs, answers or open status, owner and resolution point; never mark an open product question approved.>",
+        "specification": "# Approved Brief snapshot\n\n## Normative source\n<Project OKF concept path and verifiable project revision; label draft revision until publication is verified.>\n\n## Approved boundaries and limits\n<Self-contained concise approved behavior, significant alternatives, errors, access boundary and limits sufficient for a dependent task even after the project file changes; link REQ/AC IDs, do not repeat full scenarios.>\n\n## Open and proposed\n<Unresolved Q IDs, owner and resolution point; distinguish proposals and technical choices from approved behavior.>",
+        "implementation_plan": "# High-level delivery direction\n\n## Direction and order\n<Approved approach, dependencies and major risks tied to AC/DEC IDs; details belong to each Execution task.>\n\n## Verification and publication\n<How to check criteria, where to publish; name unanswered choices without silently deciding them.>",
+        "planning_report": "# Decomposition and coverage\n\n## Created work\n<Verified task IDs, workflow IDs, group and blocked_by IDs, including this Brief; reconcile retries.>\n\n## AC coverage\n<Map each approved AC ID to task IDs and intended checks; explicitly record gaps, without restating the full scenarios.>"
+      }
+    },
+    {
+      "name": "Publish and verify specification",
+      "instructions": "As the main agent, check the approved project OKF concept, links, concise KOS snapshots, AC-to-task coverage and blocked dependencies. Review status, complete diff, project publication rules and checks. Record concrete documentation review findings with location, effect and correction, or explicitly state that there were none; verify corrections and rerun affected checks. Publish at the agreed destination and independently verify the published revision before completing Brief and unblocking tasks. If destination or access boundary is unknown ask the human; on prohibition or ambiguous publication inspect the destination before retrying. Keep the worktree and avoid duplicate tasks. Save publication_report with verified document path, destination, revision, review findings or their absence, corrections, and confirmed assignment and coverage. Reconcile a provisional specification snapshot with the published revision without losing its approved self-contained boundaries. Only then complete under the active claim.",
+      "executor": "main",
+      "inputs": [
+        {
+          "source": "task",
+          "key": "requirements"
+        },
+        {
+          "source": "task",
+          "key": "specification"
+        },
+        {
+          "source": "task",
+          "key": "implementation_plan"
+        },
+        {
+          "source": "task",
+          "key": "planning_report"
+        }
+      ],
+      "outputs": [
+        "publication_report"
+      ],
+      "templates": {
+        "publication_report": "# Brief specification publication\n\n## Published source and assignment\n<Project file path, destination, independently verified revision/link and the corresponding KOS snapshot; confirm task IDs, dependencies and AC coverage.>\n\n## Documentation review and checks\n<List each concrete finding, correction and check verifying it, or explicitly state no findings; record final diff, links and document checks.>\n\n## Completion or recovery\n<Confirm the published revision before completion; describe unresolved gaps or ambiguous publication without claiming success.>"
+      }
+    }
+  ]
+}

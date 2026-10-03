@@ -24,7 +24,7 @@ module KosCli
     AMBIGUOUS_RESULT_EXIT = 5
     COMMANDS = {
       "session" => %w[new], "project" => %w[create list show update delete],
-      "group" => %w[create list show update delete], "workflow" => %w[create list show delete],
+      "group" => %w[create list show update delete], "workflow" => %w[create list show delete install-base],
       "task" => %w[create list ready claim-next claim current renew release complete reopen show update delete step advance artifact plan],
       "task step" => %w[show], "task artifact" => %w[list get put delete], "task plan" => %w[create show]
     }.freeze
@@ -35,7 +35,7 @@ module KosCli
       "project delete" => "[ID|REPOSITORY]",
       "group create" => "--kind KIND --title TITLE --description TEXT", "group list" => "[--limit N] [--after-id ID]",
       "group show" => "GROUP_ID", "group update" => "GROUP_ID [--kind KIND] [--title TITLE] [--description TEXT]", "group delete" => "GROUP_ID",
-      "workflow create" => "--file PATH [--global]",
+      "workflow create" => "--file PATH [--global | --based-on ID]", "workflow install-base" => "",
       "workflow list" => "[--limit N] [--after-id ID] [--brief]",
       "workflow show" => "WORKFLOW_ID", "workflow delete" => "WORKFLOW_ID",
       "task create" => "--kind KIND --title TITLE --description TEXT --workflow-id ID [OPTIONS]",
@@ -252,19 +252,28 @@ module KosCli
         OptionParser.new do |parser|
           parser.on("--file PATH") { |path| values[:file] = path }
           parser.on("--global") { values[:global] = true }
+          parser.on("--based-on ID", Integer) { |id| values[:based_on_id] = id }
         end.parse!(argv)
         ensure_empty!(argv)
         raise OptionParser::ParseError, "Provide --file PATH." unless values[:file]
 
         definition = JSON.parse(read_utf8(values[:file]))
-        unless definition.is_a?(Hash) && definition.keys.sort == %w[name steps]
-          raise OptionParser::ParseError, "Workflow file must contain only name and steps."
+        if values[:global] && values[:based_on_id]
+          raise OptionParser::ParseError, "Choose either --global or --based-on."
+        end
+        unless definition.is_a?(Hash) && definition.keys.sort == (values[:based_on_id] ? %w[steps] : %w[name steps])
+          raise OptionParser::ParseError, "Workflow file must contain #{values[:based_on_id] ? 'only steps' : 'only name and steps'}."
         end
 
-        body = { name: definition.fetch("name"), steps: definition.fetch("steps") }
+        body = { steps: definition.fetch("steps") }
+        body[:name] = definition.fetch("name") unless values[:based_on_id]
+        body[:based_on_id] = values[:based_on_id] if values[:based_on_id]
         body[:global] = true if values[:global]
         body[:project] = resolve_project(global) unless values[:global]
         client.request(:post, "/workflows", body: body)
+      when "install-base"
+        ensure_empty!(argv)
+        client.request(:post, "/workflows/install-base", body: { project: resolve_project(global) })
       when "list"
         values = { limit: 50 }
         OptionParser.new do |parser|
@@ -283,7 +292,7 @@ module KosCli
         ensure_empty!(argv)
         client.request(:delete, "/workflows/#{id}", query: { project: resolve_project(global) })
       else
-        raise OptionParser::ParseError, "Expected workflow create, list, show, or delete."
+        raise OptionParser::ParseError, "Expected workflow create, install-base, list, show, or delete."
       end
     rescue JSON::ParserError
       raise OptionParser::ParseError, "Workflow file must contain valid JSON."

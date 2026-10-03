@@ -3,10 +3,20 @@ require "test_helper"
 class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
   REPOSITORY = "github.com/workflows/ready"
 
+  def installed(kind)
+    Workflow.find_by!(project_id: Project.find_by!(repository: REPOSITORY).id, name: "KOS #{kind} v1")
+  end
+
+  setup do
+    load Rails.root.join("db/seeds.rb")
+    post "/api/v1/workflows/install-base", params: { project: REPOSITORY }, as: :json
+    assert_response :ok
+  end
+
   test "seeded brief creates blocked execution work and passes on high-level documents" do
     load Rails.root.join("db/seeds.rb")
-    brief = Workflow.find_by!(name: "KOS Brief v7", project_id: nil)
-    execution = Workflow.find_by!(name: "KOS Execution v7", project_id: nil)
+    brief = installed("Brief")
+    execution = installed("Execution")
 
     post "/api/v1/tasks", params: { project: REPOSITORY, workflow_id: brief.id,
       kind: "decomposition", title: "Plan feature", description: "Agree a feature with the human." }, as: :json
@@ -58,7 +68,7 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
 
   test "seeded fix begins with diagnosis without a brief" do
     load Rails.root.join("db/seeds.rb")
-    fix = Workflow.find_by!(name: "KOS Fix v7", project_id: nil)
+    fix = installed("Fix")
     post "/api/v1/tasks", params: { project: REPOSITORY, workflow_id: fix.id,
       kind: "fix", title: "Broken feature", description: "Reproduce these symptoms." }, as: :json
     assert_response :created
@@ -74,9 +84,9 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
 
   test "brief has a publication gate and exposes its results to execution" do
     load Rails.root.join("db/seeds.rb")
-    brief = Workflow.find_by!(name: "KOS Brief v7", project_id: nil)
-    execution = Workflow.find_by!(name: "KOS Execution v7", project_id: nil)
-    fix = Workflow.find_by!(name: "KOS Fix v7", project_id: nil)
+    brief = installed("Brief")
+    execution = installed("Execution")
+    fix = installed("Fix")
 
     assert_equal "main", brief.step_at(0).fetch("executor")
     assert_empty brief.step_at(0).fetch("outputs")
@@ -112,7 +122,7 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
       assert_includes step.fetch("instructions"), "rerun affected checks"
       assert_includes step.fetch("instructions"), "project rules require it"
     end
-    assert_includes brief.step_at(1).fetch("instructions"), "Execution v7 tasks"
+    assert_includes brief.step_at(1).fetch("instructions"), "verified current project Execution edition ID"
     [ execution.step_at(3), fix.step_at(4) ].each do |step|
       assert_includes step.fetch("instructions"), "OKF v0.2"
       assert_includes step.fetch("instructions"), "no normative edit is needed" if step == fix.step_at(4)
@@ -157,12 +167,12 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
         end
       end
     end
-    assert_includes Workflow.find_by!(name: "KOS Fix v7").step_at(0).dig("templates", "root_cause_report"), "confirmed cause"
+    assert_includes installed("Fix").step_at(0).dig("templates", "root_cause_report"), "confirmed cause"
   end
 
   test "new brief separates approval from proposals and preserves a compact self-contained snapshot" do
     load Rails.root.join("db/seeds.rb")
-    brief = Workflow.find_by!(name: "KOS Brief v7")
+    brief = installed("Brief")
     agreement = brief.step_at(0).fetch("instructions")
     assert_includes agreement, "proposals not yet approved"
     assert_includes agreement, "questions awaiting answers"
@@ -178,9 +188,9 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
     assert_includes snapshot.fetch("planning_report"), "explicitly record gaps"
     assert_includes brief.step_at(2).fetch("templates").fetch("publication_report"), "no findings"
 
-    execution = Workflow.find_by!(name: "KOS Execution v7")
+    execution = installed("Execution")
     assert_includes execution.step_at(0).fetch("instructions"), "if they differ materially"
-    [ execution, Workflow.find_by!(name: "KOS Fix v7") ].each do |workflow|
+    [ execution, installed("Fix") ].each do |workflow|
       documentation = workflow.steps.find { |step| step.fetch("name") == "Check documentation, publish and verify" }
       assert_includes documentation.dig("templates", "documentation_report"), "no findings"
       assert_includes documentation.fetch("instructions"), "verified corrections"
@@ -189,8 +199,8 @@ class ReadyWorkflowsTest < ActionDispatch::IntegrationTest
 
   test "new execution and fix report templates link checks review corrections and publication to verified changes" do
     load Rails.root.join("db/seeds.rb")
-    [ [ "KOS Execution v7", 1, 2 ], [ "KOS Fix v7", 2, 3 ] ].each do |name, implementation_index, review_index|
-      workflow = Workflow.find_by!(name: name)
+    [ [ "Execution", 1, 2 ], [ "Fix", 2, 3 ] ].each do |name, implementation_index, review_index|
+      workflow = installed(name)
       implementation = workflow.step_at(implementation_index)
       review = workflow.step_at(review_index)
       publication = workflow.steps.last

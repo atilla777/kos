@@ -232,7 +232,8 @@ class WorkflowApiTest < ActionDispatch::IntegrationTest
     second = first.project.workflows.create!(name: "Second", steps: first.steps)
     get "/api/v1/workflows", params: { project: REPOSITORY, view: "brief", limit: 1 }
     assert_response :ok
-    assert_equal [ { "id" => first.id, "project_id" => first.project_id, "name" => first.name } ],
+    assert_equal [ { "id" => first.id, "project_id" => first.project_id, "name" => first.name,
+      "base_workflow_id" => nil, "edition" => nil } ],
       response.parsed_body.dig("data", "workflows")
     assert_equal first.id, response.parsed_body.dig("data", "pagination", "next_after_id")
 

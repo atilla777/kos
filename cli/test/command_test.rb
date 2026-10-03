@@ -269,6 +269,22 @@ class CommandTest < Minitest::Test
     }, nil ], FakeClient.requests.last
   end
 
+  def test_installs_project_bases_and_creates_an_explicit_next_edition
+    project = %w[--project github.com/owner/project]
+    assert_equal 0, command.run(project + %w[workflow install-base])
+    assert_equal [ :post, "/workflows/install-base", { project: "github.com/owner/project" }, nil ], FakeClient.requests.last
+
+    client = KosCli::Command.new(stdin: StringIO.new('{"steps":[]}'), stdout: @stdout,
+      stderr: @stderr, client_class: FakeClient)
+    assert_equal 0, client.run(project + %w[workflow create --based-on 8 --file -])
+    assert_equal [ :post, "/workflows", {
+      project: "github.com/owner/project", based_on_id: 8, steps: []
+    }, nil ], FakeClient.requests.last
+    invalid = KosCli::Command.new(stdin: StringIO.new('{"steps":[]}'), stdout: StringIO.new,
+      stderr: @stderr, client_class: FakeClient)
+    assert_equal 2, invalid.run(project + %w[workflow create --global --based-on 8 --file -])
+  end
+
   def test_creates_project_from_explicit_repository
     exit_code = command.run(%w[
       --project git@github.com:Owner/Project.git

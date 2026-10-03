@@ -1,13 +1,13 @@
 CREATE TABLE "schema_migrations" ("version" varchar NOT NULL PRIMARY KEY);
 CREATE TABLE "ar_internal_metadata" ("key" varchar NOT NULL PRIMARY KEY, "value" varchar, "created_at" datetime(6) NOT NULL, "updated_at" datetime(6) NOT NULL);
 CREATE TABLE "projects" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "repository" varchar NOT NULL, "name" varchar NOT NULL, "created_at" datetime(6) NOT NULL, "updated_at" datetime(6) NOT NULL);
-CREATE UNIQUE INDEX "index_projects_on_repository" ON "projects" ("repository") /*application='Kos'*/;
+CREATE UNIQUE INDEX "index_projects_on_repository" ON "projects" ("repository");
 CREATE TABLE "task_groups" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "project_id" integer NOT NULL, "kind" varchar NOT NULL, "title" varchar NOT NULL, "description" text NOT NULL, "created_at" datetime(6) NOT NULL, "updated_at" datetime(6) NOT NULL, CONSTRAINT "fk_rails_cbd14c3ba3"
 FOREIGN KEY ("project_id")
   REFERENCES "projects" ("id")
  ON DELETE RESTRICT, CONSTRAINT task_groups_kind_allowed CHECK (kind = 'epic'), CONSTRAINT task_groups_title_present CHECK (length(trim(title)) > 0), CONSTRAINT task_groups_description_present CHECK (length(trim(description)) > 0));
-CREATE INDEX "index_task_groups_on_project_id" ON "task_groups" ("project_id") /*application='Kos'*/;
-CREATE UNIQUE INDEX "index_task_groups_on_id_and_project_id" ON "task_groups" ("id", "project_id") /*application='Kos'*/;
+CREATE INDEX "index_task_groups_on_project_id" ON "task_groups" ("project_id");
+CREATE UNIQUE INDEX "index_task_groups_on_id_and_project_id" ON "task_groups" ("id", "project_id");
 CREATE TABLE "task_dependencies" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "task_id" integer NOT NULL, "blocking_task_id" integer NOT NULL, "project_id" integer NOT NULL, "created_at" datetime(6) NOT NULL, "updated_at" datetime(6) NOT NULL, CONSTRAINT "fk_rails_cf1b14dd48"
 FOREIGN KEY ("task_id", "project_id")
   REFERENCES "tasks" ("id", "project_id")
@@ -15,21 +15,15 @@ FOREIGN KEY ("task_id", "project_id")
 FOREIGN KEY ("blocking_task_id", "project_id")
   REFERENCES "tasks" ("id", "project_id")
  ON DELETE RESTRICT, CONSTRAINT task_dependencies_not_self_referential CHECK (task_id != blocking_task_id));
-CREATE UNIQUE INDEX "index_task_dependencies_on_task_id_and_blocking_task_id" ON "task_dependencies" ("task_id", "blocking_task_id") /*application='Kos'*/;
-CREATE INDEX "index_task_dependencies_on_task_id_and_project_id" ON "task_dependencies" ("task_id", "project_id") /*application='Kos'*/;
-CREATE INDEX "index_task_dependencies_on_blocking_task_id_and_project_id" ON "task_dependencies" ("blocking_task_id", "project_id") /*application='Kos'*/;
+CREATE UNIQUE INDEX "index_task_dependencies_on_task_id_and_blocking_task_id" ON "task_dependencies" ("task_id", "blocking_task_id");
+CREATE INDEX "index_task_dependencies_on_task_id_and_project_id" ON "task_dependencies" ("task_id", "project_id");
+CREATE INDEX "index_task_dependencies_on_blocking_task_id_and_project_id" ON "task_dependencies" ("blocking_task_id", "project_id");
 CREATE TABLE "task_artifacts" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "task_id" integer NOT NULL, "key" varchar NOT NULL, "content" text NOT NULL, "lock_version" integer DEFAULT 0 NOT NULL, "created_at" datetime(6) NOT NULL, "updated_at" datetime(6) NOT NULL, CONSTRAINT "fk_rails_4a71dd24a4"
 FOREIGN KEY ("task_id")
   REFERENCES "tasks" ("id")
  ON DELETE CASCADE, CONSTRAINT task_artifacts_key_not_blank CHECK (length(trim(key)) > 0), CONSTRAINT task_artifacts_lock_version_not_negative CHECK (lock_version >= 0));
-CREATE INDEX "index_task_artifacts_on_task_id" ON "task_artifacts" ("task_id") /*application='Kos'*/;
-CREATE UNIQUE INDEX "index_task_artifacts_on_task_id_and_key" ON "task_artifacts" ("task_id", "key") /*application='Kos'*/;
-CREATE TABLE "workflows" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "project_id" integer, "name" varchar NOT NULL, "steps" json NOT NULL, "created_at" datetime(6) NOT NULL, "updated_at" datetime(6) NOT NULL, CONSTRAINT "fk_rails_382d2c48c7"
-FOREIGN KEY ("project_id")
-  REFERENCES "projects" ("id")
- ON DELETE RESTRICT, CONSTRAINT workflows_name_present CHECK (length(trim(name)) > 0));
-CREATE INDEX "index_workflows_on_project_id" ON "workflows" ("project_id");
-CREATE UNIQUE INDEX "index_workflows_on_id_and_project_id" ON "workflows" ("id", "project_id");
+CREATE INDEX "index_task_artifacts_on_task_id" ON "task_artifacts" ("task_id");
+CREATE UNIQUE INDEX "index_task_artifacts_on_task_id_and_key" ON "task_artifacts" ("task_id", "key");
 CREATE TABLE "tasks" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "project_id" integer NOT NULL, "kind" varchar NOT NULL, "title" varchar NOT NULL, "description" text NOT NULL, "status" varchar DEFAULT 'planned' NOT NULL, "work_summary" text, "session_id" varchar, "claim_id" varchar, "claimed_at" datetime(6), "lease_expires_at" datetime(6), "created_at" datetime(6) NOT NULL, "updated_at" datetime(6) NOT NULL, "task_group_id" integer, "workflow_id" integer NOT NULL, "current_step" integer DEFAULT 0 NOT NULL, CONSTRAINT "fk_rails_bdd88292f8"
 FOREIGN KEY ("task_group_id", "project_id")
   REFERENCES "task_groups" ("id", "project_id")
@@ -64,13 +58,6 @@ WHEN EXISTS (
 BEGIN
   SELECT RAISE(ABORT, 'workflow must belong to the task project');
 END;
-CREATE TRIGGER workflows_project_immutable
-BEFORE UPDATE OF project_id ON workflows
-WHEN OLD.project_id IS NOT NEW.project_id
-BEGIN
-  SELECT RAISE(ABORT, 'workflow project cannot change');
-END;
-CREATE UNIQUE INDEX "index_global_workflows_on_name" ON "workflows" ("name") WHERE project_id IS NULL;
 CREATE TABLE "brief_plans" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "brief_task_id" integer NOT NULL, "request_key" varchar NOT NULL, "request_digest" varchar NOT NULL, "result" json NOT NULL, "created_at" datetime(6) NOT NULL, "updated_at" datetime(6) NOT NULL, CONSTRAINT "fk_rails_eb1f6dcab2"
 FOREIGN KEY ("brief_task_id")
   REFERENCES "tasks" ("id")
@@ -100,7 +87,50 @@ WHEN EXISTS (
 BEGIN
   SELECT RAISE(ABORT, 'brief blocker cannot be removed before completion');
 END;
+CREATE TABLE "workflows" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "project_id" integer, "name" varchar NOT NULL, "steps" json NOT NULL, "created_at" datetime(6) NOT NULL, "updated_at" datetime(6) NOT NULL, "base_workflow_id" integer, "edition" integer, CONSTRAINT "fk_rails_382d2c48c7"
+FOREIGN KEY ("project_id")
+  REFERENCES "projects" ("id")
+ ON DELETE RESTRICT, CONSTRAINT "fk_rails_dcf01c6a7e"
+FOREIGN KEY ("base_workflow_id")
+  REFERENCES "workflows" ("id")
+ ON DELETE RESTRICT, CONSTRAINT workflows_name_present CHECK (length(trim(name)) > 0), CONSTRAINT workflows_edition_positive CHECK (edition IS NULL OR edition > 0), CONSTRAINT workflows_origin_complete CHECK ((base_workflow_id IS NULL AND edition IS NULL) OR (base_workflow_id IS NOT NULL AND edition IS NOT NULL AND project_id IS NOT NULL)));
+CREATE INDEX "index_workflows_on_project_id" ON "workflows" ("project_id");
+CREATE UNIQUE INDEX "index_workflows_on_id_and_project_id" ON "workflows" ("id", "project_id");
+CREATE UNIQUE INDEX "index_global_workflows_on_name" ON "workflows" ("name") WHERE project_id IS NULL;
+CREATE INDEX "index_workflows_on_base_workflow_id" ON "workflows" ("base_workflow_id");
+CREATE UNIQUE INDEX "index_workflows_on_project_origin_edition" ON "workflows" ("project_id", "base_workflow_id", "edition");
+CREATE TRIGGER workflows_project_immutable
+BEFORE UPDATE OF project_id ON workflows
+WHEN OLD.project_id IS NOT NEW.project_id
+BEGIN
+  SELECT RAISE(ABORT, 'workflow project cannot change');
+END;
+CREATE TRIGGER workflows_base_insert
+BEFORE INSERT ON workflows
+WHEN NEW.base_workflow_id IS NOT NULL AND NOT EXISTS (
+  SELECT 1 FROM workflows WHERE id = NEW.base_workflow_id
+    AND project_id IS NULL AND base_workflow_id IS NULL
+)
+BEGIN
+  SELECT RAISE(ABORT, 'base workflow must be shared');
+END;
+CREATE TRIGGER workflows_base_update
+BEFORE UPDATE ON workflows
+WHEN NEW.base_workflow_id IS NOT NULL AND NOT EXISTS (
+  SELECT 1 FROM workflows WHERE id = NEW.base_workflow_id
+    AND project_id IS NULL AND base_workflow_id IS NULL
+)
+BEGIN
+  SELECT RAISE(ABORT, 'base workflow must be shared');
+END;
+CREATE TRIGGER workflows_origin_immutable
+BEFORE UPDATE OF base_workflow_id, edition ON workflows
+WHEN OLD.base_workflow_id IS NOT NEW.base_workflow_id OR OLD.edition IS NOT NEW.edition
+BEGIN
+  SELECT RAISE(ABORT, 'workflow origin and edition cannot change');
+END;
 INSERT INTO "schema_migrations" (version) VALUES
+('20261003000000'),
 ('20261001000012'),
 ('20261001000011'),
 ('20260929000010'),

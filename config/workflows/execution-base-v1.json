@@ -1,0 +1,107 @@
+{
+  "name": "KOS Base Execution v1",
+  "steps": [
+    {
+      "name": "Refine and plan",
+      "executor": "subagent",
+      "model_tier": "advanced",
+      "instructions": "Read project rules, task and direct blockers, approved Brief snapshot and published project OKF v0.2 concepts, including specifications prepared outside KOS; code/tests show actual behavior. Treat project concepts as the maintained required behavior and Brief artifacts as a dated, self-contained snapshot, not another full normative copy. Compare their revisions and boundaries; if they differ materially or a requirement is missing, relay the question to the orchestrator rather than silently choosing. Refine task outcome, criteria, dependencies and normal, alternative, error, edge and security cases. Number task questions Q-01 onward across steps with answers or open status, owner and resolution point. Relay necessary human questions one at a time with context, a reasoned recommendation in parentheses and plain language; a wizard may show several only sequentially. Do not invent factual answers or adopt an unapproved proposal as a requirement. Resolve permitted technical choices independently. For changed required behavior explicitly load kos-project-docs, get separate human agreement and update the affected domain concept before implementation. Save a task-specific minimal plan with AC-to-check mapping and risks; do not repeat the full Brief scenarios. Send product questions to the orchestrator, who obtains separate explicit human agreement and relays the decision back. You may save a technical plan with an open product question, its owner and resolution point, but saving it does not approve or resolve the question: do not update the norm or implement behavior depending on that answer until the human agrees. Then update the affected concept before implementation.",
+      "inputs": [
+        {
+          "source": "blockers",
+          "key": "requirements"
+        },
+        {
+          "source": "blockers",
+          "key": "specification"
+        },
+        {
+          "source": "blockers",
+          "key": "implementation_plan"
+        },
+        {
+          "source": "blockers",
+          "key": "planning_report"
+        },
+        {
+          "source": "blockers",
+          "key": "publication_report"
+        }
+      ],
+      "outputs": [
+        "implementation_plan"
+      ],
+      "templates": {
+        "implementation_plan": "# Task implementation plan\n\n## Approved sources and scope\n<Task, Brief IDs and snapshot, published project path/revision and discrepancies or open decisions.>\n\n## Approach and criteria\n<Minimal design, relevant AC IDs, normal/error/edge cases, dependencies and risks.>\n\n## Checks and questions\n<Map criteria to meaningful checks; consecutive task Q IDs with answers or open status, owner and resolution point.>"
+      }
+    },
+    {
+      "name": "Implement and test",
+      "executor": "subagent",
+      "model_tier": "advanced",
+      "instructions": "Implement approved work in the verified worktree following project rules and normative concepts. Write meaningful tests for changed behavior and error/edge cases; for documentation-only changes use applicable document checks. Run relevant project checks and save actual commands, outcomes and AC coverage in test_report. Fix failures and rerun affected checks; do not silently change required behavior to fit code. After a correction rerun affected checks; rerun full CI if project rules require it or the earlier result no longer covers the change. In test_report identify the checked Git base revision and uncommitted change set (including untracked files), the full CI result if run, and the checks actually performed. After each correction distinguish new edits and their affected reruns from earlier evidence; do not claim the previous CI covers changed files without checking. When a review flags an untrusted input, check the applicable defect class, not only the reported literal: consider type, encoding, empty values, control characters and a subsequent valid request. Do not build an exhaustive input matrix. On overwriting test_report, keep a concise self-contained summary of earlier verified checks and their file state, then identify changed files, the new file state, affected reruns and why full CI was or was not repeated. A lock_version identifies the current artifact edition, not a readable history of overwritten text. During a sequence of small edits use focused checks; run the project's required complete checks once on the settled change before independent review. After later edits repeat affected checks, and full CI only if project rules require it or previous evidence no longer covers the result. Account for mandatory commit hooks without presenting skipped hooks as passed.",
+      "inputs": [
+        {
+          "source": "task",
+          "key": "implementation_plan"
+        }
+      ],
+      "outputs": [
+        "test_report"
+      ],
+      "templates": {
+        "test_report": "# Implementation and checks\n\n## Checked state\n<Git base and one identifier for uncommitted contents including untracked files, changed files, current outcome.>\n\n## Checks and corrections\n<Actual commands and results with criterion coverage; brief earlier outcomes and findings, affected reruns, reason full CI was required or earlier evidence still covers unchanged work. For input defects note applicable neighboring forms and a subsequent valid request.>"
+      }
+    },
+    {
+      "name": "Review and resolve findings",
+      "executor": "subagent",
+      "model_tier": "advanced",
+      "instructions": "As an independent reviewer, inspect the complete diff, checks, task criteria, Brief snapshot, approved project concepts, project rules, architecture and security. Record each concrete finding's location, evidence, impact, correction and high/medium/low severity, or explicitly state no findings. High and medium findings must be corrected by the implementation executor and independently re-reviewed with affected checks rerun on this step; low findings may remain with rationale. Escalate changes to approved behavior for human agreement; do not approve solely because reports exist. Record the reviewed Git base and uncommitted change set including untracked files, cite the test_report lock_version and its verified state. Review the complete current diff independently; rerun affected checks when necessary, not unchanged full CI merely for review. After corrections independently re-review the resulting diff and record new evidence. After high or medium findings, require an independent new review of the corrected complete diff. On overwriting review_report, retain a concise self-contained summary of prior findings and verified evidence, the reviewed base and uncommitted contents before and after corrections, changed files, affected reruns and their results, remaining findings and the new independent verdict. A lock_version alone does not preserve previous report text. Keep the current report concise: previous findings and their resolution, current checked state, open findings and independent verdict; avoid copying previous check inventories or repeating state identifiers in every section.",
+      "inputs": [
+        {
+          "source": "task",
+          "key": "implementation_plan"
+        },
+        {
+          "source": "task",
+          "key": "test_report"
+        }
+      ],
+      "outputs": [
+        "review_report"
+      ],
+      "templates": {
+        "review_report": "# Independent review\n\n## Checked state and verdict\n<Reviewed Git base and uncommitted contents, test_report lock_version, complete diff and independent current verdict.>\n\n## Findings and corrections\n<Earlier findings and evidence in brief, changed files and affected reruns, open findings by severity, new independent review after corrections; do not copy complete earlier inventories.>"
+      }
+    },
+    {
+      "name": "Check documentation, publish and verify",
+      "executor": "subagent",
+      "model_tier": "standard",
+      "instructions": "First perform the documentation check and save documentation_report under the active claim; then inspect its result, final diff and earlier independent review before publishing. Explicitly load kos-project-docs and inspect affected domain concepts in the project's OKF v0.2 bundle. Only change required behavior after separate human approval; code and tests describe actual behavior. For unchanged norm record inspected concepts and why no edit was needed. Save documentation_report with concrete review findings about project documentation, locations, effects and verified corrections, or explicitly say no findings. Review links, frontmatter, navigation and full document diff; rerun affected checks. If late changes affect reviewed behavior, obtain renewed independent review before publication. Publication is part of the assigned task. Inspect status, full diff, tests, review, documentation and project rules. Resolve high and medium findings; rerun affected checks and renew independent review when later edits change reviewed behavior. Publish by the project route and independently verify destination and revision; if ambiguous inspect before retrying, retain the worktree and stay on this step. Record specific remaining documentation/review findings or explicit absence, verified corrections and final check evidence in publication_report. Only the orchestrator may complete after verification and report result and next task in plain language. Compare final base revision and uncommitted change set including untracked files to those in test_report and review_report; cite their lock_versions. If files changed, rerun affected checks and renew independent review when reviewed behavior changed. Repeat full CI only when project rules require it or previous evidence no longer covers the final change. Report what was rerun and why, without copying the full test list. If documentation edits affect reviewed behavior, stop before publication and ask the orchestrator for affected checks and an independent review; resume this same step afterward. Verify git status after saving each report; remove only your own temporary report file and preserve all other files.",
+      "inputs": [
+        {
+          "source": "task",
+          "key": "implementation_plan"
+        },
+        {
+          "source": "task",
+          "key": "review_report"
+        },
+        {
+          "source": "task",
+          "key": "test_report"
+        }
+      ],
+      "outputs": [
+        "documentation_report",
+        "publication_report"
+      ],
+      "templates": {
+        "documentation_report": "# Normative documentation check\n\n## Domains and decisions\n<Affected concepts and explicit human agreement for changed requirements, or why norm is unchanged.>\n\n## Review findings and corrections\n<Each concrete documentation finding, location, effect and verified fix, or explicitly state no findings.>\n\n## Checks and review impact\n<Actual link/frontmatter/diff checks, reruns and whether renewed independent review is needed or obtained.>",
+        "publication_report": "# Execution publication\n\n## Published result\n<Destination, independently verified revision/link and observed outcome.>\n\n## Final checks and findings\n<Final diff, actual test and document check evidence; concrete remaining findings or explicitly none, verified corrections and renewed review if needed.>\n\n## Recovery or completion\n<Uncertainty and destination inspection, or confirmed publication for orchestrator.>\n\n## Evidence at publication\n<Final base revision and uncommitted change set, test_report and review_report lock_versions, changes since review, affected reruns or why no rerun was needed; verified destination.>"
+      }
+    }
+  ]
+}

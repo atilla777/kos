@@ -6,6 +6,7 @@ Rails.application.routes.draw do
       resources :projects, only: %i[index show create update destroy]
       resources :task_groups, path: "task-groups", only: %i[index show create update destroy]
       resources :workflows, only: %i[index show create destroy]
+      post "workflows/install-base", to: "workflows#install_base"
       resources :tasks, only: %i[index show create update destroy] do
         get "brief-plan/:key", to: "brief_plans#show", on: :member, as: :brief_plan, format: false
         post "brief-plan", to: "brief_plans#create", on: :member
