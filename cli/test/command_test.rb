@@ -280,9 +280,16 @@ class CommandTest < Minitest::Test
     assert_equal [ :post, "/workflows", {
       project: "github.com/owner/project", based_on_id: 8, steps: []
     }, nil ], FakeClient.requests.last
+    client = KosCli::Command.new(stdin: StringIO.new('{"steps":[]}'), stdout: @stdout,
+      stderr: @stderr, client_class: FakeClient)
+    assert_equal 0, client.run(project + %w[workflow create --based-on 8 --base 21 --file -])
+    assert_equal [ :post, "/workflows", {
+      project: "github.com/owner/project", based_on_id: 8, base_id: 21, steps: []
+    }, nil ], FakeClient.requests.last
     invalid = KosCli::Command.new(stdin: StringIO.new('{"steps":[]}'), stdout: StringIO.new,
       stderr: @stderr, client_class: FakeClient)
     assert_equal 2, invalid.run(project + %w[workflow create --global --based-on 8 --file -])
+    assert_equal 2, invalid.run(project + %w[workflow create --base 21 --file -])
   end
 
   def test_creates_project_from_explicit_repository

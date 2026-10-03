@@ -129,7 +129,9 @@ WHEN OLD.base_workflow_id IS NOT NEW.base_workflow_id OR OLD.edition IS NOT NEW.
 BEGIN
   SELECT RAISE(ABORT, 'workflow origin and edition cannot change');
 END;
+CREATE UNIQUE INDEX "index_project_workflow_editions_on_name" ON "workflows" ("project_id", "name") WHERE base_workflow_id IS NOT NULL;
 INSERT INTO "schema_migrations" (version) VALUES
+('20261003000001'),
 ('20261003000000'),
 ('20261001000012'),
 ('20261001000011'),

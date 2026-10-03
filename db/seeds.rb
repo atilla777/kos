@@ -3,8 +3,8 @@ require "json"
 # The checked-in base definitions are complete. Installing them never edits a
 # definition assigned to a task or a project's copy.
 Workflow.transaction do
-  %w[brief execution fix].each do |kind|
-    definition = JSON.parse(Rails.root.join("config/workflows/#{kind}-base-v1.json").read)
+  Rails.root.glob("config/workflows/{brief,execution,fix}-base-v*.json").sort.each do |path|
+    definition = JSON.parse(path.read)
     name = definition.fetch("name")
     steps = definition.fetch("steps")
     current = Workflow.find_by(project_id: nil, name: name)

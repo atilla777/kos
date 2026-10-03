@@ -28,6 +28,7 @@ module Api
         raise ActionController::BadRequest if params.key?(:global) && params[:global] != true
         raise ActionController::BadRequest if params.key?(:based_on_id) && params[:global] == true
         raise ActionController::BadRequest if params.key?(:based_on_id) && params.key?(:name)
+        raise ActionController::BadRequest if params.key?(:base_id) && !params.key?(:based_on_id)
 
         created = nil
         Project.transaction do
@@ -43,11 +44,26 @@ module Api
               source = project.workflows.find(params[:based_on_id])
               raise ActionController::BadRequest unless source.base_workflow_id && source.edition
 
-              latest = project.workflows.where(base_workflow_id: source.base_workflow_id).maximum(:edition)
-              raise ActiveRecord::RecordNotUnique, "Stale project edition" if latest != source.edition
+              kind = source.base_workflow.name.match(/\AKOS Base (Brief|Execution|Fix) v\d+\z/)&.captures&.first
+              raise ActionController::BadRequest unless kind && source.name == "KOS #{kind} v#{source.edition}"
 
-              created = project.workflows.create!(name: source.name.sub(/v\d+\z/, "v#{source.edition + 1}"),
-                steps: params.require(:steps), base_workflow: source.base_workflow, edition: source.edition + 1)
+              base = params.key?(:base_id) ? Workflow.find_by!(id: params[:base_id], project_id: nil) : source.base_workflow
+              base_kind = base.name.match(/\AKOS Base (Brief|Execution|Fix) v(\d+)\z/)
+              raise ActionController::BadRequest unless base_kind && base_kind[1] == kind && base.base_workflow_id.nil?
+              if params.key?(:base_id)
+                old_version = source.base_workflow.name.match(/v(\d+)\z/)[1].to_i
+                raise ActionController::BadRequest unless base_kind[2].to_i > old_version
+                newer = Workflow.where(project_id: nil).any? do |candidate|
+                  match = candidate.name.match(/\AKOS Base (Brief|Execution|Fix) v(\d+)\z/)
+                  match && match[1] == kind && match[2].to_i > base_kind[2].to_i
+                end
+                raise ActionController::BadRequest if newer
+              end
+              raise ActiveRecord::RecordNotUnique, "Stale project edition" if project.workflows.where("name GLOB ?", "KOS #{kind} v[0-9]*").any? { |record| record.edition.to_i > source.edition }
+              raise ActiveRecord::RecordNotUnique, "Stale project edition" if project.workflows.exists?(name: "KOS #{kind} v#{source.edition + 1}")
+
+              created = project.workflows.create!(name: "KOS #{kind} v#{source.edition + 1}",
+                steps: params.require(:steps), base_workflow: base, edition: source.edition + 1)
             else
               created = project.workflows.create!(name: params.require(:name), steps: params.require(:steps))
             end
@@ -68,17 +84,18 @@ module Api
             record.name = project_repository.split("/").last
           end
           bases = %w[Brief Execution Fix].map do |kind|
-            Workflow.find_by!(project_id: nil, name: "KOS Base #{kind} v1")
+            Workflow.where(project_id: nil).select { |record| record.name.match?(/\AKOS Base #{kind} v\d+\z/) }
+              .max_by { |record| record.name.match(/v(\d+)\z/)[1].to_i } || raise(ActiveRecord::RecordNotFound)
           end
           installed = bases.map do |base|
-            existing = project.workflows.find_by(base_workflow_id: base.id, edition: 1)
+            existing = project.workflows.find_by(name: "KOS #{base.name.split[2]} v1")
             if existing
-              unless existing.steps == base.steps
+              unless existing.base_workflow_id && existing.edition == 1 && existing.steps == existing.base_workflow.steps
                 raise ActiveRecord::RecordInvalid.new(existing)
               end
               existing
             else
-              project.workflows.create!(name: base.name.sub("Base ", ""), steps: base.steps,
+              project.workflows.create!(name: "KOS #{base.name.split[2]} v1", steps: base.steps,
                 base_workflow: base, edition: 1)
             end
           end

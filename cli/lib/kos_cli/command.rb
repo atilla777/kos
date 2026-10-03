@@ -35,7 +35,7 @@ module KosCli
       "project delete" => "[ID|REPOSITORY]",
       "group create" => "--kind KIND --title TITLE --description TEXT", "group list" => "[--limit N] [--after-id ID]",
       "group show" => "GROUP_ID", "group update" => "GROUP_ID [--kind KIND] [--title TITLE] [--description TEXT]", "group delete" => "GROUP_ID",
-      "workflow create" => "--file PATH [--global | --based-on ID]", "workflow install-base" => "",
+      "workflow create" => "--file PATH [--global | --based-on ID [--base ID]]", "workflow install-base" => "",
       "workflow list" => "[--limit N] [--after-id ID] [--brief]",
       "workflow show" => "WORKFLOW_ID", "workflow delete" => "WORKFLOW_ID",
       "task create" => "--kind KIND --title TITLE --description TEXT --workflow-id ID [OPTIONS]",
@@ -253,6 +253,7 @@ module KosCli
           parser.on("--file PATH") { |path| values[:file] = path }
           parser.on("--global") { values[:global] = true }
           parser.on("--based-on ID", Integer) { |id| values[:based_on_id] = id }
+          parser.on("--base ID", Integer) { |id| values[:base_id] = id }
         end.parse!(argv)
         ensure_empty!(argv)
         raise OptionParser::ParseError, "Provide --file PATH." unless values[:file]
@@ -261,6 +262,9 @@ module KosCli
         if values[:global] && values[:based_on_id]
           raise OptionParser::ParseError, "Choose either --global or --based-on."
         end
+        if values[:base_id] && !values[:based_on_id]
+          raise OptionParser::ParseError, "--base requires --based-on."
+        end
         unless definition.is_a?(Hash) && definition.keys.sort == (values[:based_on_id] ? %w[steps] : %w[name steps])
           raise OptionParser::ParseError, "Workflow file must contain #{values[:based_on_id] ? 'only steps' : 'only name and steps'}."
         end
@@ -268,6 +272,7 @@ module KosCli
         body = { steps: definition.fetch("steps") }
         body[:name] = definition.fetch("name") unless values[:based_on_id]
         body[:based_on_id] = values[:based_on_id] if values[:based_on_id]
+        body[:base_id] = values[:base_id] if values[:base_id]
         body[:global] = true if values[:global]
         body[:project] = resolve_project(global) unless values[:global]
         client.request(:post, "/workflows", body: body)
